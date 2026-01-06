@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lifelens/moodlog_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -23,7 +24,7 @@ class _MenuScreenState extends State<MenuScreen> {
         selectedMood: _selectedMood,
         onMoodSelected: (i) => setState(() => _selectedMood = i),
       ),
-      const _PlaceholderPage(title: "Log"),
+      const MoodLogScreen(),
       const _PlaceholderPage(title: "Mini-Me"),
       const _PlaceholderPage(title: "Community"),
       const _PlaceholderPage(title: "Profile"),
@@ -101,7 +102,13 @@ class _HomeDashboard extends StatelessWidget {
               _QuickAction(
                 icon: Icons.emoji_emotions_outlined,
                 label: "Mood Log",
-                onTap: () => _toast(context, "Mood Log (UI only)"),
+                onTap: (){
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const MoodLogScreen(),
+                    ),
+                  );
+                }
               ),
               _QuickAction(
                 icon: Icons.nightlight_round,
@@ -131,6 +138,12 @@ class _HomeDashboard extends StatelessWidget {
                 "On days you sleep 7+ hours, your mood trends more positive. Try a 10-minute wind-down tonight.",
           ),
 
+          const SizedBox(height: 16),
+
+          _ContextualSuggestions(
+            moodLabel: selectedMood == -1
+              ? "Neutral" : _moods[selectedMood].label,
+          ),
           const SizedBox(height: 16),
 
           // Optional: streak / summary strip
@@ -177,6 +190,115 @@ class _HomeDashboard extends StatelessWidget {
         duration: const Duration(milliseconds: 900),
       ),
     );
+  }
+}
+
+class _ContextualSuggestions extends StatelessWidget{
+  const _ContextualSuggestions({
+    required this.moodLabel,
+  });
+  final String moodLabel;
+
+  @override
+  Widget build(BuildContext context){
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    final suggestions = _suggestionsForMood(moodLabel);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Suggested for you",
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...suggestions.map(
+            (s) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _SuggestionTile(
+                icon: s.icon,
+                text: s.text,
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("${s.text} (UI Only)"),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(milliseconds: 900),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  List<_Suggestion> _suggestionsForMood(String mood){
+    final m = mood.toLowerCase();
+
+    if(m.contains("calm")){
+      return const [
+        _Suggestion(
+          icon: Icons.self_improvement_rounded,
+          text: "Maintain your calm with a 2-minute breathing exercise",
+        ),
+
+        _Suggestion(
+          icon: Icons.bookmark_border_rounded,
+          text: "Reflect briefly on what's helping you feel balanced",
+        ),
+      ];
+    }
+
+    if(m.contains("anxious") || m.contains("stress")){
+      return const[
+        _Suggestion(
+          icon: Icons.air_rounded,
+          text: "Try a short grounding breathing exercise",
+        ),
+      ];
+    }
+
+     if(m.contains("sad")){
+      return const[
+        _Suggestion(
+          icon: Icons.favorite_border_rounded,
+          text: "Be a little kinder to yourself - take it one day at a time",
+        ),
+      ];
+    }
+
+    if(m.contains("happy")){
+      return const[
+        _Suggestion(
+          icon: Icons.thumbs_up_down,
+          text: "Glad to know your feeling well today!"
+        ),
+      ];
+    }
+    return const[
+      _Suggestion(
+        icon: Icons.track_changes_rounded,
+        text: "Check in later for any changes",
+      ),
+      _Suggestion(
+        icon: Icons.insights_outlined,
+        text: "Make sure you log everyday to understand your patterns",
+      ),
+    ];
   }
 }
 
@@ -921,6 +1043,59 @@ class _Mood {
   final String label;
 }
 
+class _Suggestion {
+  const _Suggestion({
+    required this.icon,
+    required this.text,
+  });
+  final IconData icon;
+  final String text;
+}
+
+class _SuggestionTile extends StatelessWidget{
+  const _SuggestionTile({
+    required this.icon,
+    required this.text,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String text;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context){
+    final cs = Theme.of(context).colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: cs.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurface,
+                ),
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+                size: 18, color: cs.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
 const _moods = <_Mood>[
   _Mood("😊", "Happy"),
   _Mood("😌", "Calm"),
