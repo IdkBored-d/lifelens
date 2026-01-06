@@ -24,7 +24,7 @@ class _MenuScreenState extends State<MenuScreen> {
         selectedMood: _selectedMood,
         onMoodSelected: (i) => setState(() => _selectedMood = i),
       ),
-      const MoodLogScreen(),
+      const MoodLogScreen(source: LogSource.tab),
       const _PlaceholderPage(title: "Mini-Me"),
       const _PlaceholderPage(title: "Community"),
       const _PlaceholderPage(title: "Profile"),

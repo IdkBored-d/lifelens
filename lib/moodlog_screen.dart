@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+enum LogSource { quickAction, tab }
+
 class MoodLogScreen extends StatefulWidget {
-  const MoodLogScreen({super.key});
+  const MoodLogScreen({super.key, this.source = LogSource.quickAction});
+  final LogSource source;
 
   @override
   State<MoodLogScreen> createState() => _MoodLogScreenState();
@@ -14,7 +17,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   final notesCtrl = TextEditingController();
   final Set<String> tags = {};
 
-  final moods = const[
+  final moods = const [
     _MoodOption("Happy", "😊"),
     _MoodOption("Calm", "😌"),
     _MoodOption("Neutral", "😐"),
@@ -22,7 +25,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     _MoodOption("Sad", "😔"),
   ];
 
-  final tagOptions = const[
+  final tagOptions = const [
     "School",
     "Work",
     "Sleep",
@@ -34,27 +37,25 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   ];
 
   @override
-  void dispose(){
+  void dispose() {
     notesCtrl.dispose();
     super.dispose();
   }
 
-  String get intensityLabel{
-    if(intensity <= 2) return "Low";
-    if(intensity <= 4) return "Moderate";
+  String get intensityLabel {
+    if (intensity <= 2) return "Low";
+    if (intensity <= 4) return "Moderate";
     return "High";
   }
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text("Mood Log"),
-      ),
+      appBar: AppBar(title: const Text("Mood Log")),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 22),
@@ -82,7 +83,9 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                   children: [
                     _SectionHeader(
                       title: "Mood",
-                      trailing: selectedMood == -1 ? "Select one" : moods[selectedMood].label,
+                      trailing: selectedMood == -1
+                          ? "Select one"
+                          : moods[selectedMood].label,
                     ),
                     const SizedBox(height: 12),
 
@@ -90,18 +93,19 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: moods.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 5,
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                      ),
-                      itemBuilder: (context, i){
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 5,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                          ),
+                      itemBuilder: (context, i) {
                         final m = moods[i];
                         final isSelected = i == selectedMood;
 
                         return InkWell(
                           borderRadius: BorderRadius.circular(16),
-                          onTap: (){
+                          onTap: () {
                             Feedback.forTap(context);
                             setState(() => selectedMood = i);
                           },
@@ -109,15 +113,17 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             duration: const Duration(milliseconds: 160),
                             curve: Curves.easeOut,
                             transform: isSelected
-                              ? (Matrix4.identity()..scale(1.05))
-                              : Matrix4.identity(),
+                                ? (Matrix4.identity()..scale(1.05))
+                                : Matrix4.identity(),
                             decoration: BoxDecoration(
-                              color: isSelected ? cs.primaryContainer : cs.surface,
+                              color: isSelected
+                                  ? cs.primaryContainer
+                                  : cs.surface,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: isSelected
-                                  ? cs.primary.withOpacity(0.40)
-                                  : cs.outlineVariant.withOpacity(0.55),
+                                    ? cs.primary.withOpacity(0.40)
+                                    : cs.outlineVariant.withOpacity(0.55),
                               ),
                             ),
                             child: Center(
@@ -172,18 +178,17 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: tagOptions.map((t){
+                      children: tagOptions.map((t) {
                         final selected = tags.contains(t);
                         return FilterChip(
                           selected: selected,
                           label: Text(t),
-                          onSelected: (v){
+                          onSelected: (v) {
                             HapticFeedback.selectionClick();
-                            setState((){
-                              if(v){
+                            setState(() {
+                              if (v) {
                                 tags.add(t);
-                              }
-                              else{
+                              } else {
                                 tags.remove(t);
                               }
                             });
@@ -219,18 +224,29 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: selectedMood == -1
-                    ? null : (){
-                      HapticFeedback.mediumImpact();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Mood saved (UI Only)"),
-                          behavior: SnackBarBehavior.floating,
-                          duration: Duration(milliseconds: 900),
-                        ),
-                      );
-                      Navigator.of(context).pop();
-                    },
-                  child: const Text("Save check-in"),
+                      ? null
+                      : () {
+                          HapticFeedback.mediumImpact();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Mood saved (UI Only)"),
+                              behavior: SnackBarBehavior.floating,
+                              duration: Duration(milliseconds: 900),
+                            ),
+                          );
+                          if(widget.source == LogSource.quickAction) {
+                            Navigator.of(context).pop();
+                          }
+                          else {
+                            setState(() {
+                              selectedMood = -1;
+                              notesCtrl.clear();
+                              tags.clear();
+                              intensity = 3;
+                            });
+                          }
+                        },
+                  child: Text(widget.source == LogSource.tab ? "Save and log another time" : "Save check-in"),
                 ),
               ),
             ],
@@ -241,18 +257,18 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   }
 }
 
-class _MoodOption{
+class _MoodOption {
   const _MoodOption(this.label, this.emoji);
   final String label;
   final String emoji;
 }
 
-class _SectionCard extends StatelessWidget{
+class _SectionCard extends StatelessWidget {
   const _SectionCard({required this.child});
   final Widget child;
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
@@ -267,15 +283,13 @@ class _SectionCard extends StatelessWidget{
   }
 }
 
-class _SectionHeader extends StatelessWidget{
-  const _SectionHeader({
-    required this.title, this.trailing
-  });
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, this.trailing});
   final String title;
   final String? trailing;
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
@@ -283,10 +297,12 @@ class _SectionHeader extends StatelessWidget{
       children: [
         Text(
           title,
-          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
         ),
         const Spacer(),
-        if(trailing != null)
+        if (trailing != null)
           Text(
             trailing!,
             style: theme.textTheme.labelMedium?.copyWith(
