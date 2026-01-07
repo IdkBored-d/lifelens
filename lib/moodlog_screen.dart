@@ -220,6 +220,26 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
               ),
               const SizedBox(height: 18),
 
+              if(widget.source == LogSource.tab) ...[
+                _SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionHeader(title: "Recent check-ins"),
+                      const SizedBox(height: 10),
+
+                      //sample check-ins
+                      _RecentCheckInRow(
+                        emoji: "😌",
+                        title: "Calm",
+                        subtitle: "Moderate - School - 12:42 PM",
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -311,6 +331,59 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _RecentCheckInRow extends StatelessWidget {
+  const _RecentCheckInRow({
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+  });
+  final String emoji;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration (
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 18, color: cs.onSurfaceVariant),
+        ],
+      ),
     );
   }
 }
