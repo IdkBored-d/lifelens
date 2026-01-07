@@ -45,9 +45,28 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   }
 
   String get intensityLabel {
-    if (intensity <= 2) return "Low";
-    if (intensity <= 4) return "Moderate";
-    return "High";
+    switch (intensity.toInt()) {
+      case 1:
+        return "Very low";
+      case 2:
+        return "Low";
+      case 3:
+        return "Moderate";
+      case 4:
+        return "High";
+      default:
+        return "Very high";
+    }
+  }
+
+  BoxShadow intensityGlow(ColorScheme cs) {
+    final t = (intensity - 1) / 4;
+
+    return BoxShadow(
+      color: cs.primary.withOpacity(0.20 + t * 0.45),
+      blurRadius: 10 + t * 18,
+      spreadRadius: 1 + t * 2.5,
+    );
   }
 
   @override
@@ -154,12 +173,37 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                         title: "Intensity",
                         trailing: "$intensityLabel · ${intensity.toInt()}/5",
                       ),
+                      const SizedBox(height: 8),
+                      
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(999),
+                          boxShadow: [intensityGlow(cs)],
+                        ),
+                        child: Text(
+                          intensityLabel,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+
                       Slider(
                         value: intensity,
                         min: 1,
                         max: 5,
                         divisions: 4,
-                        onChanged: (v) => setState(() => intensity = v),
+                        onChanged: (v) {
+                          HapticFeedback.selectionClick();
+                          setState(() => intensity = v);
+                        },
                       ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
