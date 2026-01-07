@@ -2,11 +2,16 @@
 import 'package:flutter/material.dart';
 import 'package:lifelens/HomeScreen.dart';
 import 'package:lifelens/lifelens_theme.dart';
-// import your theme file if needed
-// import 'package:lifelens/LifeLens.dart';
+import 'moodlog_store.dart';
+import 'package:provider/provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => MoodLogStore(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
