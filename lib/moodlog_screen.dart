@@ -59,6 +59,20 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     }
   }
 
+  String moodHint(String label) {
+    switch(label) {
+      case "Happy":
+        return "Capture what's going well right now.";
+      case "Calm":
+        return "Maintain that calm aura";
+      case "Anxious":
+        return "Noticing anxiety helps identify triggers.";
+      case "Sad":
+        return "Thank you for checking in - this matters.";
+      default:
+        return "A quick check-in helps over time.";
+    }
+  }
   BoxShadow intensityGlow(ColorScheme cs) {
     final t = (intensity - 1) / 4;
 
@@ -165,6 +179,34 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                 ),
                 const SizedBox(height: 14),
 
+                if(selectedMood != -1) ...[
+                  const SizedBox(height: 10),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.auto_awesome_rounded, size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            moodHint(moods[selectedMood].label),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              height: 1.25,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 _SectionCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,7 +216,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                         trailing: "$intensityLabel · ${intensity.toInt()}/5",
                       ),
                       const SizedBox(height: 8),
-                      
+
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.symmetric(
