@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class IntroScreen extends StatefulWidget {
-  const IntroScreen({super.key, required this.onGetStarted});
-
-  final VoidCallback onGetStarted;
+  const IntroScreen({super.key});
 
   @override
   State<IntroScreen> createState() => _IntroScreenState();
 }
 
 class _IntroScreenState extends State<IntroScreen> {
+
   final PageController _controller = PageController();
   int _index = 0;
 
@@ -37,14 +38,20 @@ class _IntroScreenState extends State<IntroScreen> {
     super.dispose();
   }
 
-  void _goNext() {
+  Future<void> _goNext() async {
     if (_index < _pages.length - 1) {
       _controller.nextPage(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
       );
-    } else {
-      widget.onGetStarted();
+    }
+    else {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+
+      await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .update({'onboardingComplete': true});
     }
   }
 
@@ -84,7 +91,7 @@ class _IntroScreenState extends State<IntroScreen> {
                     ),
                     const Spacer(),
                     TextButton(
-                      onPressed: widget.onGetStarted,
+                      onPressed: _goNext,
                       style: TextButton.styleFrom(
                         foregroundColor: theme.colorScheme.primary,
                       ),

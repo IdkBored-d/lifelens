@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lifelens/moodlog_screen.dart';
+import 'package:lifelens/minime_screen.dart';
+import 'profile_screen.dart';
+import 'exercise_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
@@ -8,7 +11,6 @@ class MenuScreen extends StatefulWidget {
   @override
   State<MenuScreen> createState() => _MenuScreenState();
 }
-
 class _MenuScreenState extends State<MenuScreen> {
   int _selectedMood = -1;
   int _navIndex = 0;
@@ -23,11 +25,12 @@ class _MenuScreenState extends State<MenuScreen> {
       _HomeDashboard(
         selectedMood: _selectedMood,
         onMoodSelected: (i) => setState(() => _selectedMood = i),
+        onOpenMiniMe: () => setState(() => _navIndex = 2),
       ),
       const MoodLogScreen(source: LogSource.tab),
-      const _PlaceholderPage(title: "Mini-Me"),
+      const MiniMeScreen(),
       const _PlaceholderPage(title: "Community"),
-      const _PlaceholderPage(title: "Profile"),
+      const ProfileScreen(),
     ];
 
     return Scaffold(
@@ -57,10 +60,12 @@ class _HomeDashboard extends StatelessWidget {
   const _HomeDashboard({
     required this.selectedMood,
     required this.onMoodSelected,
+    required this.onOpenMiniMe,
   });
 
   final int selectedMood;
   final ValueChanged<int> onMoodSelected;
+  final VoidCallback onOpenMiniMe;
 
   @override
   Widget build(BuildContext context) {
@@ -78,13 +83,16 @@ class _HomeDashboard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // Mini-Me hero
-          _MiniMeHeroCard(
-            title: "Mini-Me",
-            moodLabel: selectedMood == -1
-                ? "Tap an emotion to check-in"
-                : _moods[selectedMood].label,
-            statusLine: selectedMood == -1 ? "Energy: —" : "Energy: Balanced",
+          InkWell(
+            borderRadius: BorderRadius.circular(40),
+            onTap: onOpenMiniMe,
+            child: _MiniMeHeroCard(
+              title: "Mini-Me",
+              moodLabel: selectedMood == -1
+                  ? "Tap an emotion to check-in"
+                  : _moods[selectedMood].label,
+              statusLine: selectedMood == -1 ? "Energy: —" : "Energy: Balanced",
+            ),
           ),
           const SizedBox(height: 14),
 
@@ -102,13 +110,11 @@ class _HomeDashboard extends StatelessWidget {
               _QuickAction(
                 icon: Icons.emoji_emotions_outlined,
                 label: "Mood Log",
-                onTap: (){
+                onTap: () {
                   Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const MoodLogScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const MoodLogScreen()),
                   );
-                }
+                },
               ),
               _QuickAction(
                 icon: Icons.nightlight_round,
@@ -118,7 +124,11 @@ class _HomeDashboard extends StatelessWidget {
               _QuickAction(
                 icon: Icons.fitness_center_outlined,
                 label: "Exercise",
-                onTap: () => _toast(context, "Exercise (UI only)"),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ExerciseScreen()),
+                  );
+                }
               ),
               _QuickAction(
                 icon: Icons.healing_outlined,
@@ -142,7 +152,8 @@ class _HomeDashboard extends StatelessWidget {
 
           _ContextualSuggestions(
             moodLabel: selectedMood == -1
-              ? "Neutral" : _moods[selectedMood].label,
+                ? "Neutral"
+                : _moods[selectedMood].label,
           ),
           const SizedBox(height: 16),
 
@@ -193,14 +204,12 @@ class _HomeDashboard extends StatelessWidget {
   }
 }
 
-class _ContextualSuggestions extends StatelessWidget{
-  const _ContextualSuggestions({
-    required this.moodLabel,
-  });
+class _ContextualSuggestions extends StatelessWidget {
+  const _ContextualSuggestions({required this.moodLabel});
   final String moodLabel;
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
@@ -246,10 +255,11 @@ class _ContextualSuggestions extends StatelessWidget{
       ),
     );
   }
-  List<_Suggestion> _suggestionsForMood(String mood){
+
+  List<_Suggestion> _suggestionsForMood(String mood) {
     final m = mood.toLowerCase();
 
-    if(m.contains("calm")){
+    if (m.contains("calm")) {
       return const [
         _Suggestion(
           icon: Icons.self_improvement_rounded,
@@ -263,8 +273,8 @@ class _ContextualSuggestions extends StatelessWidget{
       ];
     }
 
-    if(m.contains("anxious") || m.contains("stress")){
-      return const[
+    if (m.contains("anxious") || m.contains("stress")) {
+      return const [
         _Suggestion(
           icon: Icons.air_rounded,
           text: "Try a short grounding breathing exercise",
@@ -272,8 +282,8 @@ class _ContextualSuggestions extends StatelessWidget{
       ];
     }
 
-     if(m.contains("sad")){
-      return const[
+    if (m.contains("sad")) {
+      return const [
         _Suggestion(
           icon: Icons.favorite_border_rounded,
           text: "Be a little kinder to yourself - take it one day at a time",
@@ -281,15 +291,15 @@ class _ContextualSuggestions extends StatelessWidget{
       ];
     }
 
-    if(m.contains("happy")){
-      return const[
+    if (m.contains("happy")) {
+      return const [
         _Suggestion(
           icon: Icons.thumbs_up_down,
-          text: "Glad to know your feeling well today!"
+          text: "Glad to know your feeling well today!",
         ),
       ];
     }
-    return const[
+    return const [
       _Suggestion(
         icon: Icons.track_changes_rounded,
         text: "Check in later for any changes",
@@ -453,11 +463,7 @@ class _MiniMeHeroCard extends StatelessWidget {
                 color: cs.surface,
                 border: Border.all(color: cs.outlineVariant.withOpacity(0.55)),
               ),
-              child: Icon(
-                Icons.person_rounded,
-                size: 44,
-                color: cs.primary,
-              ),
+              child: Icon(Icons.person_rounded, size: 44, color: cs.primary),
             ),
           ),
           const SizedBox(width: 14),
@@ -506,15 +512,16 @@ class _MiniMeHeroCard extends StatelessWidget {
       ),
     );
   }
+
   Color _stateColorFromMood(String moodLabel, ColorScheme cs) {
     final m = moodLabel.toLowerCase();
 
-    if(m.contains("calm")) return Color(0xFFb4A6E6);
-    if(m.contains("happy") || m.contains("joy")) return Colors.greenAccent;
-    if(m.contains("sad")) return Colors.redAccent;
-    if(m.contains("neutral")) return Color(0xFF8C91A8);
-    if(m.contains("anxious") || m.contains("stress")) return Colors.orangeAccent;
-
+    if (m.contains("calm")) return Color(0xFFb4A6E6);
+    if (m.contains("happy") || m.contains("joy")) return Colors.greenAccent;
+    if (m.contains("sad")) return Colors.redAccent;
+    if (m.contains("neutral")) return Color(0xFF8C91A8);
+    if (m.contains("anxious") || m.contains("stress"))
+      return Colors.orangeAccent;
 
     return cs.primary;
   }
@@ -1044,15 +1051,12 @@ class _Mood {
 }
 
 class _Suggestion {
-  const _Suggestion({
-    required this.icon,
-    required this.text,
-  });
+  const _Suggestion({required this.icon, required this.text});
   final IconData icon;
   final String text;
 }
 
-class _SuggestionTile extends StatelessWidget{
+class _SuggestionTile extends StatelessWidget {
   const _SuggestionTile({
     required this.icon,
     required this.text,
@@ -1063,7 +1067,7 @@ class _SuggestionTile extends StatelessWidget{
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
     return InkWell(
@@ -1083,19 +1087,23 @@ class _SuggestionTile extends StatelessWidget{
             Expanded(
               child: Text(
                 text,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurface,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: cs.onSurface),
               ),
             ),
-            Icon(Icons.chevron_right_rounded,
-                size: 18, color: cs.onSurfaceVariant),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: cs.onSurfaceVariant,
+            ),
           ],
         ),
       ),
     );
   }
 }
+
 const _moods = <_Mood>[
   _Mood("😊", "Happy"),
   _Mood("😌", "Calm"),

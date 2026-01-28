@@ -1,16 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SignupLogin extends StatefulWidget {
-  const SignupLogin({
-    super.key,
-    required this.onLoginSuccess,
-    required this.onSignupSuccess,
-    required this.onForgotPressed,
-  });
-
-  final void Function() onLoginSuccess;
-  final void Function() onSignupSuccess;
-  final void Function() onForgotPressed;
+  const SignupLogin({super.key});
 
   @override
   State<SignupLogin> createState() => _SignupLoginState();
@@ -36,17 +29,43 @@ class _SignupLoginState extends State<SignupLogin> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     FocusScope.of(context).unfocus();
+    if (!_formKey.currentState!.validate()) return;
 
-    if (_formKey.currentState!.validate()) {
+    try {
+      final email = _usernameController.text.trim();
+      final password = _passwordController.text;
+
       if (isLogin) {
-        // TODO: add API call
-        widget.onLoginSuccess();
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+
       } else {
-        // TODO: add API call
-        widget.onSignupSuccess();
+        final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+
+        await cred.user!.sendEmailVerification();
+
+        await FirebaseFirestore.instance
+          .collection('users')
+          .doc(cred.user!.uid)
+          .set({
+            'email': email,
+            'createdAt': FieldValue.serverTimestamp(),
+            'displayName': '',
+            'onboardingComplete': false,
+          });
+
       }
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? 'Auth error')));
     }
   }
 
@@ -103,10 +122,7 @@ class _SignupLoginState extends State<SignupLogin> {
                       children: [
                         _BrandPill(),
                         const Spacer(),
-                        _ModeChip(
-                          isLogin: isLogin,
-                          onTap: _toggleMode,
-                        ),
+                        _ModeChip(isLogin: isLogin, onTap: _toggleMode),
                       ],
                     ),
                   ),
@@ -179,18 +195,21 @@ class _SignupLoginState extends State<SignupLogin> {
                                   TextFormField(
                                     controller: _usernameController,
                                     textInputAction: TextInputAction.next,
-                                    autofillHints: const [AutofillHints.username],
+                                    autofillHints: const [
+                                      AutofillHints.username,
+                                    ],
                                     decoration: const InputDecoration(
-                                      labelText: "Username",
-                                      hintText: "Enter your username",
+                                      labelText: "Email",
+                                      hintText: "Enter your email",
                                       prefixIcon: Icon(Icons.person_outline),
                                     ),
                                     validator: (value) {
-                                      if (value == null || value.trim().isEmpty) {
+                                      if (value == null ||
+                                          value.trim().isEmpty) {
                                         return 'Please enter your username';
                                       }
-                                      if (value.trim().length < 3) {
-                                        return 'Username must be at least 3 characters';
+                                      if (!value.contains('@') || !value.contains('.')) {
+                                        return 'Please enter a valid email address!';
                                       }
                                       return null;
                                     },
@@ -201,7 +220,9 @@ class _SignupLoginState extends State<SignupLogin> {
                                   // Password
                                   TextFormField(
                                     controller: _passwordController,
-                                    textInputAction: isLogin ? TextInputAction.done : TextInputAction.next,
+                                    textInputAction: isLogin
+                                        ? TextInputAction.done
+                                        : TextInputAction.next,
                                     autofillHints: isLogin
                                         ? const [AutofillHints.password]
                                         : const [AutofillHints.newPassword],
@@ -209,9 +230,13 @@ class _SignupLoginState extends State<SignupLogin> {
                                     decoration: InputDecoration(
                                       labelText: "Password",
                                       hintText: "Enter your password",
-                                      prefixIcon: const Icon(Icons.lock_outline),
+                                      prefixIcon: const Icon(
+                                        Icons.lock_outline,
+                                      ),
                                       suffixIcon: IconButton(
-                                        onPressed: () => setState(() => _hidePassword = !_hidePassword),
+                                        onPressed: () => setState(
+                                          () => _hidePassword = !_hidePassword,
+                                        ),
                                         icon: Icon(
                                           _hidePassword
                                               ? Icons.visibility_off_outlined
@@ -220,7 +245,8 @@ class _SignupLoginState extends State<SignupLogin> {
                                       ),
                                     ),
                                     validator: (value) {
-                                      if (value == null || value.trim().isEmpty) {
+                                      if (value == null ||
+                                          value.trim().isEmpty) {
                                         return 'Please enter your password';
                                       }
                                       if (value.length < 6) {
@@ -235,35 +261,56 @@ class _SignupLoginState extends State<SignupLogin> {
                                     duration: const Duration(milliseconds: 220),
                                     curve: Curves.easeOut,
                                     child: AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 220),
+                                      duration: const Duration(
+                                        milliseconds: 220,
+                                      ),
                                       child: isLogin
                                           ? const SizedBox.shrink()
                                           : Padding(
-                                              padding: const EdgeInsets.only(top: 14),
+                                              padding: const EdgeInsets.only(
+                                                top: 14,
+                                              ),
                                               child: TextFormField(
                                                 key: const ValueKey("confirm"),
-                                                controller: _confirmPasswordController,
-                                                textInputAction: TextInputAction.done,
-                                                autofillHints: const [AutofillHints.newPassword],
+                                                controller:
+                                                    _confirmPasswordController,
+                                                textInputAction:
+                                                    TextInputAction.done,
+                                                autofillHints: const [
+                                                  AutofillHints.newPassword,
+                                                ],
                                                 obscureText: _hideConfirm,
                                                 decoration: InputDecoration(
                                                   labelText: "Confirm Password",
-                                                  hintText: "Re-enter your password",
-                                                  prefixIcon: const Icon(Icons.lock_reset_outlined),
+                                                  hintText:
+                                                      "Re-enter your password",
+                                                  prefixIcon: const Icon(
+                                                    Icons.lock_reset_outlined,
+                                                  ),
                                                   suffixIcon: IconButton(
-                                                    onPressed: () => setState(() => _hideConfirm = !_hideConfirm),
+                                                    onPressed: () => setState(
+                                                      () => _hideConfirm =
+                                                          !_hideConfirm,
+                                                    ),
                                                     icon: Icon(
                                                       _hideConfirm
-                                                          ? Icons.visibility_off_outlined
-                                                          : Icons.visibility_outlined,
+                                                          ? Icons
+                                                                .visibility_off_outlined
+                                                          : Icons
+                                                                .visibility_outlined,
                                                     ),
                                                   ),
                                                 ),
                                                 validator: (value) {
-                                                  if (!isLogin && (value == null || value.isEmpty)) {
+                                                  if (!isLogin &&
+                                                      (value == null ||
+                                                          value.isEmpty)) {
                                                     return "Please confirm your password";
                                                   }
-                                                  if (!isLogin && value != _passwordController.text) {
+                                                  if (!isLogin &&
+                                                      value !=
+                                                          _passwordController
+                                                              .text) {
                                                     return 'Passwords do not match';
                                                   }
                                                   return null;
@@ -281,19 +328,27 @@ class _SignupLoginState extends State<SignupLogin> {
                                       children: [
                                         Checkbox(
                                           value: rememberMe,
-                                          onChanged: (v) => setState(() => rememberMe = v ?? false),
+                                          onChanged: (v) => setState(
+                                            () => rememberMe = v ?? false,
+                                          ),
                                           visualDensity: VisualDensity.compact,
-                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
                                         ),
                                         Text(
                                           "Remember me",
-                                          style: theme.textTheme.bodySmall?.copyWith(
-                                            color: Colors.grey.shade700,
-                                          ),
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: Colors.grey.shade700,
+                                              ),
                                         ),
                                         const Spacer(),
                                         TextButton(
-                                          onPressed: widget.onForgotPressed,
+                                          onPressed: () {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Forgot password')),
+                                            );
+                                          },
                                           child: Text(
                                             "Forgot password?",
                                             style: TextStyle(
@@ -329,7 +384,11 @@ class _SignupLoginState extends State<SignupLogin> {
                                           shadowColor: Colors.transparent,
                                           foregroundColor: Colors.white,
                                         ),
-                                        child: Text(isLogin ? "Sign In" : "Create Account"),
+                                        child: Text(
+                                          isLogin
+                                              ? "Sign In"
+                                              : "Create Account",
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -341,10 +400,11 @@ class _SignupLoginState extends State<SignupLogin> {
                                     Text(
                                       "By creating an account, you agree to our Terms & Privacy Policy.",
                                       textAlign: TextAlign.center,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: Colors.grey.shade600,
-                                        height: 1.3,
-                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: Colors.grey.shade600,
+                                            height: 1.3,
+                                          ),
                                     ),
 
                                   const SizedBox(height: 18),
@@ -352,19 +412,30 @@ class _SignupLoginState extends State<SignupLogin> {
                                   // Divider + bottom toggle
                                   Row(
                                     children: [
-                                      Expanded(child: Divider(color: Colors.grey.shade300)),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        child: Text(
-                                          "OR",
-                                          style: theme.textTheme.labelMedium?.copyWith(
-                                            color: Colors.grey.shade600,
-                                            letterSpacing: 0.6,
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                                      Expanded(
+                                        child: Divider(
+                                          color: Colors.grey.shade300,
                                         ),
                                       ),
-                                      Expanded(child: Divider(color: Colors.grey.shade300)),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                        ),
+                                        child: Text(
+                                          "OR",
+                                          style: theme.textTheme.labelMedium
+                                              ?.copyWith(
+                                                color: Colors.grey.shade600,
+                                                letterSpacing: 0.6,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Divider(
+                                          color: Colors.grey.shade300,
+                                        ),
+                                      ),
                                     ],
                                   ),
 
@@ -372,21 +443,32 @@ class _SignupLoginState extends State<SignupLogin> {
 
                                   Center(
                                     child: Wrap(
-                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: [
                                         Text(
-                                          isLogin ? "New here? " : "Already have an account? ",
-                                          style: theme.textTheme.bodyMedium?.copyWith(
-                                            color: Colors.grey.shade700,
-                                          ),
+                                          isLogin
+                                              ? "New here? "
+                                              : "Already have an account? ",
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                color: Colors.grey.shade700,
+                                              ),
                                         ),
                                         InkWell(
                                           onTap: _toggleMode,
-                                          borderRadius: BorderRadius.circular(10),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
                                           child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 4,
+                                            ),
                                             child: Text(
-                                              isLogin ? "Create account" : "Sign in",
+                                              isLogin
+                                                  ? "Create account"
+                                                  : "Sign in",
                                               style: TextStyle(
                                                 color: cs.primary,
                                                 fontWeight: FontWeight.w800,
@@ -477,10 +559,7 @@ class _ModeChip extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               isLogin ? "Sign up" : "Sign in",
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: cs.primary,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w800, color: cs.primary),
             ),
           ],
         ),

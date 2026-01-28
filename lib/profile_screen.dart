@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'restart.dart';
+import 'settings_screen.dart';
+import 'preferences_screen.dart';
+import 'privacy_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -65,17 +68,29 @@ class ProfileScreen extends StatelessWidget {
 
             _ProfileSection(
               title: 'Preferences',
-              children: const [
+              children: [
                 _ProfileTile(
                   icon: Icons.spa_outlined,
                   label: 'Calm mode',
                   value: 'Enabled',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PreferencesScreen()),
+                    );
+                  },
                 ),
 
                 _ProfileTile(
                   icon: Icons.notifications_none,
                   label: 'Notifications',
                   value: 'On',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    );
+                  },
                 ),
 
                 _ProfileTile(
@@ -85,9 +100,9 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             _ProfileSection(
-              title: 'Action',
+              title: 'Actions',
               children: [
                 ElevatedButton.icon(
                   icon: const Icon(Icons.logout),
@@ -106,6 +121,23 @@ class ProfileScreen extends StatelessWidget {
                     RestartWidget.restartApp(context);
                   },
                 ),
+
+                const SizedBox(height: 12),
+
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Reset preferences'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+
+                  onPressed: () {
+
+                  },
+                )
               ],
             ),
           ],
@@ -159,37 +191,52 @@ class _ProfileTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
   const _ProfileTile({
     required this.icon,
     required this.label,
     required this.value,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Icon(icon, size: 22, color: theme.colorScheme.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: theme.colorScheme.primary),
+            const SizedBox(width: 12),
 
-          Text(
-            value,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.bodyMedium,
+              ),
             ),
-          ),
-        ],
+
+            Text(
+              value,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+
+            if (onTap != null) ...[
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
