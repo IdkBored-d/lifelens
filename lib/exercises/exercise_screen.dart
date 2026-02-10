@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'widgets/_SectionTitle.dart';
+import '../widgets/_SectionTitle.dart';
 import 'breathing_screen.dart';
+import 'walk_screen.dart';
 
 class ExerciseScreen extends StatelessWidget {
   const ExerciseScreen({super.key});
@@ -138,6 +139,15 @@ class _ExerciseCard extends StatelessWidget {
             ),
           );
         }
+
+        else if(item.type == ExerciseType.walk) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const WalkScreen(),
+            ),
+          );
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('${item.title} (UI ONLY)'),

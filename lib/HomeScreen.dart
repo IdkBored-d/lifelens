@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/minime_screen.dart';
 import 'profile_screen.dart';
-import 'exercise_screen.dart';
+import 'exercises/exercise_screen.dart';
 
 class MenuScreen extends StatefulWidget {
   const MenuScreen({super.key});
