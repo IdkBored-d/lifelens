@@ -14,14 +14,14 @@ class AppRoot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<void> (
+    return FutureBuilder<void>(
       future: initializeApp(),
       builder: (context, initSnapshot) {
-        if (initSnapshot.connectionState != ConnectionState.done)  {
+        if (initSnapshot.connectionState != ConnectionState.done) {
           return const LoadingScreen();
         }
 
-        return StreamBuilder<User?> (
+        return StreamBuilder<User?>(
           stream: FirebaseAuth.instance.authStateChanges(),
           builder: (context, authSnapshot) {
             if (authSnapshot.connectionState == ConnectionState.waiting) {
@@ -39,11 +39,11 @@ class AppRoot extends StatelessWidget {
 
             final uid = user.uid;
 
-            return FutureBuilder<DocumentSnapshot> (
-              future: FirebaseFirestore.instance
-                .collection('users')
-                .doc(uid)
-                .get(),
+            return StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(uid)
+                  .snapshots(),
               builder: (context, userSnapshot) {
                 if (userSnapshot.connectionState == ConnectionState.waiting) {
                   return const LoadingScreen();
@@ -53,10 +53,8 @@ class AppRoot extends StatelessWidget {
                   return const LoadingScreen();
                 }
 
-                final data = 
-                  userSnapshot.data!.data() as Map<String, dynamic>;
-                final onboardingComplete = 
-                  data['onboardingComplete'] ?? false;
+                final data = userSnapshot.data!.data() as Map<String, dynamic>;
+                final onboardingComplete = data['onboardingComplete'] ?? false;
 
                 if (!onboardingComplete) {
                   return const IntroScreen();

@@ -10,9 +10,9 @@ class IntroScreen extends StatefulWidget {
 }
 
 class _IntroScreenState extends State<IntroScreen> {
-
   final PageController _controller = PageController();
   int _index = 0;
+  bool _saving = false;
 
   final List<_IntroPageData> _pages = const [
     _IntroPageData(
@@ -22,7 +22,8 @@ class _IntroScreenState extends State<IntroScreen> {
     ),
     _IntroPageData(
       title: "Track what matters",
-      subtitle: "Log mood, sleep, activity, and symptoms with quick, simple inputs.",
+      subtitle:
+          "Log mood, sleep, activity, and symptoms with quick, simple inputs.",
       icon: Icons.favorite_rounded,
     ),
     _IntroPageData(
@@ -38,20 +39,37 @@ class _IntroScreenState extends State<IntroScreen> {
     super.dispose();
   }
 
+  Future<void> _completeOnboarding() async {
+    if (_saving) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return; // should not happen, guarded by AppRoot
+
+    setState(() => _saving = true);
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'onboardingComplete': true,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to finish onboarding. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _goNext() async {
     if (_index < _pages.length - 1) {
       _controller.nextPage(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOut,
       );
-    }
-    else {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-
-      await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .update({'onboardingComplete': true});
+    } else {
+      await _completeOnboarding();
     }
   }
 
@@ -65,10 +83,7 @@ class _IntroScreenState extends State<IntroScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFF6FBFF),
-              Color(0xFFF4F3FF),
-            ],
+            colors: [Color(0xFFF6FBFF), Color(0xFFF4F3FF)],
           ),
         ),
         child: SafeArea(
@@ -76,7 +91,10 @@ class _IntroScreenState extends State<IntroScreen> {
             children: [
               // Top bar
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     _Pill(
@@ -85,13 +103,16 @@ class _IntroScreenState extends State<IntroScreen> {
                         children: const [
                           Icon(Icons.spa_rounded, size: 18),
                           SizedBox(width: 8),
-                          Text("LifeLens", style: TextStyle(fontWeight: FontWeight.w700)),
+                          Text(
+                            "LifeLens",
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ],
                       ),
                     ),
                     const Spacer(),
                     TextButton(
-                      onPressed: _goNext,
+                      onPressed: _completeOnboarding,
                       style: TextButton.styleFrom(
                         foregroundColor: theme.colorScheme.primary,
                       ),
@@ -189,7 +210,7 @@ class _IntroScreenState extends State<IntroScreen> {
                           ],
                         ),
                         child: ElevatedButton(
-                          onPressed: _goNext,
+                          onPressed: _saving ? null : _goNext,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
@@ -198,7 +219,11 @@ class _IntroScreenState extends State<IntroScreen> {
                             ),
                           ),
                           child: Text(
-                            _index == _pages.length - 1 ? "Get started" : "Next",
+                            _saving
+                                ? "Loading..."
+                                : _index == _pages.length - 1
+                                ? "Get started"
+                                : "Next",
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -257,7 +282,9 @@ class _Dots extends StatelessWidget {
           height: 8,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            color: active ? Theme.of(context).colorScheme.primary : Colors.black12,
+            color: active
+                ? Theme.of(context).colorScheme.primary
+                : Colors.black12,
           ),
         );
       }),
