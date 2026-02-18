@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:lifelens/widgets/home_dashboard.dart';
 import '../auth/SignupLogin.dart';
 import '../loading_screen.dart';
 import '../HomeScreen.dart';
