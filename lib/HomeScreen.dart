@@ -4,13 +4,10 @@ import 'package:lifelens/minime_screen.dart';
 import 'package:lifelens/profile_screen.dart';
 import 'package:lifelens/shared_widgets/bottom_nav.dart';
 import 'package:lifelens/widgets/home_dashboard.dart';
-import 'package:lifelens/widgets/placeholder_page.dart';
+import 'package:lifelens/community/community_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({
-    super.key,
-    required this.userName,
-  });
+  const HomeScreen({super.key, required this.userName});
 
   final String userName;
 
@@ -24,7 +21,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     final pages = [
       HomeDashboard(
         userName: widget.userName,
@@ -34,14 +30,12 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       const MoodLogScreen(source: LogSource.tab),
       const MiniMeScreen(),
-      const PlaceholderPage(title: "Community"),
+      const CommunityScreen(),
       const ProfileScreen(),
     ];
 
     return Scaffold(
-      body: SafeArea(
-        child: pages[_navIndex],
-      ),
+      body: SafeArea(child: pages[_navIndex]),
       bottomNavigationBar: BottomNav(
         currentIndex: _navIndex,
         onChanged: (i) => setState(() => _navIndex = i),
