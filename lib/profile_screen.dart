@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'restart.dart';
 import 'settings_screen.dart';
 import 'preferences_screen.dart';
@@ -96,9 +97,10 @@ class ProfileScreen extends StatelessWidget {
                 ),
 
                 _ProfileTile(
-                  icon: Icons.accessibility_new,
-                  label: 'Accessibility',
-                  value: 'Standard',
+                  icon: Icons.security_outlined,
+                  label: 'Security',
+                  value: 'Manage',
+                  onTap: () => _showSecurityDialog(context),
                 ),
               ],
             ),
@@ -144,6 +146,198 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _showSecurityDialog(BuildContext context) {
+    final theme = Theme.of(context);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Security'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Manage your account security',
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: Icon(
+                Icons.delete_forever,
+                color: theme.colorScheme.error,
+              ),
+              title: Text(
+                'Delete Account',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+              subtitle: const Text('Permanently delete your account and data'),
+              onTap: () {
+                Navigator.pop(context);
+                _showDeleteAccountConfirmation(context);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountConfirmation(BuildContext context) {
+    final theme = Theme.of(context);
+    final passwordController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: theme.colorScheme.error),
+            const SizedBox(width: 8),
+            const Text('Delete Account'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This action cannot be undone!',
+              style: TextStyle(
+                color: theme.colorScheme.error,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'All your data will be permanently deleted, including:\n• Profile information\n• Mood logs\n• Sphere memberships\n• Messages',
+            ),
+            const SizedBox(height: 20),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Confirm with your password',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.lock_outline),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final password = passwordController.text.trim();
+              if (password.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter your password')),
+                );
+                return;
+              }
+
+              Navigator.pop(context);
+              await _deleteAccount(context, password);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+            ),
+            child: const Text('Delete Account'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount(BuildContext context, String password) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // Show loading
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) =>
+              const Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      // Re-authenticate user
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: password,
+      );
+      await user.reauthenticateWithCredential(credential);
+
+      // Delete user data from Firestore
+      final userId = user.uid;
+      final firestore = FirebaseFirestore.instance;
+
+      // Delete user document
+      await firestore.collection('users').doc(userId).delete();
+
+      // Remove user from all sphere memberships
+      final spheres = await firestore.collection('spheres').get();
+      for (var sphere in spheres.docs) {
+        final memberDoc = sphere.reference.collection('members').doc(userId);
+        final memberExists = await memberDoc.get();
+
+        if (memberExists.exists) {
+          await memberDoc.delete();
+          // Decrement member count
+          await sphere.reference.update({
+            'memberCount': FieldValue.increment(-1),
+          });
+        }
+      }
+
+      // Delete the Firebase Auth account
+      await user.delete();
+
+      // Navigate to login
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        RestartWidget.restartApp(context);
+      }
+    } on FirebaseAuthException catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+
+        String message = 'Error deleting account';
+        if (e.code == 'wrong-password') {
+          message = 'Incorrect password';
+        } else if (e.code == 'requires-recent-login') {
+          message =
+              'Please log out and log back in before deleting your account';
+        }
+
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 }
 
