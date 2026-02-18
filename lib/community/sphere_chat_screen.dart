@@ -69,6 +69,39 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
           ],
         ),
         backgroundColor: cs.surface,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'change_nickname') {
+                _showChangeNicknameDialog(context);
+              } else if (value == 'leave_sphere') {
+                _showLeaveSphereDialog(context);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'change_nickname',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined),
+                    SizedBox(width: 12),
+                    Text('Change Nickname'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'leave_sphere',
+                child: Row(
+                  children: [
+                    Icon(Icons.exit_to_app_outlined),
+                    SizedBox(width: 12),
+                    Text('Leave Sphere'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -311,6 +344,158 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error sending message: $e')));
+      }
+    }
+  }
+
+  void _showChangeNicknameDialog(BuildContext context) {
+    final nicknameController = TextEditingController(text: _userNickname);
+    final cs = Theme.of(context).colorScheme;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Change Nickname'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Current: $_userNickname',
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'DO NOT use your real name',
+              style: TextStyle(
+                color: cs.error,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nicknameController,
+              decoration: InputDecoration(
+                hintText: 'Enter new nickname...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              maxLength: 20,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final newNickname = nicknameController.text.trim();
+              if (newNickname.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please enter a nickname')),
+                );
+                return;
+              }
+
+              Navigator.pop(context);
+              await _changeNickname(newNickname);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _changeNickname(String newNickname) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(widget.sphere.id)
+          .collection('members')
+          .doc(userId)
+          .update({'nickname': newNickname});
+
+      setState(() {
+        _userNickname = newNickname;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Nickname updated successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error updating nickname: $e')));
+      }
+    }
+  }
+
+  void _showLeaveSphereDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave Sphere'),
+        content: Text(
+          'Are you sure you want to leave "${widget.sphere.name}"? You can rejoin anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              await _leaveSphere();
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _leaveSphere() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      final sphereRef = FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(widget.sphere.id);
+
+      // Remove user from members
+      await sphereRef.collection('members').doc(userId).delete();
+
+      // Decrement member count
+      await sphereRef.update({'memberCount': FieldValue.increment(-1)});
+
+      if (mounted) {
+        // Navigate back to community screen
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Left sphere successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error leaving sphere: $e')));
       }
     }
   }

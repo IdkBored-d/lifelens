@@ -47,6 +47,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           'description': sphere['description'],
           'memberCount': 0,
           'createdAt': FieldValue.serverTimestamp(),
+          'isPremade': true,
         });
       }
     }
@@ -251,6 +252,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ),
                 ],
               ),
+
+              // Delete button for user-created spheres
+              if (!sphere.isPremade && sphere.creatorId == userId) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.delete_outline, color: cs.error),
+                  onPressed: () => _confirmDeleteSphere(context, sphere),
+                  tooltip: 'Delete sphere',
+                ),
+              ],
             ],
           ),
         ),
@@ -418,12 +429,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   Future<void> _createSphere(String name, String description) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
     try {
       await FirebaseFirestore.instance.collection('spheres').add({
         'name': name,
         'description': description.isEmpty ? null : description,
         'memberCount': 0,
         'createdAt': FieldValue.serverTimestamp(),
+        'creatorId': userId,
+        'isPremade': false,
       });
 
       if (mounted) {
@@ -436,6 +452,69 @@ class _CommunityScreenState extends State<CommunityScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error creating sphere: $e')));
+      }
+    }
+  }
+
+  void _confirmDeleteSphere(BuildContext context, Sphere sphere) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Sphere'),
+        content: Text(
+          'Are you sure you want to delete "${sphere.name}"? This will remove all messages and cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteSphere(sphere);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteSphere(Sphere sphere) async {
+    try {
+      final sphereRef = FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(sphere.id);
+
+      // Delete all messages
+      final messages = await sphereRef.collection('messages').get();
+      for (var doc in messages.docs) {
+        await doc.reference.delete();
+      }
+
+      // Delete all members
+      final members = await sphereRef.collection('members').get();
+      for (var doc in members.docs) {
+        await doc.reference.delete();
+      }
+
+      // Delete the sphere
+      await sphereRef.delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sphere deleted successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error deleting sphere: $e')));
       }
     }
   }

@@ -6,6 +6,8 @@ class Sphere {
   final int memberCount;
   final DateTime createdAt;
   final String? description;
+  final String? creatorId;
+  final bool isPremade;
 
   Sphere({
     required this.id,
@@ -13,6 +15,8 @@ class Sphere {
     required this.memberCount,
     required this.createdAt,
     this.description,
+    this.creatorId,
+    this.isPremade = false,
   });
 
   factory Sphere.fromFirestore(DocumentSnapshot doc) {
@@ -23,6 +27,8 @@ class Sphere {
       memberCount: data['memberCount'] ?? 0,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       description: data['description'],
+      creatorId: data['creatorId'],
+      isPremade: data['isPremade'] ?? false,
     );
   }
 
@@ -32,6 +38,8 @@ class Sphere {
       'memberCount': memberCount,
       'createdAt': Timestamp.fromDate(createdAt),
       'description': description,
+      'creatorId': creatorId,
+      'isPremade': isPremade,
     };
   }
 }
