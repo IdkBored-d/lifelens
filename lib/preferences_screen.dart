@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'theme_controller.dart';
 
 class PreferencesScreen extends StatelessWidget {
   const PreferencesScreen({super.key});
@@ -6,11 +8,10 @@ class PreferencesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeController = context.watch<ThemeController>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Preferences'),
-      ),
+      appBar: AppBar(title: const Text('Preferences')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -33,14 +34,12 @@ class PreferencesScreen extends StatelessWidget {
                         color: theme.colorScheme.primary,
                       ),
                       const SizedBox(width: 10),
-                      Text(
-                        'Calm Mode',
-                        style: theme.textTheme.titleMedium,
-                      ),
+                      Text('Calm Mode', style: theme.textTheme.titleMedium),
                       const Spacer(),
                       Switch(
-                        value: true, // UI-only for now
-                        onChanged: (_) {},
+                        value: themeController.isCalmMode,
+                        onChanged: (value) =>
+                            context.read<ThemeController>().setCalmMode(value),
                       ),
                     ],
                   ),
@@ -48,7 +47,7 @@ class PreferencesScreen extends StatelessWidget {
                   const SizedBox(height: 12),
 
                   Text(
-                    'Designed to reduce stimulation and make the app feel quieter and safer.',
+                    'Default is Dark Mode. Calm Mode switches to the soft palette shown here.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -115,10 +114,7 @@ class _CalmFeature extends StatelessWidget {
   final IconData icon;
   final String text;
 
-  const _CalmFeature({
-    required this.icon,
-    required this.text,
-  });
+  const _CalmFeature({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -128,18 +124,9 @@ class _CalmFeature extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 20,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
           const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+          Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
         ],
       ),
     );
@@ -164,9 +151,7 @@ class _PreferenceTile extends StatelessWidget {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
         leading: Icon(icon),
         title: Text(title),

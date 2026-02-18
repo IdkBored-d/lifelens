@@ -27,10 +27,6 @@
 //   }
 // }
 
-
-
-
-
 // import 'package:flutter/material.dart';
 // import 'app_root.dart';
 // import 'package:firebase_core/firebase_core.dart';
@@ -53,11 +49,6 @@
 //   }
 // }
 
-
-
-
-
-
 import 'package:flutter/material.dart';
 import 'package:lifelens/lifelens_theme.dart';
 import 'package:provider/provider.dart';
@@ -65,6 +56,7 @@ import 'app/app_root.dart';
 import 'moodlog_store.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'restart.dart';
+import 'theme_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,13 +64,12 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider<MoodLogStore>(
-          create: (_) => MoodLogStore(),
+        ChangeNotifierProvider<MoodLogStore>(create: (_) => MoodLogStore()),
+        ChangeNotifierProvider<ThemeController>(
+          create: (_) => ThemeController(),
         ),
       ],
-      child: const RestartWidget(
-        child: const MyApp(),
-      ),
+      child: const RestartWidget(child: const MyApp()),
     ),
   );
 }
@@ -88,11 +79,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'LifeLens',
-      home: const AppRoot(),
-      theme: lifeLensCalmTheme(),
+    return Consumer<ThemeController>(
+      builder: (context, controller, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'LifeLens',
+          home: const AppRoot(),
+          theme: controller.theme,
+        );
+      },
     );
   }
 }

@@ -4,6 +4,8 @@ import 'restart.dart';
 import 'settings_screen.dart';
 import 'preferences_screen.dart';
 import 'privacy_screen.dart';
+import 'package:provider/provider.dart';
+import 'theme_controller.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -12,12 +14,10 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final theme = Theme.of(context);
+    final themeController = context.watch<ThemeController>();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Profile'), centerTitle: true),
 
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -72,11 +72,13 @@ class ProfileScreen extends StatelessWidget {
                 _ProfileTile(
                   icon: Icons.spa_outlined,
                   label: 'Calm mode',
-                  value: 'Enabled',
+                  value: themeController.isCalmMode ? 'Enabled' : 'Off',
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const PreferencesScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const PreferencesScreen(),
+                      ),
                     );
                   },
                 ),
@@ -134,10 +136,8 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ),
 
-                  onPressed: () {
-
-                  },
-                )
+                  onPressed: () {},
+                ),
               ],
             ),
           ],
@@ -151,10 +151,7 @@ class _ProfileSection extends StatelessWidget {
   final String title;
   final List<Widget> children;
 
-  const _ProfileSection({
-    required this.title,
-    required this.children,
-  });
+  const _ProfileSection({required this.title, required this.children});
 
   @override
   Widget build(BuildContext context) {
@@ -214,12 +211,7 @@ class _ProfileTile extends StatelessWidget {
             Icon(icon, size: 22, color: theme.colorScheme.primary),
             const SizedBox(width: 12),
 
-            Expanded(
-              child: Text(
-                label,
-                style: theme.textTheme.bodyMedium,
-              ),
-            ),
+            Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
 
             Text(
               value,
