@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "331827962807",
+    "firebase_url": "https://lifelens-1ea81-default-rtdb.firebaseio.com",
+    "project_id": "lifelens-1ea81",
+    "storage_bucket": "lifelens-1ea81.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:331827962807:android:c87fecffb46106481fbe32",
+        "android_client_info": {
+          "package_name": "Life.Lens123"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCy0AQfCqHRDs-W2z0Wb-oLbg_rVnojoZQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:331827962807:android:c33f6521d36613bd1fbe32",
+        "android_client_info": {
+          "package_name": "com.example.lifelens"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCy0AQfCqHRDs-W2z0Wb-oLbg_rVnojoZQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
