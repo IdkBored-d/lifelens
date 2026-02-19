@@ -84,14 +84,14 @@ class PremiumExerciseCard extends StatelessWidget {
                   const SizedBox(height: 10),
 
                   /// DESCRIPTION
-                  Text(
-                    exercise.instructions,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                  ),
+                  //Text(
+                    //exercise.instructions,
+                    //maxLines: 2,
+                    //overflow: TextOverflow.ellipsis,
+                    //style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          //color: cs.onSurfaceVariant,
+                        //),
+                  //),
                 ],
               ),
             ),

@@ -62,10 +62,10 @@ class ExerciseDetailSheet extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: SingleChildScrollView(
-              child: Text(
-                exercise.instructions,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
+              //child: Text(
+                //exercise.instructions,
+                //style: Theme.of(context).textTheme.bodyLarge,
+              //),
             ),
           ),
         ],

@@ -5,10 +5,17 @@ class ExerciseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   Future<List<ExerciseModel>> fetchExercises() async {
-    final snapshot = await _db.collection('exercises').get();
+    try {
+      final snapshot = await _db.collection('exercises').get();
 
-    return snapshot.docs
-      .map((doc) => ExerciseModel.fromJson(doc.data()))
-      .toList();
+      print("Exercises fetched: ${snapshot.docs.length}");
+
+      return snapshot.docs
+          .map((doc) => ExerciseModel.fromJson(doc.data()))
+          .toList();
+    } catch (e) {
+      print("🔥 FIRESTORE ERROR: $e");
+      rethrow;
+    }
   }
 }
