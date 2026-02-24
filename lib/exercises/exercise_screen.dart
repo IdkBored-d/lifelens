@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lifelens/widgets/exercise_detail_sheet.dart';
 import 'package:lifelens/widgets/exercise_hero.dart';
-import 'package:lifelens/widgets/filter_chips.dart';
 import 'package:lifelens/widgets/premium_exercise_card.dart';
 import '../models/exercise_model.dart';
 import '../services/exercise_service.dart';
@@ -14,13 +13,18 @@ class ExerciseScreen extends StatefulWidget {
 }
 
 class _ExerciseScreenState extends State<ExerciseScreen> {
-      String _selectedMuscle = '';
-      String _selectedType = '';
-      String _selectedDifficulty = '';
-    String _searchQuery = '';
-    TextEditingController _searchController = TextEditingController();
+
+  String _selectedMuscle = '';
+  String _selectedType = '';
+  String _selectedDifficulty = '';
+  String _searchQuery = '';
+  TextEditingController _searchController = TextEditingController();
   final ExerciseService _service = ExerciseService();
   late Future<List<ExerciseModel>> _futureExercises;
+
+  // Favorites state
+  final Set<String> _favoriteNames = {};
+
 
   void _openExerciseDetails(ExerciseModel exercise) {
     showModalBottomSheet(
@@ -28,6 +32,64 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => ExerciseDetailSheet(exercise: exercise),
+    );
+  }
+
+  void _toggleFavorite(ExerciseModel exercise) {
+    setState(() {
+      if (_favoriteNames.contains(exercise.name)) {
+        _favoriteNames.remove(exercise.name);
+      } else {
+        _favoriteNames.add(exercise.name);
+      }
+    });
+  }
+
+  void _showFavoritesModal(List<ExerciseModel> allExercises) {
+    final favoriteExercises = allExercises.where((e) => _favoriteNames.contains(e.name)).toList();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.favorite, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Text('Favorites', style: Theme.of(context).textTheme.titleLarge),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (favoriteExercises.isEmpty)
+                  const Text('No favorites yet.'),
+                ...favoriteExercises.map((e) => ListTile(
+                      title: Text(e.name),
+                      subtitle: Text('${e.type} • ${e.muscle} • ${e.difficulty}'),
+                      trailing: IconButton(
+                        icon: Icon(Icons.favorite, color: cs.primary),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _toggleFavorite(e);
+                        },
+                        tooltip: 'Remove from favorites',
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openExerciseDetails(e);
+                      },
+                    )),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -49,6 +111,17 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
     return Scaffold(
       backgroundColor: cs.surface,
+      floatingActionButton: FutureBuilder<List<ExerciseModel>>(
+        future: _futureExercises,
+        builder: (context, snapshot) {
+          final exercises = snapshot.data ?? [];
+          return FloatingActionButton(
+            onPressed: () => _showFavoritesModal(exercises),
+            tooltip: 'View Favorites',
+            child: const Icon(Icons.favorite),
+          );
+        },
+      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
@@ -229,14 +302,31 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                   SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final e = filteredExercises[index];
+                      final isFavorite = _favoriteNames.contains(e.name);
                       return Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 20,
                           vertical: 12,
                         ),
-                        child: PremiumExerciseCard(
-                          exercise: e,
-                          onTap: () => _openExerciseDetails(e),
+                        child: Stack(
+                          children: [
+                            PremiumExerciseCard(
+                              exercise: e,
+                              onTap: () => _openExerciseDetails(e),
+                            ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: IconButton(
+                                icon: Icon(
+                                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                                  color: isFavorite ? Theme.of(context).colorScheme.primary : Colors.grey,
+                                ),
+                                onPressed: () => _toggleFavorite(e),
+                                tooltip: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }, childCount: filteredExercises.length),
