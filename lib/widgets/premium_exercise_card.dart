@@ -5,10 +5,12 @@ import 'package:lifelens/widgets/tag.dart';
 class PremiumExerciseCard extends StatelessWidget {
   final ExerciseModel exercise;
   final VoidCallback onTap;
+  final Widget? chooseButton;
 
   const PremiumExerciseCard({
     required this.exercise,
     required this.onTap,
+    this.chooseButton,
   });
 
   @override
@@ -23,8 +25,6 @@ class PremiumExerciseCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(28),
-
-          // modern soft shadow
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.06),
@@ -33,7 +33,6 @@ class PremiumExerciseCard extends StatelessWidget {
             ),
           ],
         ),
-
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -51,9 +50,7 @@ class PremiumExerciseCard extends StatelessWidget {
                 size: 26,
               ),
             ),
-
             const SizedBox(width: 16),
-
             /// TEXT CONTENT
             Expanded(
               child: Column(
@@ -67,9 +64,7 @@ class PremiumExerciseCard extends StatelessWidget {
                         .titleLarge
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
-
                   const SizedBox(height: 6),
-
                   /// TAGS ROW
                   Wrap(
                     spacing: 6,
@@ -80,23 +75,14 @@ class PremiumExerciseCard extends StatelessWidget {
                       Tag(label: exercise.muscle),
                     ],
                   ),
-
-                  const SizedBox(height: 10),
-
-                  /// DESCRIPTION
-                  //Text(
-                    //exercise.instructions,
-                    //maxLines: 2,
-                    //overflow: TextOverflow.ellipsis,
-                    //style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          //color: cs.onSurfaceVariant,
-                        //),
-                  //),
+                  if (chooseButton != null) ...[
+                    const SizedBox(height: 12),
+                    chooseButton!,
+                  ],
+                  // ...existing code for description or other content...
                 ],
               ),
             ),
-
-            /// CHEVRON ICON
             const SizedBox(width: 6),
             Icon(Icons.chevron_right_rounded,
                 color: cs.outline, size: 28),

@@ -11,7 +11,7 @@ class ExerciseService {
       print("Exercises fetched: ${snapshot.docs.length}");
 
       return snapshot.docs
-          .map((doc) => ExerciseModel.fromJson(doc.data()))
+          .map((doc) => ExerciseModel.fromFirestore(doc))
           .toList();
     } catch (e) {
       print("🔥 FIRESTORE ERROR: $e");

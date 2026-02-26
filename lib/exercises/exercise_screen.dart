@@ -1,9 +1,12 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:lifelens/widgets/exercise_detail_sheet.dart';
 import 'package:lifelens/widgets/exercise_hero.dart';
 import 'package:lifelens/widgets/premium_exercise_card.dart';
 import '../models/exercise_model.dart';
 import '../services/exercise_service.dart';
+import '../services/exercise_store.dart';
 
 class ExerciseScreen extends StatefulWidget {
   const ExerciseScreen({super.key});
@@ -13,7 +16,6 @@ class ExerciseScreen extends StatefulWidget {
 }
 
 class _ExerciseScreenState extends State<ExerciseScreen> {
-
   String _selectedMuscle = '';
   String _selectedType = '';
   String _selectedDifficulty = '';
@@ -22,9 +24,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   final ExerciseService _service = ExerciseService();
   late Future<List<ExerciseModel>> _futureExercises;
 
-  // Favorites state
   final Set<String> _favoriteNames = {};
 
+  final ExerciseStore _exerciseStore = ExerciseStore();
+  String currentMood = 'happy';
 
   void _openExerciseDetails(ExerciseModel exercise) {
     showModalBottomSheet(
@@ -37,10 +40,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   void _toggleFavorite(ExerciseModel exercise) {
     setState(() {
-      if (_favoriteNames.contains(exercise.name)) {
-        _favoriteNames.remove(exercise.name);
-      } else {
+      if (!_favoriteNames.contains(exercise.name)) {
         _favoriteNames.add(exercise.name);
+        _exerciseStore.favoriteExercise(exercise.id);
       }
     });
   }
@@ -142,6 +144,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               }
 
               final exercises = snapshot.data ?? [];
+              _exerciseStore.exercises = exercises;
               final filteredExercises = exercises.where((e) {
                 final matchesSearch = _searchQuery.isEmpty || e.name.toLowerCase().contains(_searchQuery.toLowerCase());
                 final matchesMuscle = _selectedMuscle.isEmpty || e.muscle.toLowerCase() == _selectedMuscle;
@@ -298,6 +301,18 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                   ),
 
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                  SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Recommended Exercises:', style: Theme.of(context).textTheme.titleMedium),
+                        ..._exerciseStore.getRecommendedExercises(currentMood).map((e) => ListTile(
+                          title: Text(e.name),
+                          onTap: () => _openExerciseDetails(e),
+                        )),
+                      ],
+                    ),
+                  ),
 
                   SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
@@ -313,6 +328,17 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                             PremiumExerciseCard(
                               exercise: e,
                               onTap: () => _openExerciseDetails(e),
+                              chooseButton: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  minimumSize: const Size(0, 36),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: () {
+                                  _exerciseStore.saveExercise(e.id, currentMood);
+                                  setState(() {});
+                                },
+                                child: const Text('Choose', style: TextStyle(fontSize: 14)),
+                              ),
                             ),
                             Positioned(
                               top: 8,
@@ -326,6 +352,25 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                 tooltip: isFavorite ? 'Remove from favorites' : 'Add to favorites',
                               ),
                             ),
+                            Positioned(
+                              bottom: 8,
+                              right: 8,
+                              child: SizedBox(
+                                height: 32,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                                    minimumSize: const Size(0, 32),
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  onPressed: () {
+                                    _exerciseStore.saveExercise(e.id, currentMood);
+                                    setState(() {});
+                                  },
+                                  child: const Text('Choose', style: TextStyle(fontSize: 13)),
+                                ),
+                              ),
+                            )
                           ],
                         ),
                       );
