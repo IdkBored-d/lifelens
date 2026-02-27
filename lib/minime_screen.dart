@@ -6,14 +6,14 @@ import './assets/minime/minime_avatar.dart';
 String miniMeAssetForMood(String? moodLabel) {
   switch (moodLabel) {
     case "Happy":
-      return "assets/minime/happy.png";
+      return "lib/assets/minime/happy.png";
     case "Sad":
-      return "assets/minime/sad.png";
+      return "lib/assets/minime/sad.png";
     case "Anxious":
     case "Stressed":
-      return "assets/minime/stressed.png";
+      return "lib/assets/minime/stressed.png";
     case "Energetic":
-      return "assets/minime/energetic.png";
+      return "lib/assets/minime/energetic.png";
     default:
       return "lib/assets/minime/calm.png";
   }
