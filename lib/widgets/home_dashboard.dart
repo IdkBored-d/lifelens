@@ -100,10 +100,10 @@ class HomeDashboard extends StatelessWidget {
           const SizedBox(height: 18),
 
           // Insights preview
-          SectionTitle(title: "Today’s insight", trailing: "Preview"),
+          SectionTitle(title: "Today's insight", trailing: "Preview"),
           const SizedBox(height: 10),
           InsightCard(
-            title: "You’re building consistency 🌿",
+            title: "You're building consistency 🌿",
             body:
                 "On days you sleep 7+ hours, your mood trends more positive. Try a 10-minute wind-down tonight.",
           ),
@@ -142,10 +142,10 @@ class HomeDashboard extends StatelessWidget {
           Divider(color: cs.outlineVariant.withOpacity(0.7)),
           const SizedBox(height: 10),
 
-          // Small “continue” card
+          // Small "continue" card
           ContinueCard(
             title: "Continue where you left off",
-            subtitle: "Review your week’s mood trend",
+            subtitle: "Review your week's mood trend",
             onTap: () => _toast(context, "Trends (UI only)"),
           ),
         ],
