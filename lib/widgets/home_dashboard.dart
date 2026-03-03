@@ -38,7 +38,7 @@ class HomeDashboard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GreetingHeader(
-            name: "Matthew", // UI-only: replace with user profile later
+            name: userName, // UI-only: replace with user profile later
             subtitle: "How are you feeling today?",
           ),
           const SizedBox(height: 14),

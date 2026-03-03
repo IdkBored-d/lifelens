@@ -17,12 +17,16 @@ class _SignupLoginState extends State<SignupLogin> {
   bool _hideConfirm = true;
 
   final _formKey = GlobalKey<FormState>();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
   @override
   void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -56,6 +60,8 @@ class _SignupLoginState extends State<SignupLogin> {
           .doc(cred.user!.uid)
           .set({
             'email': email,
+            'firstName': _firstNameController.text.trim(),
+            'lastName': _lastNameController.text.trim(),
             'createdAt': FieldValue.serverTimestamp(),
             'displayName': '',
             'onboardingComplete': false,
@@ -76,6 +82,8 @@ class _SignupLoginState extends State<SignupLogin> {
       _hidePassword = true;
       _hideConfirm = true;
 
+      _firstNameController.clear();
+      _lastNameController.clear();
       _usernameController.clear();
       _passwordController.clear();
       _confirmPasswordController.clear();
@@ -190,7 +198,63 @@ class _SignupLoginState extends State<SignupLogin> {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   const SizedBox(height: 6),
+                                  AnimatedSize(
+                                    duration: const Duration(milliseconds: 220),
+                                    curve: Curves.easeOut,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 220),
+                                      child: isLogin
+                                        ? const SizedBox.shrink()
+                                        : Column(
+                                          key: const ValueKey('names'),
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: TextFormField(
+                                                    controller: _firstNameController,
+                                                    textInputAction: TextInputAction.next,
+                                                    autofillHints: const [AutofillHints.givenName],
+                                                    decoration: const InputDecoration(
+                                                      labelText: 'First Name',
+                                                      hintText: 'Enter your first name',
+                                                      prefixIcon: Icon(Icons.person_outline),
+                                                    ),
+                                                    validator: (value) {
+                                                      if (!isLogin && (value == null || value.trim().isEmpty)) {
+                                                        return 'Please enter your first name';
+                                                      }
+                                                      return null;
+                                                    },
+                                                  ),
+                                                ),
 
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: TextFormField(
+                                                    controller: _lastNameController,
+                                                    textInputAction: TextInputAction.next,
+                                                    autofillHints: const [AutofillHints.familyName],
+                                                    decoration: const InputDecoration(
+                                                      labelText: 'Last Name',
+                                                      hintText: 'Enter your last name',
+                                                      prefixIcon: Icon(Icons.person_outline),
+                                                    ),
+                                                    validator: (value) {
+                                                      if (!isLogin && (value == null || value.trim().isEmpty)) {
+                                                        return 'Please enter your last name';
+                                                      }
+                                                      return null;
+                                                    },
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 14),
+                                          ],
+                                        )),
+                                    ),
+                                  
                                   // Username
                                   TextFormField(
                                     controller: _usernameController,
