@@ -1,0 +1,41 @@
+# .gitignore
+# Prevent committing secrets and unnecessary files
+
+# Environment variables (SECRETS!)
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Docker volumes (data persists in Docker, don't commit)
+weaviate_data/
+postgres_data/
+redis_data/
