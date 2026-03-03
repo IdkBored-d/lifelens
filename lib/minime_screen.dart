@@ -4,19 +4,32 @@ import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 
 String miniMeAssetForMood(String? moodLabel) {
+  // map mood labels to the new emoji‑style 3D models
+  String asset;
   switch (moodLabel) {
     case "Happy":
-      return "lib/assets/minime/happy.png";
+      asset = "assets/minime/emoji_happy.glb";
+      break;
     case "Sad":
-      return "lib/assets/minime/sad.png";
+      asset = "assets/minime/emoji_sad.glb";
+      break;
+    case "Calm":
+      asset = "assets/minime/emoji_calm.glb";
+      break;
     case "Anxious":
     case "Stressed":
-      return "lib/assets/minime/stressed.png";
+      asset = "assets/minime/emoji_anxious.glb";
+      break;
     case "Energetic":
-      return "lib/assets/minime/energetic.png";
+      // energetic doesn't have its own file yet; happy works well
+      asset = "assets/minime/emoji_happy.glb";
+      break;
     default:
-      return "lib/assets/minime/calm.png";
+      asset = "assets/minime/emoji_neutral.glb";
   }
+  // log so we can see what's being chosen in debug console
+  debugPrint('MiniMe asset for mood "$moodLabel": $asset');
+  return asset;
 }
 
 class MiniMeScreen extends StatelessWidget {
@@ -60,7 +73,8 @@ class MiniMeScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       MiniMeAvatar(
-                        imageAsset: asset,
+                        key: ValueKey(asset),
+                        modelAsset: asset,
                         glow: glow,
                       ),
                       const SizedBox(height: 14),

@@ -35,14 +35,7 @@ dependencies:
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.0
   cloud_firestore: ^5.5.0
-
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
+  model_viewer_plus: ^1.10.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -63,12 +56,12 @@ flutter:
   uses-material-design: true
 
   assets:
-    - lib/assets/minime/base.png
-    - lib/assets/minime/calm.png
-    - lib/assets/minime/energetic.png
-    - lib/assets/minime/sad.png
-    - lib/assets/minime/happy.png
-    - lib/assets/minime/stressed.png
+    # Mini‑Me 3D models (updated emoji‑style glbs)
+    - assets/minime/emoji_neutral.glb
+    - assets/minime/emoji_happy.glb
+    - assets/minime/emoji_calm.glb
+    - assets/minime/emoji_anxious.glb
+    - assets/minime/emoji_sad.glb
     
   # To add assets to your application, add an assets section, like this:
   # assets:

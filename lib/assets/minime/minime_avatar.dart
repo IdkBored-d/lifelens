@@ -1,14 +1,17 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import 'package:model_viewer_plus/model_viewer_plus.dart';
+
 class MiniMeAvatar extends StatefulWidget {
-  final String imageAsset;
+  /// Path to the 3‑D model asset (usually a `.glb` file).
+  final String modelAsset;
   final Color glow;
   final double size;
 
   const MiniMeAvatar({
     super.key,
-    required this.imageAsset,
+    required this.modelAsset,
     required this.glow,
     this.size = 220,
   });
@@ -59,9 +62,17 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                 ),
               ],
             ),
-            child: Image.asset(
-              widget.imageAsset,
-              fit: BoxFit.contain,
+            child: ClipOval(
+              child: ModelViewer(
+                // key at this level too; ensures the WebView is torn down
+                // whenever the asset path changes.
+                key: ValueKey(widget.modelAsset),
+                src: widget.modelAsset,
+                alt: 'Mini‑Me avatar',
+                autoRotate: true,
+                cameraControls: true,
+                backgroundColor: Colors.transparent,
+              ),
             ),
           ),
         );
