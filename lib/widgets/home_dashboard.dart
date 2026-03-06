@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lifelens/exercises/exercise_screen.dart';
 import 'package:lifelens/models/mood.dart';
+import 'package:lifelens/screens/sleep_screen.dart';
 import 'package:lifelens/models/quick_action.dart';
 import 'package:lifelens/models/summary_item.dart';
 import 'package:lifelens/moodlog_screen.dart';
@@ -79,7 +80,11 @@ class HomeDashboard extends StatelessWidget {
               Quickaction(
                 icon: Icons.nightlight_round,
                 label: "Sleep",
-                onTap: () => _toast(context, "Sleep (UI only)"),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SleepScreen()),
+                  );
+                },
               ),
               Quickaction(
                 icon: Icons.fitness_center_outlined,
