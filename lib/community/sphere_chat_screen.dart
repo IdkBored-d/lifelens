@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/sphere.dart';
+import '../services/content_moderation_service.dart';
 
 class SphereChatScreen extends StatefulWidget {
   final Sphere sphere;
@@ -163,13 +164,14 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                   padding: const EdgeInsets.all(16),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final message =
-                        messages[index].data() as Map<String, dynamic>;
+                    final messageDoc = messages[index];
+                    final message = messageDoc.data() as Map<String, dynamic>;
                     final userId = FirebaseAuth.instance.currentUser?.uid;
                     final isMe = message['userId'] == userId;
 
                     return _buildMessageBubble(
                       context,
+                      messageDoc.id,
                       message['text'] ?? '',
                       message['nickname'] ?? 'Anonymous',
                       message['timestamp'] as Timestamp?,
@@ -233,6 +235,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
 
   Widget _buildMessageBubble(
     BuildContext context,
+    String messageId,
     String text,
     String nickname,
     Timestamp? timestamp,
@@ -246,65 +249,75 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        child: Column(
-          crossAxisAlignment: isMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
-          children: [
-            if (!isMe)
-              Padding(
-                padding: const EdgeInsets.only(left: 12, bottom: 4),
-                child: Text(
-                  nickname,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: cs.primary,
-                  ),
-                ),
-              ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: isMe ? cs.primaryContainer : cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(18).copyWith(
-                  topLeft: isMe
-                      ? const Radius.circular(18)
-                      : const Radius.circular(4),
-                  topRight: isMe
-                      ? const Radius.circular(4)
-                      : const Radius.circular(18),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    text,
+      child: GestureDetector(
+        onLongPress: isMe
+            ? () => _showDeleteMessageDialog(context, messageId, text)
+            : null,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          child: Column(
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              if (!isMe)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 4),
+                  child: Text(
+                    nickname,
                     style: TextStyle(
-                      fontSize: 15,
-                      color: isMe ? cs.onPrimaryContainer : cs.onSurface,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: cs.primary,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    timeStr,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isMe
-                          ? cs.onPrimaryContainer.withOpacity(0.7)
-                          : cs.onSurfaceVariant,
-                    ),
+                ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: isMe
+                      ? cs.primaryContainer
+                      : cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(18).copyWith(
+                    topLeft: isMe
+                        ? const Radius.circular(18)
+                        : const Radius.circular(4),
+                    topRight: isMe
+                        ? const Radius.circular(4)
+                        : const Radius.circular(18),
                   ),
-                ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      text,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: isMe ? cs.onPrimaryContainer : cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      timeStr,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isMe
+                            ? cs.onPrimaryContainer.withOpacity(0.7)
+                            : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -316,6 +329,22 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
 
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
+
+    // Check message for inappropriate content
+    final moderationResult = ContentModerationService.checkMessage(text);
+
+    if (moderationResult.isViolation) {
+      // Message contains prohibited content - do not send it
+      _messageController.clear();
+
+      // Increment warning count and handle consequences
+      await _handleContentViolation(
+        userId,
+        text,
+        moderationResult.detectedWords,
+      );
+      return;
+    }
 
     try {
       await FirebaseFirestore.instance
@@ -345,6 +374,105 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Error sending message: $e')));
       }
+    }
+  }
+
+  Future<void> _handleContentViolation(
+    String userId,
+    String messageContent,
+    List<String> detectedWords,
+  ) async {
+    try {
+      final memberRef = FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(widget.sphere.id)
+          .collection('members')
+          .doc(userId);
+
+      // Get current warning count
+      final memberDoc = await memberRef.get();
+      final currentWarnings = memberDoc.data()?['warningCount'] ?? 0;
+      final newWarningCount = currentWarnings + 1;
+
+      // Log the warning
+      await FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(widget.sphere.id)
+          .collection('warnings')
+          .add({
+            'userId': userId,
+            'sphereId': widget.sphere.id,
+            'timestamp': FieldValue.serverTimestamp(),
+            'reason': 'Inappropriate content: ${detectedWords.join(", ")}',
+            'messageContent': messageContent,
+            'warningNumber': newWarningCount,
+          });
+
+      if (newWarningCount >= 3) {
+        // User has reached 3 warnings - kick them out
+        await _kickUserFromSphere(userId);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                ContentModerationService.getViolationMessage(newWarningCount),
+              ),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+
+          // Navigate back to community screen
+          Navigator.pop(context);
+        }
+      } else {
+        // Update warning count
+        await memberRef.update({'warningCount': newWarningCount});
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                ContentModerationService.getViolationMessage(newWarningCount),
+              ),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error processing moderation: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _kickUserFromSphere(String userId) async {
+    try {
+      final sphereRef = FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(widget.sphere.id);
+
+      // Remove user from members
+      await sphereRef.collection('members').doc(userId).delete();
+
+      // Decrement member count
+      await sphereRef.update({'memberCount': FieldValue.increment(-1)});
+
+      // Log the kick event
+      await sphereRef.collection('moderation_actions').add({
+        'action': 'kicked',
+        'userId': userId,
+        'reason': 'Exceeded warning limit (3 warnings)',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      // Log error but don't show to user
+      debugPrint('Error kicking user: $e');
     }
   }
 
@@ -496,6 +624,89 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error leaving sphere: $e')));
+      }
+    }
+  }
+
+  void _showDeleteMessageDialog(
+    BuildContext context,
+    String messageId,
+    String messageText,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Message'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Are you sure you want to delete this message?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                messageText,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteMessage(messageId);
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteMessage(String messageId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(widget.sphere.id)
+          .collection('messages')
+          .doc(messageId)
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Message deleted'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting message: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
       }
     }
   }

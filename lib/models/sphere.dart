@@ -48,11 +48,13 @@ class SphereMember {
   final String userId;
   final String nickname;
   final DateTime joinedAt;
+  final int warningCount;
 
   SphereMember({
     required this.userId,
     required this.nickname,
     required this.joinedAt,
+    this.warningCount = 0,
   });
 
   factory SphereMember.fromFirestore(DocumentSnapshot doc) {
@@ -61,10 +63,53 @@ class SphereMember {
       userId: doc.id,
       nickname: data['nickname'] ?? '',
       joinedAt: (data['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      warningCount: data['warningCount'] ?? 0,
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {'nickname': nickname, 'joinedAt': Timestamp.fromDate(joinedAt)};
+    return {
+      'nickname': nickname,
+      'joinedAt': Timestamp.fromDate(joinedAt),
+      'warningCount': warningCount,
+    };
+  }
+}
+
+/// Warning record for content moderation
+class UserWarning {
+  final String userId;
+  final String sphereId;
+  final DateTime timestamp;
+  final String reason;
+  final String messageContent;
+
+  UserWarning({
+    required this.userId,
+    required this.sphereId,
+    required this.timestamp,
+    required this.reason,
+    required this.messageContent,
+  });
+
+  factory UserWarning.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return UserWarning(
+      userId: data['userId'] ?? '',
+      sphereId: data['sphereId'] ?? '',
+      timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      reason: data['reason'] ?? '',
+      messageContent: data['messageContent'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'userId': userId,
+      'sphereId': sphereId,
+      'timestamp': Timestamp.fromDate(timestamp),
+      'reason': reason,
+      'messageContent': messageContent,
+    };
   }
 }
