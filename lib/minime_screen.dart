@@ -2,22 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
-
-String miniMeAssetForMood(String? moodLabel) {
-  switch (moodLabel) {
-    case "Happy":
-      return "assets/minime/happy.png";
-    case "Sad":
-      return "assets/minime/sad.png";
-    case "Anxious":
-    case "Stressed":
-      return "assets/minime/stressed.png";
-    case "Energetic":
-      return "assets/minime/energetic.png";
-    default:
-      return "lib/assets/minime/calm.png";
-  }
-}
+import 'package:lifelens/utils/minime_helpers.dart';
+import 'avatar_store.dart';
+import 'avatar_customization_screen.dart';
 
 class MiniMeScreen extends StatelessWidget {
   const MiniMeScreen({super.key});
@@ -30,14 +17,18 @@ class MiniMeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("Mini-Me")),
       body: SafeArea(
-        child: Consumer<MoodLogStore>(
-          builder: (context, store, _) {
-            final latest = store.items.isEmpty ? null : store.items.first;
+        child: Consumer2<MoodLogStore, AvatarStore>(
+          builder: (context, moodStore, avatarStore, _) {
+            final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
 
             final moodLabel = latest?.moodLabel;
             final intensity = latest?.intensity ?? 0;
-            final asset = miniMeAssetForMood(moodLabel);
-            final glow = _glowForIntensity(cs, intensity);
+            final glow = glowForIntensity(theme.colorScheme, intensity);
+
+            // Use selected models from store
+            final bodyModel = avatarStore.bodyModel;
+            final hairModel = avatarStore.hairModel;
+            final shirtModel = avatarStore.shirtModel;
 
             return ListView(
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
@@ -59,9 +50,27 @@ class MiniMeScreen extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      MiniMeAvatar(
-                        imageAsset: asset,
-                        glow: glow,
+                      Stack(
+                        alignment: Alignment.topRight,
+                        children: [
+                          MiniMeAvatar(
+                            bodyModel: bodyModel,
+                            hairModel: hairModel,
+                            shirtModel: shirtModel,
+                            glow: glow,
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.edit, color: cs.onSurfaceVariant),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const AvatarCustomizationScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 14),
                       Text(
@@ -129,7 +138,7 @@ class MiniMeScreen extends StatelessWidget {
                   _InsightCard(
                     icon: Icons.timeline_rounded,
                     title: "Recent trend",
-                    body: _recentTrendText(store),
+                    body: _recentTrendText(moodStore),
                   ),
                   const SizedBox(height: 10),
                   _InsightCard(
@@ -167,14 +176,6 @@ String _nextSuggestionText(dynamic latest) {
   }
 
   return "Want to log sleep or exercise next? Those often connect to mood.";
-}
-
-Color _glowForIntensity(ColorScheme cs, int intensity) {
-  if (intensity <= 1) return cs.primary.withOpacity(0.18);
-  if (intensity == 2) return cs.primary.withOpacity(0.26);
-  if (intensity == 3) return cs.primary.withOpacity(0.34);
-  if (intensity == 4) return cs.primary.withOpacity(0.42);
-  return cs.primary.withOpacity(0.5);
 }
 
 class _SectionHeader extends StatelessWidget {

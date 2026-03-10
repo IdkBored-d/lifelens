@@ -1,14 +1,19 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 
 class MiniMeAvatar extends StatefulWidget {
-  final String imageAsset;
+  final String bodyModel;
+  final String hairModel;
+  final String shirtModel;
   final Color glow;
   final double size;
 
   const MiniMeAvatar({
     super.key,
-    required this.imageAsset,
+    required this.bodyModel,
+    required this.hairModel,
+    required this.shirtModel,
     required this.glow,
     this.size = 220,
   });
@@ -59,9 +64,39 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                 ),
               ],
             ),
-            child: Image.asset(
-              widget.imageAsset,
-              fit: BoxFit.contain,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ModelViewer(
+                  src: widget.bodyModel,
+                  alt: "Avatar Body",
+                  ar: false,
+                  autoRotate: false,
+                  cameraControls: false,
+                  disableZoom: true,
+                  disablePan: true,
+                ),
+                if (widget.hairModel.isNotEmpty)
+                  ModelViewer(
+                    src: widget.hairModel,
+                    alt: "Avatar Hair",
+                    ar: false,
+                    autoRotate: false,
+                    cameraControls: false,
+                    disableZoom: true,
+                    disablePan: true,
+                  ),
+                if (widget.shirtModel.isNotEmpty)
+                  ModelViewer(
+                    src: widget.shirtModel,
+                    alt: "Avatar Shirt",
+                    ar: false,
+                    autoRotate: false,
+                    cameraControls: false,
+                    disableZoom: true,
+                    disablePan: true,
+                  ),
+              ],
             ),
           ),
         );
