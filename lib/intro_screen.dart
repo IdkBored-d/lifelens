@@ -2,8 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'services/health_service.dart';
-
 class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key});
 
@@ -16,17 +14,24 @@ class _IntroScreenState extends State<IntroScreen> {
 
   int _index = 0;
   bool _saving = false;
-  bool _importing = false;
 
   final _formKey = GlobalKey<FormState>();
 
   final _weightController = TextEditingController();
   final _heartRateController = TextEditingController();
   final _sleepController = TextEditingController();
-  final _workoutController = TextEditingController();
 
   String _weightUnit = 'kg';
   String _heartRateUnit = 'bpm';
+  String? _selectedWorkoutFrequency;
+
+  static const List<String> _workoutFrequencyOptions = [
+    'Rarely or never',
+    '1-2 times per week',
+    '3-4 times per week',
+    '5-6 times per week',
+    'Daily',
+  ];
 
   @override
   void dispose() {
@@ -34,7 +39,6 @@ class _IntroScreenState extends State<IntroScreen> {
     _weightController.dispose();
     _heartRateController.dispose();
     _sleepController.dispose();
-    _workoutController.dispose();
     super.dispose();
   }
 
@@ -63,56 +67,6 @@ class _IntroScreenState extends State<IntroScreen> {
     }
   }
 
-  Future<void> _importFromHealth() async {
-    if (_importing) return;
-    setState(() => _importing = true);
-
-    try {
-      final snapshot = await HealthService().fetchSnapshot();
-
-      if (!mounted) return;
-
-      if (snapshot.weight != null) {
-        _weightController.text = snapshot.weight!.toStringAsFixed(1);
-      }
-      if (snapshot.heartRate != null) {
-        _heartRateController.text = snapshot.heartRate!.toStringAsFixed(0);
-      }
-      if (snapshot.sleepHours != null) {
-        _sleepController.text = snapshot.sleepHours!.toStringAsFixed(1);
-      }
-      if (snapshot.workoutSummary != null && snapshot.workoutSummary!.isNotEmpty) {
-        _workoutController.text = snapshot.workoutSummary!;
-      }
-
-      if (snapshot.weightUnit != null && snapshot.weightUnit!.isNotEmpty) {
-        _weightUnit = snapshot.weightUnit!;
-      }
-      if (snapshot.heartRateUnit != null && snapshot.heartRateUnit!.isNotEmpty) {
-        _heartRateUnit = snapshot.heartRateUnit!;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Imported available health data.')),
-      );
-
-      await _pageController.animateToPage(
-        1,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOut,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not import health data: $e')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _importing = false);
-      }
-    }
-  }
-
   Future<void> _completeOnboarding() async {
     if (_saving) return;
 
@@ -122,9 +76,13 @@ class _IntroScreenState extends State<IntroScreen> {
     final weight = double.tryParse(_weightController.text.trim());
     final heartRate = double.tryParse(_heartRateController.text.trim());
     final sleepHours = double.tryParse(_sleepController.text.trim());
-    final workoutInfo = _workoutController.text.trim();
+    final workoutInfo = _selectedWorkoutFrequency;
 
-    if (weight == null || heartRate == null || sleepHours == null || workoutInfo.isEmpty) {
+    if (weight == null ||
+        heartRate == null ||
+        sleepHours == null ||
+        workoutInfo == null ||
+        workoutInfo.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please complete all required fields.')),
       );
@@ -142,7 +100,7 @@ class _IntroScreenState extends State<IntroScreen> {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'onboardingComplete': true,
         'healthSnapshot': {
-          'source': 'manual_or_imported',
+          'source': 'manual_onboarding',
           'capturedAt': DateTime.now().toIso8601String(),
           'weight': weight,
           'weightUnit': _weightUnit,
@@ -150,6 +108,7 @@ class _IntroScreenState extends State<IntroScreen> {
           'heartRateUnit': _heartRateUnit,
           'sleepHours': sleepHours,
           'sleepUnit': 'hours',
+          'workoutFrequency': workoutInfo,
           'workoutSummary': workoutInfo,
         },
         'updatedAt': FieldValue.serverTimestamp(),
@@ -223,15 +182,24 @@ class _IntroScreenState extends State<IntroScreen> {
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: cs.surfaceContainerHighest.withOpacity(0.9),
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+                          border: Border.all(
+                            color: cs.outlineVariant.withOpacity(0.6),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.spa_rounded, size: 18, color: cs.primary),
+                            Icon(
+                              Icons.spa_rounded,
+                              size: 18,
+                              color: cs.primary,
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               'LifeLens Onboarding',
@@ -260,21 +228,21 @@ class _IntroScreenState extends State<IntroScreen> {
                       onPageChanged: (value) => setState(() => _index = value),
                       children: [
                         _WelcomeStep(
-                          onImportPressed: _importing ? null : _importFromHealth,
-                          onManualPressed: _importing
-                              ? null
-                              : () => _pageController.nextPage(
-                                    duration: const Duration(milliseconds: 240),
-                                    curve: Curves.easeOut,
-                                  ),
-                          importing: _importing,
+                          onContinuePressed: () => _pageController.nextPage(
+                            duration: const Duration(milliseconds: 240),
+                            curve: Curves.easeOut,
+                          ),
                         ),
                         _HealthFormStep(
                           formKey: _formKey,
                           weightController: _weightController,
                           heartRateController: _heartRateController,
                           sleepController: _sleepController,
-                          workoutController: _workoutController,
+                          workoutFrequencyOptions: _workoutFrequencyOptions,
+                          selectedWorkoutFrequency: _selectedWorkoutFrequency,
+                          onWorkoutFrequencyChanged: (value) {
+                            setState(() => _selectedWorkoutFrequency = value);
+                          },
                           weightUnit: _weightUnit,
                           heartRateUnit: _heartRateUnit,
                           onWeightUnitChanged: (value) =>
@@ -288,7 +256,7 @@ class _IntroScreenState extends State<IntroScreen> {
                           heartRate: _safeText(_heartRateController.text, '-'),
                           heartRateUnit: _heartRateUnit,
                           sleepHours: _safeText(_sleepController.text, '-'),
-                          workoutInfo: _safeText(_workoutController.text, '-'),
+                          workoutInfo: _selectedWorkoutFrequency ?? '-',
                         ),
                       ],
                     ),
@@ -308,8 +276,8 @@ class _IntroScreenState extends State<IntroScreen> {
                         _saving
                             ? 'Saving...'
                             : _index == 2
-                                ? 'Finish onboarding'
-                                : 'Continue',
+                            ? 'Finish onboarding'
+                            : 'Continue',
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                     ),
@@ -325,15 +293,9 @@ class _IntroScreenState extends State<IntroScreen> {
 }
 
 class _WelcomeStep extends StatelessWidget {
-  const _WelcomeStep({
-    required this.onImportPressed,
-    required this.onManualPressed,
-    required this.importing,
-  });
+  const _WelcomeStep({required this.onContinuePressed});
 
-  final VoidCallback? onImportPressed;
-  final VoidCallback? onManualPressed;
-  final bool importing;
+  final VoidCallback onContinuePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -351,8 +313,14 @@ class _WelcomeStep extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Color.alphaBlend(cs.primary.withOpacity(0.55), cs.primaryContainer),
-                Color.alphaBlend(cs.secondary.withOpacity(0.35), cs.primaryContainer),
+                Color.alphaBlend(
+                  cs.primary.withOpacity(0.55),
+                  cs.primaryContainer,
+                ),
+                Color.alphaBlend(
+                  cs.secondary.withOpacity(0.35),
+                  cs.primaryContainer,
+                ),
               ],
             ),
           ),
@@ -368,7 +336,7 @@ class _WelcomeStep extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'We will ask for your heart rate, weight, sleep hours, and workout information to personalize your insights.',
+                'We will ask for your heart rate, weight, sleep hours, and workout frequency to personalize your insights.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: cs.onPrimaryContainer.withOpacity(0.9),
                   height: 1.3,
@@ -386,24 +354,10 @@ class _WelcomeStep extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FilledButton.icon(
-                  onPressed: onImportPressed,
-                  icon: importing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.favorite_rounded),
-                  label: Text(
-                    importing ? 'Importing from Health...' : 'Import from Apple Health/Health Connect',
-                  ),
-                ),
-                const SizedBox(height: 10),
                 OutlinedButton.icon(
-                  onPressed: onManualPressed,
-                  icon: const Icon(Icons.edit_rounded),
-                  label: const Text('Enter data manually'),
+                  onPressed: onContinuePressed,
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  label: const Text('Start setup'),
                 ),
               ],
             ),
@@ -420,7 +374,9 @@ class _HealthFormStep extends StatelessWidget {
     required this.weightController,
     required this.heartRateController,
     required this.sleepController,
-    required this.workoutController,
+    required this.workoutFrequencyOptions,
+    required this.selectedWorkoutFrequency,
+    required this.onWorkoutFrequencyChanged,
     required this.weightUnit,
     required this.heartRateUnit,
     required this.onWeightUnitChanged,
@@ -431,7 +387,9 @@ class _HealthFormStep extends StatelessWidget {
   final TextEditingController weightController;
   final TextEditingController heartRateController;
   final TextEditingController sleepController;
-  final TextEditingController workoutController;
+  final List<String> workoutFrequencyOptions;
+  final String? selectedWorkoutFrequency;
+  final ValueChanged<String?> onWorkoutFrequencyChanged;
   final String weightUnit;
   final String heartRateUnit;
   final ValueChanged<String> onWeightUnitChanged;
@@ -439,8 +397,6 @@ class _HealthFormStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -452,7 +408,9 @@ class _HealthFormStep extends StatelessWidget {
             children: [
               Text(
                 'Required health information',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 12),
               Row(
@@ -460,7 +418,9 @@ class _HealthFormStep extends StatelessWidget {
                   Expanded(
                     child: TextFormField(
                       controller: weightController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       decoration: const InputDecoration(
                         labelText: 'Weight',
                         hintText: '70.5',
@@ -526,7 +486,9 @@ class _HealthFormStep extends StatelessWidget {
               const SizedBox(height: 12),
               TextFormField(
                 controller: sleepController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(
                   labelText: 'Average sleep hours',
                   hintText: '7.5',
@@ -542,22 +504,23 @@ class _HealthFormStep extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: workoutController,
-                minLines: 2,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Workout information',
-                  hintText: 'Example: 4 workouts/week, 45 min each',
-                  prefixIcon: const Icon(Icons.fitness_center_rounded),
-                  alignLabelWithHint: true,
-                  filled: true,
-                  fillColor: cs.surfaceContainerHighest,
+              DropdownButtonFormField<String>(
+                value: selectedWorkoutFrequency,
+                decoration: const InputDecoration(
+                  labelText: 'Workout frequency',
+                  prefixIcon: Icon(Icons.fitness_center_rounded),
                 ),
+                items: workoutFrequencyOptions
+                    .map(
+                      (option) => DropdownMenuItem<String>(
+                        value: option,
+                        child: Text(option),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onWorkoutFrequencyChanged,
                 validator: (value) {
-                  final v = value?.trim() ?? '';
-                  if (v.isEmpty) return 'Required';
-                  if (v.length < 3) return 'Add a bit more detail';
+                  if (value == null || value.isEmpty) return 'Required';
                   return null;
                 },
               ),
@@ -635,7 +598,9 @@ class _ReviewStep extends StatelessWidget {
           children: [
             Text(
               'Review your baseline',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 12),
             row('Weight', '$weight $weightUnit'),
