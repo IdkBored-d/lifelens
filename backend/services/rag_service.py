@@ -5,13 +5,13 @@ Complete implementation with vector database management
 import weaviate
 from weaviate.classes.init import Auth
 from weaviate.classes.query import MetadataQuery
-from sentence_transformers import SentenceTransformer
 from typing import List, Dict, Optional, Any
 import logging
 from datetime import datetime
 import hashlib
-import json
 
+# 1. Swapped import to use your custom PyTorch utility
+from utils.disembed_utils import DisEmbedModel
 from models.schemas import MedicalKnowledgeDoc, RAGResult, RAGQuery
 from config.settings import get_settings
 
@@ -39,8 +39,6 @@ class WeaviateRAGService:
         """Connect to Weaviate instance"""
         try:
             if self.settings.weaviate_api_key:
-                # Cloud setup - use weaviate cloud helper
-                # Extract cluster URL (e.g., "my-cluster.weaviate.network")
                 clean_host = self.settings.weaviate_url.replace('http://', '').replace('https://', '')
                 clean_host = clean_host.split(':')[0].strip('/')
                 
@@ -49,7 +47,6 @@ class WeaviateRAGService:
                     auth_credentials=Auth.api_key(self.settings.weaviate_api_key)
                 )
             else:
-                # Local setup without API key
                 clean_host = self.settings.weaviate_url.replace('http://', '').replace('https://', '')
                 clean_host = clean_host.split(':')[0]
                 
@@ -59,8 +56,6 @@ class WeaviateRAGService:
                 )
             
             logger.info(f"Successfully connected to Weaviate at {self.settings.weaviate_url}")
-            
-            # Create schema if it doesn't exist
             self._create_schema()
             
         except Exception as e:
@@ -68,10 +63,11 @@ class WeaviateRAGService:
             raise
     
     def _initialize_embedding_model(self):
-        """Load sentence transformer model for embeddings"""
+        """Load custom PyTorch model for embeddings"""
         try:
-            self.embedding_model = SentenceTransformer(self.settings.embedding_model)
-            logger.info(f"Loaded embedding model: {self.settings.embedding_model}")
+            # 2. Replaced SentenceTransformer with DisEmbedModel
+            self.embedding_model = DisEmbedModel(self.settings.embedding_model)
+            logger.info(f"Loaded custom embedding model: {self.settings.embedding_model}")
         except Exception as e:
             logger.error(f"Failed to load embedding model: {e}")
             raise
@@ -79,14 +75,12 @@ class WeaviateRAGService:
     def _create_schema(self):
         """Create Weaviate schema for medical knowledge"""
         try:
-            # Check if collection exists
             collections = self.client.collections.list_all()
             
             if self.COLLECTION_NAME in collections:
                 logger.info(f"Collection {self.COLLECTION_NAME} already exists")
                 return
             
-            # Use weaviate v4 Property objects with correct data_type field
             from weaviate.classes.config import Property, DataType, Configure
             
             self.client.collections.create(
@@ -139,29 +133,18 @@ class WeaviateRAGService:
         return " | ".join(parts)
     
     async def add_medical_knowledge(self, doc: MedicalKnowledgeDoc) -> str:
-        """
-        Add a medical knowledge document to Weaviate
-        
-        Args:
-            doc: Medical knowledge document
-            
-        Returns:
-            Document ID of added document
-        """
+        """Add a medical knowledge document to Weaviate"""
         try:
             collection = self.client.collections.get(self.COLLECTION_NAME)
             
-            # Generate document ID if not provided
             if not doc.doc_id:
                 doc.doc_id = self._generate_doc_id(doc.condition, doc.source)
             
-            # Create content for embedding
             content_text = self._create_content_vector_text(doc)
             
-            # Generate embedding
-            embedding = self.embedding_model.encode(content_text).tolist()
+            # 3. Extract the flat list from the 2D output
+            embedding = self.embedding_model.encode(content_text)[0]
             
-            # Prepare data object
             data_object = {
                 "doc_id": doc.doc_id,
                 "condition": doc.condition,
@@ -177,8 +160,7 @@ class WeaviateRAGService:
                 "content_vector": content_text
             }
             
-            # Insert into Weaviate
-            uuid = collection.data.insert(
+            collection.data.insert(
                 properties=data_object,
                 vector=embedding
             )
@@ -191,15 +173,7 @@ class WeaviateRAGService:
             raise
     
     async def bulk_add_knowledge(self, docs: List[MedicalKnowledgeDoc]) -> Dict[str, Any]:
-        """
-        Bulk add multiple documents efficiently
-        
-        Args:
-            docs: List of medical knowledge documents
-            
-        Returns:
-            Summary of operation (success count, failures, etc.)
-        """
+        """Bulk add multiple documents efficiently"""
         try:
             collection = self.client.collections.get(self.COLLECTION_NAME)
             
@@ -207,19 +181,17 @@ class WeaviateRAGService:
             failed = 0
             errors = []
             
-            # Use batch insertion for efficiency
+            # 4. OPTIMIZATION: Extract all text and encode in one batch
+            # This is significantly faster than encoding inside the loop
+            content_texts = [self._create_content_vector_text(doc) for doc in docs]
+            batch_embeddings = self.embedding_model.encode(content_texts)
+            
             with collection.batch.dynamic() as batch:
-                for doc in docs:
+                for idx, doc in enumerate(docs):
                     try:
-                        # Generate doc ID if needed
                         if not doc.doc_id:
                             doc.doc_id = self._generate_doc_id(doc.condition, doc.source)
                         
-                        # Create content and embedding
-                        content_text = self._create_content_vector_text(doc)
-                        embedding = self.embedding_model.encode(content_text).tolist()
-                        
-                        # Prepare data
                         data_object = {
                             "doc_id": doc.doc_id,
                             "condition": doc.condition,
@@ -232,13 +204,12 @@ class WeaviateRAGService:
                             "complications": doc.complications or [],
                             "source": doc.source,
                             "last_updated": doc.last_updated.isoformat(),
-                            "content_vector": content_text
+                            "content_vector": content_texts[idx]
                         }
                         
-                        # Add to batch
                         batch.add_object(
                             properties=data_object,
-                            vector=embedding
+                            vector=batch_embeddings[idx] # Use pre-calculated vector
                         )
                         
                         successful += 1
@@ -252,7 +223,7 @@ class WeaviateRAGService:
                 "total": len(docs),
                 "successful": successful,
                 "failed": failed,
-                "errors": errors[:10]  # Limit error list
+                "errors": errors[:10]
             }
             
             logger.info(f"Bulk insert completed: {successful} successful, {failed} failed")
@@ -266,40 +237,26 @@ class WeaviateRAGService:
         self,
         query: RAGQuery
     ) -> List[RAGResult]:
-        """
-        Search for medically relevant knowledge based on symptoms
-        
-        Args:
-            query: Search query with parameters
-            
-        Returns:
-            List of relevant medical knowledge results
-        """
+        """Search for medically relevant knowledge based on symptoms"""
         try:
             collection = self.client.collections.get(self.COLLECTION_NAME)
             
-            # Generate query embedding
-            query_embedding = self.embedding_model.encode(query.query_text).tolist()
+            # 5. Extract flat list for query
+            query_embedding = self.embedding_model.encode(query.query_text)[0]
             
-            # Perform vector similarity search
             response = collection.query.near_vector(
                 near_vector=query_embedding,
                 limit=query.max_results,
                 return_metadata=MetadataQuery(distance=True)
             )
             
-            # Parse results
             results = []
             for obj in response.objects:
-                # Convert distance to certainty (0-1, higher is better)
-                # Weaviate uses cosine distance: certainty = 1 - distance
                 certainty = 1 - obj.metadata.distance
                 
-                # Filter by minimum certainty
                 if certainty < query.min_certainty:
                     continue
                 
-                # Create structured result
                 result = RAGResult(
                     doc_id=obj.properties.get('doc_id', 'unknown'),
                     condition=obj.properties.get('condition', 'Unknown'),
@@ -326,7 +283,6 @@ class WeaviateRAGService:
     def _format_content(self, properties: Dict[str, Any]) -> str:
         """Format document properties into readable content"""
         parts = []
-        
         condition = properties.get('condition', 'Unknown')
         parts.append(f"**{condition}**")
         
@@ -356,8 +312,6 @@ class WeaviateRAGService:
         """Delete a document by ID"""
         try:
             collection = self.client.collections.get(self.COLLECTION_NAME)
-            
-            # Find and delete by doc_id property
             response = collection.data.delete_many(
                 where={
                     "path": ["doc_id"],
@@ -365,10 +319,8 @@ class WeaviateRAGService:
                     "valueText": doc_id
                 }
             )
-            
             logger.info(f"Deleted document {doc_id}")
             return True
-            
         except Exception as e:
             logger.error(f"Failed to delete document {doc_id}: {e}")
             return False
@@ -386,16 +338,11 @@ class WeaviateRAGService:
     async def update_document(self, doc_id: str, updated_doc: MedicalKnowledgeDoc) -> bool:
         """Update an existing document"""
         try:
-            # Delete old version
             await self.delete_document(doc_id)
-            
-            # Add updated version
             updated_doc.doc_id = doc_id
             await self.add_medical_knowledge(updated_doc)
-            
             logger.info(f"Updated document {doc_id}")
             return True
-            
         except Exception as e:
             logger.error(f"Failed to update document {doc_id}: {e}")
             return False
@@ -406,10 +353,8 @@ class WeaviateRAGService:
             self.client.close()
             logger.info("Closed Weaviate connection")
 
-
 # Singleton instance
 _rag_service: Optional[WeaviateRAGService] = None
-
 
 def get_rag_service() -> WeaviateRAGService:
     """Get or create RAG service singleton"""
