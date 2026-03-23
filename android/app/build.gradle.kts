@@ -35,8 +35,22 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+    packagingOptions {
+        jniLibs {
+            pickFirsts += setOf("lib/arm64-v8a/libonnxruntime.so",
+                                "lib/x86_64/libonnxruntime.so",
+                                "lib/x86/libonnxruntime.so",
+                                "lib/armeabi-v7a/libonnxruntime.so")
+        }
+    }
+
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.3")
 }

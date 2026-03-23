@@ -53,6 +53,7 @@ import 'package:flutter/material.dart';
 import 'package:lifelens/lifelens_theme.dart';
 import 'package:provider/provider.dart';
 import 'app/app_root.dart';
+import 'app_services.dart';
 import 'moodlog_store.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'restart.dart';
@@ -61,6 +62,7 @@ import 'theme_controller.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await AppServices.init(gemmaPath: ''); // empty = Gemma not downloaded yet
   runApp(
     MultiProvider(
       providers: [
