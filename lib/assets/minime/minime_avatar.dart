@@ -1,21 +1,27 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
+import 'package:lifelens/utils/minime_face_mapper.dart';
 
 class MiniMeAvatar extends StatefulWidget {
   final String bodyModel;
   final String hairModel;
   final String shirtModel;
+  final String? moodLabel;
   final Color glow;
   final double size;
+  final VoidCallback? onAvatarTap;
+  final ValueChanged<double>? onRotate;
 
   const MiniMeAvatar({
     super.key,
     required this.bodyModel,
     required this.hairModel,
     required this.shirtModel,
+    this.moodLabel,
     required this.glow,
     this.size = 220,
+    this.onAvatarTap,
+    this.onRotate,
   });
 
   @override
@@ -23,55 +29,39 @@ class MiniMeAvatar extends StatefulWidget {
 }
 
 class _MiniMeAvatarState extends State<MiniMeAvatar>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _breath;
-
-  @override
-  void initState() {
-    super.initState();
-    _breath = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _breath.dispose();
-    super.dispose();
-  }
+    {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _breath,
-      builder: (_, __) {
-        final t = _breath.value;
-        final scale = 1 + 0.03 * math.sin(t * math.pi * 2);
+    final expression = miniMeFaceForMood(widget.moodLabel);
 
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            width: widget.size,
-            height: widget.size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: widget.glow,
-                  blurRadius: 36,
-                  spreadRadius: 4,
-                ),
-              ],
+    return RepaintBoundary(
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: widget.glow,
+              blurRadius: 36,
+              spreadRadius: 4,
             ),
-            child: Stack(
+          ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Stack(
               alignment: Alignment.center,
               children: [
                 ModelViewer(
                   src: widget.bodyModel,
                   alt: "Avatar Body",
                   ar: false,
-                  autoRotate: false,
+                  autoRotate: true,
+                  autoRotateDelay: 0,
+                  rotationPerSecond: '25deg',
                   cameraControls: false,
                   disableZoom: true,
                   disablePan: true,
@@ -81,7 +71,9 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                     src: widget.hairModel,
                     alt: "Avatar Hair",
                     ar: false,
-                    autoRotate: false,
+                    autoRotate: true,
+                    autoRotateDelay: 0,
+                    rotationPerSecond: '25deg',
                     cameraControls: false,
                     disableZoom: true,
                     disablePan: true,
@@ -91,16 +83,47 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                     src: widget.shirtModel,
                     alt: "Avatar Shirt",
                     ar: false,
-                    autoRotate: false,
+                    autoRotate: true,
+                    autoRotateDelay: 0,
+                    rotationPerSecond: '25deg',
                     cameraControls: false,
                     disableZoom: true,
                     disablePan: true,
                   ),
               ],
             ),
-          ),
-        );
-      },
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: widget.onAvatarTap,
+              ),
+            ),
+            Positioned(
+              top: widget.size * 0.34,
+              child: IgnorePointer(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  child: Container(
+                    key: ValueKey(expression),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      expression,
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

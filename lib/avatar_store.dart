@@ -3,8 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AvatarStore extends ChangeNotifier {
   String _bodyModel = "lib/assets/minime/body.glb";
-  String _hairModel = "lib/assets/minime/hair/shortHair.glb";
-  String _shirtModel = "lib/assets/minime/shirts/basicShirt.glb";
+  String _hairModel = "lib/assets/minime/hair/hair.glb";
+  String _shirtModel = "lib/assets/minime/shirts/neck_tie.glb";
 
   AvatarStore() {
     _loadFromPrefs();

@@ -26,8 +26,9 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
     // For now, hardcode the assets since manifest loading is not working
     final assets = [
       'lib/assets/minime/body.glb',
-      'lib/assets/minime/hair/shortHair.glb',
-      'lib/assets/minime/shirts/basicShirt.glb',
+      'lib/assets/minime/hair/hair.glb',
+      'lib/assets/minime/hair/hair_male.glb',
+      'lib/assets/minime/shirts/neck_tie.glb',
       '', // None
     ];
     setState(() {
