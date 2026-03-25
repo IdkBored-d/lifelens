@@ -64,6 +64,11 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                   selected: store.bodyModel,
                   onSelected: store.setBodyModel,
                 ),
+                const SizedBox(height: 14),
+                _BodyWidthSlider(
+                  value: store.bodyWidthScale,
+                  onChanged: store.setBodyWidthScale,
+                ),
                 const SizedBox(height: 20),
                 _AssetSelector(
                   title: "Hair",
@@ -154,6 +159,52 @@ class _AssetSelector extends StatelessWidget {
           }).toList(),
         ),
       ],
+    );
+  }
+}
+
+class _BodyWidthSlider extends StatelessWidget {
+  const _BodyWidthSlider({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final percent = (value * 100).round();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Body Shape ($percent%)',
+            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          Slider(
+            value: value,
+            min: 0.75,
+            max: 1.35,
+            divisions: 12,
+            label: '$percent%',
+            onChanged: onChanged,
+          ),
+          Text(
+            'Left = slimmer, right = wider',
+            style: theme.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
     );
   }
 }
