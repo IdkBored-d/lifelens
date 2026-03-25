@@ -8,6 +8,7 @@ class MiniMeAvatar extends StatefulWidget {
   final String shirtModel;
   final double bodyWidthScale;
   final String? moodLabel;
+  final String? moodEmoji;
   final Color glow;
   final double size;
   final VoidCallback? onAvatarTap;
@@ -20,6 +21,7 @@ class MiniMeAvatar extends StatefulWidget {
     required this.shirtModel,
     this.bodyWidthScale = 1.0,
     this.moodLabel,
+    this.moodEmoji,
     required this.glow,
     this.size = 220,
     this.onAvatarTap,
@@ -35,8 +37,11 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
 
   @override
   Widget build(BuildContext context) {
-    final expression = miniMeFaceForMood(widget.moodLabel);
+    final expression = widget.moodEmoji ?? miniMeFaceForMood(widget.moodLabel);
     final bodyScale = widget.bodyWidthScale.clamp(0.75, 1.35).toDouble();
+    // Fit emoji within a fixed virtual head circle for consistent placement.
+    final headDiameter = (widget.size * 0.315).clamp(56.0, 180.0);
+    final headTop = (widget.size * 0.06).clamp(8.0, 104.0);
 
     return RepaintBoundary(
       child: Container(
@@ -111,23 +116,42 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
               ),
             ),
             Positioned(
-              top: widget.size * 0.34,
+              top: headTop,
               child: IgnorePointer(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 280),
-                  child: Container(
+                  child: SizedBox(
                     key: ValueKey(expression),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      expression,
-                      style: const TextStyle(fontSize: 20),
+                    width: headDiameter,
+                    height: headDiameter,
+                    child: ClipOval(
+                      child: Center(
+                        child: FractionallySizedBox(
+                          widthFactor: 0.84,
+                          heightFactor: 0.84,
+                          child: FittedBox(
+                            fit: BoxFit.contain,
+                            child: Text(
+                              expression,
+                              strutStyle: const StrutStyle(
+                                height: 1,
+                                forceStrutHeight: true,
+                              ),
+                              style: TextStyle(
+                                fontSize: headDiameter,
+                                height: 1,
+                                shadows: const [
+                                  Shadow(
+                                    blurRadius: 4,
+                                    offset: Offset(0, 1),
+                                    color: Colors.black26,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

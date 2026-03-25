@@ -390,7 +390,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
 
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text("Mood saved (UI Only)"),
+                                content: Text("Mood saved"),
                                 behavior: SnackBarBehavior.floating,
                                 duration: Duration(milliseconds: 900),
                               ),

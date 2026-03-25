@@ -17,8 +17,9 @@ class MiniMeScreen extends StatefulWidget {
 class _MiniMeScreenState extends State<MiniMeScreen> {
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _chatFocusNode = FocusNode();
 
-  int _selectedTab = 0;
+  bool _isCoachExpanded = false;
   bool _isReplying = false;
   final List<_MiniMeChatMessage> _messages = [
     _MiniMeChatMessage(
@@ -31,6 +32,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void dispose() {
     _chatController.dispose();
     _scrollController.dispose();
+    _chatFocusNode.dispose();
     super.dispose();
   }
 
@@ -39,6 +41,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (text.isEmpty || _isReplying) return;
 
     setState(() {
+      _isCoachExpanded = true;
       _messages.add(_MiniMeChatMessage(role: _ChatRole.user, text: text));
       _isReplying = true;
     });
@@ -97,6 +100,20 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
         title: const Text("Mini-Me"),
+        actions: [
+          IconButton(
+            tooltip: 'Customize avatar',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AvatarCustomizationScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.edit_rounded),
+          ),
+        ],
       ),
       body: Consumer2<MoodLogStore, AvatarStore>(
         builder: (context, moodStore, avatarStore, _) {
@@ -121,66 +138,49 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
             child: SafeArea(
               child: Column(
                 children: [
-                  const SizedBox(height: 10),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment<int>(
-                          value: 0,
-                          label: Text('Avatar'),
-                          icon: Icon(Icons.person_rounded),
-                        ),
-                        ButtonSegment<int>(
-                          value: 1,
-                          label: Text('Coach'),
-                          icon: Icon(Icons.psychology_alt_outlined),
-                        ),
-                      ],
-                      selected: {_selectedTab},
-                      onSelectionChanged: (selection) {
-                        setState(() => _selectedTab = selection.first);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      switchInCurve: Curves.easeOut,
-                      switchOutCurve: Curves.easeIn,
-                      child: _selectedTab == 0
-                          ? FutureBuilder<List<DailySuggestion>>(
-                              key: const ValueKey('avatar-panel'),
-                              future: DailySuggestionsService.instance
-                                  .getDailySuggestions(moodLogs: moodStore.items),
-                              builder: (context, snapshot) {
-                                final defaultSuggestion = snapshot.connectionState ==
-                                        ConnectionState.waiting
-                                    ? 'I am preparing your suggestion...'
-                                    : 'Model not connected yet. Placeholder guidance is active.';
+                    child: FutureBuilder<List<DailySuggestion>>(
+                      key: const ValueKey('avatar-panel'),
+                      future: DailySuggestionsService.instance
+                          .getDailySuggestions(moodLogs: moodStore.items),
+                      builder: (context, snapshot) {
+                        final defaultSuggestion = snapshot.connectionState ==
+                                ConnectionState.waiting
+                            ? 'I am preparing your suggestion...'
+                            : 'Model not connected yet. Placeholder guidance is active.';
 
-                                final suggestion = snapshot.data?.isNotEmpty == true
-                                    ? snapshot.data!.first.action
-                                    : defaultSuggestion;
+                        final suggestion = snapshot.data?.isNotEmpty == true
+                            ? snapshot.data!.first.action
+                            : defaultSuggestion;
 
-                                return _AvatarPanel(
-                                  avatarStore: avatarStore,
-                                  glow: glow,
-                                  moodLabel: latest?.moodLabel,
-                                  suggestionText: suggestion,
-                                );
-                              },
-                            )
-                          : _ChatPanel(
-                              key: const ValueKey('chat-panel'),
-                              moodLabel: moodLabel,
-                              isReplying: _isReplying,
-                              messages: _messages,
-                              chatController: _chatController,
-                              scrollController: _scrollController,
-                              onSend: () => _sendMessage(moodLabel),
-                            ),
+                        return _AvatarPanel(
+                          avatarStore: avatarStore,
+                          glow: glow,
+                          moodLabel: latest?.moodLabel,
+                          moodEmoji: latest?.emoji,
+                          suggestionText: suggestion,
+                          chatController: _chatController,
+                          chatFocusNode: _chatFocusNode,
+                          isReplying: _isReplying,
+                          isCoachExpanded: _isCoachExpanded,
+                          messages: _messages,
+                          scrollController: _scrollController,
+                          onToggleCoachExpanded: () {
+                            setState(() {
+                              _isCoachExpanded = !_isCoachExpanded;
+                            });
+                            if (_isCoachExpanded) {
+                              _scrollToBottom();
+                            }
+                          },
+                          onExpandCoach: () {
+                            if (!_isCoachExpanded) {
+                              setState(() => _isCoachExpanded = true);
+                            }
+                          },
+                          onSend: () => _sendMessage(moodLabel),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -198,13 +198,33 @@ class _AvatarPanel extends StatelessWidget {
     required this.avatarStore,
     required this.glow,
     required this.moodLabel,
+    required this.moodEmoji,
     required this.suggestionText,
+    required this.chatController,
+    required this.chatFocusNode,
+    required this.isReplying,
+    required this.isCoachExpanded,
+    required this.messages,
+    required this.scrollController,
+    required this.onToggleCoachExpanded,
+    required this.onExpandCoach,
+    required this.onSend,
   });
 
   final AvatarStore avatarStore;
   final Color glow;
   final String? moodLabel;
+  final String? moodEmoji;
   final String suggestionText;
+  final TextEditingController chatController;
+  final FocusNode chatFocusNode;
+  final bool isReplying;
+  final bool isCoachExpanded;
+  final List<_MiniMeChatMessage> messages;
+  final ScrollController scrollController;
+  final VoidCallback onToggleCoachExpanded;
+  final VoidCallback onExpandCoach;
+  final VoidCallback onSend;
 
   @override
   Widget build(BuildContext context) {
@@ -228,25 +248,94 @@ class _AvatarPanel extends StatelessWidget {
                 shirtModel: avatarStore.shirtModel,
                 bodyWidthScale: avatarStore.bodyWidthScale,
                 moodLabel: moodLabel,
+                moodEmoji: moodEmoji,
                 glow: glow,
                 size: avatarSize,
+              ),
+            ),
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOut,
+              left: 16,
+              right: 16,
+              bottom: isCoachExpanded ? 92 : 10,
+              height: isCoachExpanded ? 220 : 0,
+              child: IgnorePointer(
+                ignoring: !isCoachExpanded,
+                child: Opacity(
+                  opacity: isCoachExpanded ? 1 : 0,
+                  child: _InlineCoachPanel(
+                    messages: messages,
+                    isReplying: isReplying,
+                    scrollController: scrollController,
+                    moodLabel: moodLabel ?? 'Neutral',
+                  ),
+                ),
               ),
             ),
             Positioned(
               left: 16,
               right: 16,
-              bottom: 18,
-              child: FilledButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AvatarCustomizationScreen(),
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .outlineVariant
+                        .withOpacity(0.45),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      onPressed: onToggleCoachExpanded,
+                      icon: Icon(
+                        isCoachExpanded
+                            ? Icons.keyboard_arrow_down_rounded
+                            : Icons.keyboard_arrow_up_rounded,
+                      ),
+                      tooltip: isCoachExpanded
+                          ? 'Hide guidance'
+                          : 'Show guidance',
                     ),
-                  );
-                },
-                icon: const Icon(Icons.edit_rounded),
-                label: const Text('Customize Avatar'),
+                    Expanded(
+                      child: TextField(
+                        controller: chatController,
+                        focusNode: chatFocusNode,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        minLines: 1,
+                        maxLines: 5,
+                        onTap: onExpandCoach,
+                        decoration: InputDecoration(
+                          hintText: 'Type to Mini-Me...',
+                          filled: true,
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withOpacity(0.3),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: isReplying ? null : onSend,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                        padding: EdgeInsets.zero,
+                      ),
+                      child: const Icon(Icons.arrow_upward_rounded, size: 18),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -394,196 +483,129 @@ class _SpeechTailPainter extends CustomPainter {
   }
 }
 
-class _ChatPanel extends StatelessWidget {
-  const _ChatPanel({
-    super.key,
+class _InlineCoachPanel extends StatelessWidget {
+  const _InlineCoachPanel({
     required this.moodLabel,
     required this.isReplying,
     required this.messages,
-    required this.chatController,
     required this.scrollController,
-    required this.onSend,
   });
 
   final String moodLabel;
   final bool isReplying;
   final List<_MiniMeChatMessage> messages;
-  final TextEditingController chatController;
   final ScrollController scrollController;
-  final VoidCallback onSend;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface.withOpacity(0.97),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withOpacity(0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: Column(
         children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withOpacity(0.42),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
-            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.self_improvement_rounded,
-                    color: cs.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 10),
+                Icon(Icons.psychology_alt_rounded, size: 18, color: cs.primary),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Guidance Center',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Offline preview • Mood: $moodLabel',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    'Guidance Center • Mood: $moodLabel',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const Divider(height: 1),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: cs.surface.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: cs.outlineVariant.withOpacity(0.5),
-                ),
-              ),
-              child: ListView.builder(
-                controller: scrollController,
-                padding: const EdgeInsets.all(12),
-                itemCount: messages.length + (isReplying ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (isReplying && index == messages.length) {
-                    return const _TypingBubble();
-                  }
+            child: ListView.builder(
+              controller: scrollController,
+              padding: const EdgeInsets.all(12),
+              itemCount: messages.length + (isReplying ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (isReplying && index == messages.length) {
+                  return const _TypingBubble();
+                }
 
-                  final message = messages[index];
-                  final isUser = message.role == _ChatRole.user;
+                final message = messages[index];
+                final isUser = message.role == _ChatRole.user;
 
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? cs.tertiaryContainer.withOpacity(0.55)
+                        : cs.surfaceContainer,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
                       color: isUser
-                          ? cs.tertiaryContainer.withOpacity(0.55)
-                          : cs.surfaceContainer,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isUser
-                            ? cs.tertiary.withOpacity(0.26)
-                            : cs.outlineVariant.withOpacity(0.35),
-                      ),
+                          ? cs.tertiary.withOpacity(0.26)
+                          : cs.outlineVariant.withOpacity(0.35),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              isUser
-                                  ? Icons.edit_note_rounded
-                                  : Icons.psychology_alt_rounded,
-                              size: 16,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            isUser
+                                ? Icons.edit_note_rounded
+                                : Icons.psychology_alt_rounded,
+                            size: 16,
+                            color: isUser
+                                ? cs.onTertiaryContainer
+                                : cs.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            isUser ? 'Your note' : 'Mini-Me guidance',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
                               color: isUser
                                   ? cs.onTertiaryContainer
                                   : cs.onSurfaceVariant,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              isUser ? 'Your note' : 'Mini-Me guidance',
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: isUser
-                                    ? cs.onTertiaryContainer
-                                    : cs.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          message.text,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: isUser
-                                ? cs.onTertiaryContainer
-                                : cs.onSurface,
-                            height: 1.3,
                           ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withOpacity(0.35),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: chatController,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => onSend(),
-                    decoration: InputDecoration(
-                      hintText: 'Write a check-in note or ask for a plan...',
-                      filled: true,
-                      fillColor: cs.surface,
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      Text(
+                        message.text,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: isUser
+                              ? cs.onTertiaryContainer
+                              : cs.onSurface,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: isReplying ? null : onSend,
-                  icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-                  label: const Text('Add'),
-                ),
-              ],
+                );
+              },
             ),
           ),
         ],
