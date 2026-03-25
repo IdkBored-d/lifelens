@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
 class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key});
@@ -10,62 +10,47 @@ class IntroScreen extends StatefulWidget {
 }
 
 class _IntroScreenState extends State<IntroScreen> {
-  final PageController _controller = PageController();
+  final PageController _pageController = PageController();
+
   int _index = 0;
   bool _saving = false;
 
-  final List<_IntroPageData> _pages = const [
-    _IntroPageData(
-      title: "Welcome to LifeLens",
-      subtitle: "A calm space to track your wellness—one day at a time.",
-      icon: Icons.spa_rounded,
-    ),
-    _IntroPageData(
-      title: "Track what matters",
-      subtitle:
-          "Log mood, sleep, activity, and symptoms with quick, simple inputs.",
-      icon: Icons.favorite_rounded,
-    ),
-    _IntroPageData(
-      title: "See your progress",
-      subtitle: "Turn daily habits into insights and gentle next steps.",
-      icon: Icons.insights_rounded,
-    ),
+  final _formKey = GlobalKey<FormState>();
+
+  final _weightController = TextEditingController();
+  final _heartRateController = TextEditingController();
+  final _sleepController = TextEditingController();
+
+  String _weightUnit = 'kg';
+  String _heartRateUnit = 'bpm';
+  String? _selectedWorkoutFrequency;
+
+  static const List<String> _workoutFrequencyOptions = [
+    'Rarely or never',
+    '1-2 times per week',
+    '3-4 times per week',
+    '5-6 times per week',
+    'Daily',
   ];
 
   @override
   void dispose() {
-    _controller.dispose();
+    _pageController.dispose();
+    _weightController.dispose();
+    _heartRateController.dispose();
+    _sleepController.dispose();
     super.dispose();
   }
 
-  Future<void> _completeOnboarding() async {
-    if (_saving) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return; // should not happen, guarded by AppRoot
-
-    setState(() => _saving = true);
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-        'onboardingComplete': true,
-      }, SetOptions(merge: true));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to finish onboarding. Please try again.'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
+  Future<void> _nextPage() async {
+    if (_index == 1) {
+      final valid = _formKey.currentState?.validate() ?? false;
+      if (!valid) return;
     }
-  }
 
-  Future<void> _goNext() async {
-    if (_index < _pages.length - 1) {
-      _controller.nextPage(
-        duration: const Duration(milliseconds: 280),
+    if (_index < 2) {
+      await _pageController.nextPage(
+        duration: const Duration(milliseconds: 260),
         curve: Curves.easeOut,
       );
     } else {
@@ -73,177 +58,471 @@ class _IntroScreenState extends State<IntroScreen> {
     }
   }
 
+  Future<void> _previousPage() async {
+    if (_index > 0) {
+      await _pageController.previousPage(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  Future<void> _completeOnboarding() async {
+    if (_saving) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final weight = double.tryParse(_weightController.text.trim());
+    final heartRate = double.tryParse(_heartRateController.text.trim());
+    final sleepHours = double.tryParse(_sleepController.text.trim());
+    final workoutInfo = _selectedWorkoutFrequency;
+
+    if (weight == null ||
+        heartRate == null ||
+        sleepHours == null ||
+        workoutInfo == null ||
+        workoutInfo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all required fields.')),
+      );
+      await _pageController.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'onboardingComplete': true,
+        'healthSnapshot': {
+          'source': 'manual_onboarding',
+          'capturedAt': DateTime.now().toIso8601String(),
+          'weight': weight,
+          'weightUnit': _weightUnit,
+          'heartRate': heartRate,
+          'heartRateUnit': _heartRateUnit,
+          'sleepHours': sleepHours,
+          'sleepUnit': 'hours',
+          'workoutFrequency': workoutInfo,
+          'workoutSummary': workoutInfo,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unable to finish onboarding: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  String _safeText(String text, String fallback) {
+    final value = text.trim();
+    if (value.isEmpty) return fallback;
+    return value;
+  }
+
+  Widget _buildProgressDots(ThemeData theme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (i) {
+        final active = i == _index;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: active ? 20 : 8,
+          height: 8,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: active
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(99),
+          ),
+        );
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF6FBFF), Color(0xFFF4F3FF)],
+      body: Stack(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  cs.surface,
+                  Color.alphaBlend(cs.primary.withOpacity(0.10), cs.surface),
+                  Color.alphaBlend(cs.secondary.withOpacity(0.08), cs.surface),
+                ],
+              ),
+            ),
+            child: const SizedBox.expand(),
           ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Top bar
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: Row(
-                  children: [
-                    _Pill(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.spa_rounded, size: 18),
-                          SizedBox(width: 8),
-                          Text(
-                            "LifeLens",
-                            style: TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: _completeOnboarding,
-                      style: TextButton.styleFrom(
-                        foregroundColor: theme.colorScheme.primary,
-                      ),
-                      child: const Text("Skip"),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Pages
-              Expanded(
-                child: PageView.builder(
-                  controller: _controller,
-                  itemCount: _pages.length,
-                  onPageChanged: (i) => setState(() => _index = i),
-                  itemBuilder: (context, i) {
-                    final p = _pages[i];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Icon hero
-                          Container(
-                            width: 140,
-                            height: 140,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.85),
-                              borderRadius: BorderRadius.circular(36),
-                              boxShadow: [
-                                BoxShadow(
-                                  blurRadius: 30,
-                                  spreadRadius: 2,
-                                  color: Colors.black.withOpacity(0.06),
-                                  offset: const Offset(0, 12),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              p.icon,
-                              size: 64,
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 28),
-                          Text(
-                            p.title,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF1C1C1E),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            p.subtitle,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              height: 1.35,
-                              color: const Color(0xFF5A5A66),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: Column(
-                  children: [
-                    _Dots(count: _pages.length, index: _index),
-                    const SizedBox(height: 18),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: DecoratedBox(
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF2EC4B6), // teal
-                              Color(0xFF3A86FF), // blue
-                            ],
+                          color: cs.surfaceContainerHighest.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: cs.outlineVariant.withOpacity(0.6),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 20,
-                              color: Colors.black.withOpacity(0.10),
-                              offset: const Offset(0, 10),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.spa_rounded,
+                              size: 18,
+                              color: cs.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'LifeLens Onboarding',
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ],
                         ),
-                        child: ElevatedButton(
-                          onPressed: _saving ? null : _goNext,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: Text(
-                            _saving
-                                ? "Loading..."
-                                : _index == _pages.length - 1
-                                ? "Get started"
-                                : "Next",
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
                       ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    if (_index > 0)
-                      TextButton(
-                        onPressed: () {
-                          _controller.previousPage(
+                      const Spacer(),
+                      if (_index > 0)
+                        TextButton(
+                          onPressed: _saving ? null : _previousPage,
+                          child: const Text('Back'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildProgressDots(theme),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: PageView(
+                      controller: _pageController,
+                      physics: const NeverScrollableScrollPhysics(),
+                      onPageChanged: (value) => setState(() => _index = value),
+                      children: [
+                        _WelcomeStep(
+                          onContinuePressed: () => _pageController.nextPage(
                             duration: const Duration(milliseconds: 240),
                             curve: Curves.easeOut,
-                          );
-                        },
-                        child: const Text("Back"),
+                          ),
+                        ),
+                        _HealthFormStep(
+                          formKey: _formKey,
+                          weightController: _weightController,
+                          heartRateController: _heartRateController,
+                          sleepController: _sleepController,
+                          workoutFrequencyOptions: _workoutFrequencyOptions,
+                          selectedWorkoutFrequency: _selectedWorkoutFrequency,
+                          onWorkoutFrequencyChanged: (value) {
+                            setState(() => _selectedWorkoutFrequency = value);
+                          },
+                          weightUnit: _weightUnit,
+                          heartRateUnit: _heartRateUnit,
+                          onWeightUnitChanged: (value) =>
+                              setState(() => _weightUnit = value),
+                          onHeartRateUnitChanged: (value) =>
+                              setState(() => _heartRateUnit = value),
+                        ),
+                        _ReviewStep(
+                          weight: _safeText(_weightController.text, '-'),
+                          weightUnit: _weightUnit,
+                          heartRate: _safeText(_heartRateController.text, '-'),
+                          heartRateUnit: _heartRateUnit,
+                          sleepHours: _safeText(_sleepController.text, '-'),
+                          workoutInfo: _selectedWorkoutFrequency ?? '-',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: _saving ? null : _nextPage,
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
-                  ],
+                      child: Text(
+                        _saving
+                            ? 'Saving...'
+                            : _index == 2
+                            ? 'Finish onboarding'
+                            : 'Continue',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WelcomeStep extends StatelessWidget {
+  const _WelcomeStep({required this.onContinuePressed});
+
+  final VoidCallback onContinuePressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.alphaBlend(
+                  cs.primary.withOpacity(0.55),
+                  cs.primaryContainer,
                 ),
+                Color.alphaBlend(
+                  cs.secondary.withOpacity(0.35),
+                  cs.primaryContainer,
+                ),
+              ],
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Let\'s set up your health baseline',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: cs.onPrimaryContainer,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'We will ask for your heart rate, weight, sleep hours, and workout frequency to personalize your insights.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onPrimaryContainer.withOpacity(0.9),
+                  height: 1.3,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onContinuePressed,
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  label: const Text('Start setup'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HealthFormStep extends StatelessWidget {
+  const _HealthFormStep({
+    required this.formKey,
+    required this.weightController,
+    required this.heartRateController,
+    required this.sleepController,
+    required this.workoutFrequencyOptions,
+    required this.selectedWorkoutFrequency,
+    required this.onWorkoutFrequencyChanged,
+    required this.weightUnit,
+    required this.heartRateUnit,
+    required this.onWeightUnitChanged,
+    required this.onHeartRateUnitChanged,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final TextEditingController weightController;
+  final TextEditingController heartRateController;
+  final TextEditingController sleepController;
+  final List<String> workoutFrequencyOptions;
+  final String? selectedWorkoutFrequency;
+  final ValueChanged<String?> onWorkoutFrequencyChanged;
+  final String weightUnit;
+  final String heartRateUnit;
+  final ValueChanged<String> onWeightUnitChanged;
+  final ValueChanged<String> onHeartRateUnitChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Form(
+          key: formKey,
+          child: ListView(
+            physics: const BouncingScrollPhysics(),
+            children: [
+              Text(
+                'Required health information',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: weightController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Weight',
+                        hintText: '70.5',
+                        prefixIcon: Icon(Icons.monitor_weight_outlined),
+                      ),
+                      validator: (value) {
+                        final v = value?.trim() ?? '';
+                        if (v.isEmpty) return 'Required';
+                        if (double.tryParse(v) == null) return 'Invalid number';
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  DropdownButton<String>(
+                    value: weightUnit,
+                    underline: const SizedBox.shrink(),
+                    items: const [
+                      DropdownMenuItem(value: 'kg', child: Text('kg')),
+                      DropdownMenuItem(value: 'lb', child: Text('lb')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) onWeightUnitChanged(value);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: heartRateController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Resting heart rate',
+                        hintText: '62',
+                        prefixIcon: Icon(Icons.favorite_border_rounded),
+                      ),
+                      validator: (value) {
+                        final v = value?.trim() ?? '';
+                        if (v.isEmpty) return 'Required';
+                        final parsed = double.tryParse(v);
+                        if (parsed == null) return 'Invalid number';
+                        if (parsed < 20 || parsed > 220) return 'Check value';
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  DropdownButton<String>(
+                    value: heartRateUnit,
+                    underline: const SizedBox.shrink(),
+                    items: const [
+                      DropdownMenuItem(value: 'bpm', child: Text('bpm')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) onHeartRateUnitChanged(value);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: sleepController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Average sleep hours',
+                  hintText: '7.5',
+                  prefixIcon: Icon(Icons.bedtime_outlined),
+                ),
+                validator: (value) {
+                  final v = value?.trim() ?? '';
+                  if (v.isEmpty) return 'Required';
+                  final parsed = double.tryParse(v);
+                  if (parsed == null) return 'Invalid number';
+                  if (parsed < 0 || parsed > 24) return 'Enter 0-24';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: selectedWorkoutFrequency,
+                decoration: const InputDecoration(
+                  labelText: 'Workout frequency',
+                  prefixIcon: Icon(Icons.fitness_center_rounded),
+                ),
+                items: workoutFrequencyOptions
+                    .map(
+                      (option) => DropdownMenuItem<String>(
+                        value: option,
+                        child: Text(option),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onWorkoutFrequencyChanged,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Required';
+                  return null;
+                },
               ),
             ],
           ),
@@ -253,59 +532,92 @@ class _IntroScreenState extends State<IntroScreen> {
   }
 }
 
-class _IntroPageData {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  const _IntroPageData({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
+class _ReviewStep extends StatelessWidget {
+  const _ReviewStep({
+    required this.weight,
+    required this.weightUnit,
+    required this.heartRate,
+    required this.heartRateUnit,
+    required this.sleepHours,
+    required this.workoutInfo,
   });
-}
 
-class _Dots extends StatelessWidget {
-  const _Dots({required this.count, required this.index});
-  final int count;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (i) {
-        final active = i == index;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: active ? 18 : 8,
-          height: 8,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: active
-                ? Theme.of(context).colorScheme.primary
-                : Colors.black12,
-          ),
-        );
-      }),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.child});
-  final Widget child;
+  final String weight;
+  final String weightUnit;
+  final String heartRate;
+  final String heartRateUnit;
+  final String sleepHours;
+  final String workoutInfo;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.black.withOpacity(0.06)),
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    Widget row(String label, String value) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: ListView(
+          physics: const BouncingScrollPhysics(),
+          children: [
+            Text(
+              'Review your baseline',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            row('Weight', '$weight $weightUnit'),
+            row('Heart rate', '$heartRate $heartRateUnit'),
+            row('Sleep', '$sleepHours hours'),
+            row('Workout', workoutInfo),
+            const SizedBox(height: 4),
+            Text(
+              'Tap Finish onboarding to save this data and continue.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
       ),
-      child: child,
     );
   }
 }
