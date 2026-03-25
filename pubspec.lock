@@ -352,14 +352,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.17.0"
-  model_viewer_plus:
-    dependency: "direct main"
-    description:
-      name: model_viewer_plus
-      sha256: c5bfcd296a28246cceec821b0e7da268690e40baa99a3fa0f09d7a3227eb967d
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.10.0"
   mime:
     dependency: transitive
     description:
@@ -368,6 +360,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  model_viewer_plus:
+    dependency: "direct main"
+    description:
+      name: model_viewer_plus
+      sha256: c5bfcd296a28246cceec821b0e7da268690e40baa99a3fa0f09d7a3227eb967d
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.10.0"
   native_toolchain_c:
     dependency: transitive
     description:
@@ -472,6 +472,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.5+1"
+  pub_semver:
+    dependency: transitive
+    description:
+      name: pub_semver
+      sha256: "5bfcf68ca79ef689f8990d1160781b4bad40a3bd5e5218ad4076ddb7f4081585"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.0"
+  share_plus:
+    dependency: "direct main"
+    description:
+      name: share_plus
+      sha256: "14c8860d4de93d3a7e53af51bff479598c4e999605290756bbbe45cf65b37840"
+      url: "https://pub.dev"
+    source: hosted
+    version: "12.0.1"
+  share_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: share_plus_platform_interface
+      sha256: "88023e53a13429bd65d8e85e11a9b484f49d4c190abbd96c7932b74d6927cc9a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.1.0"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -528,30 +552,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.1"
-  pub_semver:
-    dependency: transitive
-    description:
-      name: pub_semver
-      sha256: "5bfcf68ca79ef689f8990d1160781b4bad40a3bd5e5218ad4076ddb7f4081585"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.2.0"
-  share_plus:
-    dependency: "direct main"
-    description:
-      name: share_plus
-      sha256: "14c8860d4de93d3a7e53af51bff479598c4e999605290756bbbe45cf65b37840"
-      url: "https://pub.dev"
-    source: hosted
-    version: "12.0.1"
-  share_plus_platform_interface:
-    dependency: transitive
-    description:
-      name: share_plus_platform_interface
-      sha256: "88023e53a13429bd65d8e85e11a9b484f49d4c190abbd96c7932b74d6927cc9a"
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.1.0"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -765,9 +765,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
-sdks:
-  dart: ">=3.10.0 <4.0.0"
-  flutter: ">=3.38.0"
   yaml:
     dependency: transitive
     description:
