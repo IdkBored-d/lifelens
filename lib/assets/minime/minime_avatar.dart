@@ -6,6 +6,7 @@ class MiniMeAvatar extends StatefulWidget {
   final String bodyModel;
   final String hairModel;
   final String shirtModel;
+  final double bodyWidthScale;
   final String? moodLabel;
   final Color glow;
   final double size;
@@ -17,6 +18,7 @@ class MiniMeAvatar extends StatefulWidget {
     required this.bodyModel,
     required this.hairModel,
     required this.shirtModel,
+    this.bodyWidthScale = 1.0,
     this.moodLabel,
     required this.glow,
     this.size = 220,
@@ -34,6 +36,7 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
   @override
   Widget build(BuildContext context) {
     final expression = miniMeFaceForMood(widget.moodLabel);
+    final bodyScale = widget.bodyWidthScale.clamp(0.75, 1.35).toDouble();
 
     return RepaintBoundary(
       child: Container(
@@ -55,41 +58,50 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
             Stack(
               alignment: Alignment.center,
               children: [
-                ModelViewer(
-                  src: widget.bodyModel,
-                  alt: "Avatar Body",
-                  ar: false,
-                  autoRotate: true,
-                  autoRotateDelay: 0,
-                  rotationPerSecond: '25deg',
-                  cameraControls: false,
-                  disableZoom: true,
-                  disablePan: true,
+                Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.diagonal3Values(bodyScale, 1.0, 1.0),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      ModelViewer(
+                        src: widget.bodyModel,
+                        alt: "Avatar Body",
+                        ar: false,
+                        autoRotate: true,
+                        autoRotateDelay: 0,
+                        rotationPerSecond: '25deg',
+                        cameraControls: false,
+                        disableZoom: true,
+                        disablePan: true,
+                      ),
+                      if (widget.hairModel.isNotEmpty)
+                        ModelViewer(
+                          src: widget.hairModel,
+                          alt: "Avatar Hair",
+                          ar: false,
+                          autoRotate: true,
+                          autoRotateDelay: 0,
+                          rotationPerSecond: '25deg',
+                          cameraControls: false,
+                          disableZoom: true,
+                          disablePan: true,
+                        ),
+                      if (widget.shirtModel.isNotEmpty)
+                        ModelViewer(
+                          src: widget.shirtModel,
+                          alt: "Avatar Shirt",
+                          ar: false,
+                          autoRotate: true,
+                          autoRotateDelay: 0,
+                          rotationPerSecond: '25deg',
+                          cameraControls: false,
+                          disableZoom: true,
+                          disablePan: true,
+                        ),
+                    ],
+                  ),
                 ),
-                if (widget.hairModel.isNotEmpty)
-                  ModelViewer(
-                    src: widget.hairModel,
-                    alt: "Avatar Hair",
-                    ar: false,
-                    autoRotate: true,
-                    autoRotateDelay: 0,
-                    rotationPerSecond: '25deg',
-                    cameraControls: false,
-                    disableZoom: true,
-                    disablePan: true,
-                  ),
-                if (widget.shirtModel.isNotEmpty)
-                  ModelViewer(
-                    src: widget.shirtModel,
-                    alt: "Avatar Shirt",
-                    ar: false,
-                    autoRotate: true,
-                    autoRotateDelay: 0,
-                    rotationPerSecond: '25deg',
-                    cameraControls: false,
-                    disableZoom: true,
-                    disablePan: true,
-                  ),
               ],
             ),
             Positioned.fill(
