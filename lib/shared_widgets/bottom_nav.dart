@@ -17,21 +17,15 @@ class BottomNav extends StatelessWidget {
       indicatorColor: cs.primaryContainer.withOpacity(0.7),
       destinations: const [
         NavigationDestination (
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home_rounded),
-          label: 'Home',
+          icon: Icon(Icons.person_outline_rounded),
+          selectedIcon: Icon(Icons.person_rounded),
+          label: 'Mini-Me',
         ),
 
         NavigationDestination (
           icon: Icon(Icons.add_circle_outline_rounded),
           selectedIcon: Icon(Icons.add_circle_rounded),
           label: 'Log',
-        ),
-
-        NavigationDestination (
-          icon: Icon(Icons.person_outline_rounded),
-          selectedIcon: Icon(Icons.person_rounded),
-          label: 'Mini-Me',
         ),
 
         NavigationDestination (
@@ -43,7 +37,7 @@ class BottomNav extends StatelessWidget {
         NavigationDestination (
           icon: Icon(Icons.settings_outlined),
           selectedIcon: Icon(Icons.settings_rounded),
-          label: 'Pofile'
+          label: 'Profile'
         ),
       ],
     );
