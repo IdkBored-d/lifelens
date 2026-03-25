@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:lifelens/widgets/exercise_detail_sheet.dart';
 import 'package:lifelens/widgets/exercise_hero.dart';
@@ -110,9 +108,14 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final canPop = Navigator.canPop(context);
 
     return Scaffold(
       backgroundColor: cs.surface,
+      appBar: AppBar(
+        leading: canPop ? const BackButton() : null,
+        title: const Text('Exercise Log'),
+      ),
       floatingActionButton: FutureBuilder<List<ExerciseModel>>(
         future: _futureExercises,
         builder: (context, snapshot) {

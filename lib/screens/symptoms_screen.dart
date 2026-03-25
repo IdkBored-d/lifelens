@@ -693,9 +693,13 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final canPop = Navigator.canPop(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Symptoms')),
+      appBar: AppBar(
+        leading: canPop ? const BackButton() : null,
+        title: const Text('Symptoms'),
+      ),
       body: SafeArea(
         child: GestureDetector(
           behavior: HitTestBehavior.deferToChild,

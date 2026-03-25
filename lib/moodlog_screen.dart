@@ -88,10 +88,14 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final canPop = Navigator.canPop(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(title: const Text("Mood Log")),
+      appBar: AppBar(
+        leading: canPop ? const BackButton() : null,
+        title: const Text("Mood Log"),
+      ),
       body: SafeArea(
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
