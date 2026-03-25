@@ -48,6 +48,7 @@ class MiniMeScreen extends StatelessWidget {
                           bodyModel: avatarStore.bodyModel,
                           hairModel: avatarStore.hairModel,
                           shirtModel: avatarStore.shirtModel,
+                          bodyWidthScale: avatarStore.bodyWidthScale,
                           moodLabel: latest?.moodLabel,
                           glow: glow,
                           size: avatarSize,
