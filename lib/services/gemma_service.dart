@@ -26,7 +26,7 @@ class GemmaService {
       modelType: ModelType.gemmaIt,
     ).fromFile(modelPath).install();
 
-    _model    = await FlutterGemma.getActiveModel(maxTokens: 1024);
+    _model    = await FlutterGemma.getActiveModel(maxTokens: 2048);
     _isLoaded = true;
   }
 
@@ -34,22 +34,33 @@ class GemmaService {
 
   /// Run a single-turn inference. Opens a session, sends [prompt],
   /// collects the response, and closes the session.
+  ///
+  /// The session is always closed in a finally block — if [getResponse]
+  /// throws, the MediaPipe session handle is not leaked.
+  ///
+  /// Token budget notes (Gemma 2 2B IT, 8192-token context window):
+  ///   Mood response:    ~300 prompt + ~400 output  =  ~700  tokens
+  ///   Symptom expand:   ~700 prompt + ~900 output  = ~1600  tokens
+  ///   EOD summary:     ~1100 prompt + ~900 output  = ~2000  tokens
+  /// All well within the 8192-token limit at maxTokens=2048.
   Future<String> generate(String prompt) async {
     assert(_isLoaded, 'GemmaService not loaded. Call load() first.');
 
     final session = await _model!.createSession(
-      temperature: 0.7,
+      temperature: 0.4,   // lower = more predictable, less rambling
       randomSeed:  42,
-      topK:        40,
+      topK:        20,    // tighter sampling for structured health output
     );
 
-    await session.addQueryChunk(
-      Message.text(text: prompt, isUser: true),
-    );
-
-    final response = await session.getResponse();
-    await session.close();
-    return response;
+    try {
+      await session.addQueryChunk(
+        Message.text(text: prompt, isUser: true),
+      );
+      return await session.getResponse();
+    } finally {
+      // Always close, even if getResponse() throws — prevents handle leaks.
+      await session.close();
+    }
   }
 
   // ── MOOD PIPELINE ───────────────────────────────────────────────────────────
