@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     
     # ML Models
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model: str = "SalmanFaroz/DisEmbed-v1" 
+    #can use "all-MiniLM-L6-v2" for other more general purposes
     
     # Rate Limiting
     rate_limit_per_minute: int = 30
