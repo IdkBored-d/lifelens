@@ -44,3 +44,18 @@ gradle.projectsEvaluated {
         }
     }
 }
+
+subprojects {
+    // Changed: set namespace as soon as Android library plugins are applied (AGP 8+ requirement).
+    pluginManager.withPlugin("com.android.library") {
+        extensions.findByName("android")?.let { androidExt ->
+            if (androidExt is com.android.build.gradle.BaseExtension) {
+                if (androidExt.namespace.isNullOrEmpty()) {
+                    androidExt.namespace = project.group.toString().ifEmpty {
+                        "com.${project.name.replace(Regex("[^a-zA-Z0-9]"), "")}"
+                    }
+                }
+            }
+        }
+    }
+}
