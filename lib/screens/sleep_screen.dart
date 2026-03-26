@@ -33,9 +33,11 @@ class _SleepScreenState extends State<SleepScreen> {
   Widget build(BuildContext context) {
   final theme = Theme.of(context);
   final cs = theme.colorScheme;
+  final canPop = Navigator.canPop(context);
 
   return Scaffold(
     appBar: AppBar(
+      leading: canPop ? const BackButton() : null,
       title: Text(
         'Sleep Tracking',
         style: theme.textTheme.titleLarge?.copyWith(

@@ -15,6 +15,29 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  static const Map<String, Map<String, String>> _sphereUiDemo = {
+    'Mental Health': {
+      'status': 'Peer support is strong this evening',
+      'preview': '"Small win: I got outside for 10 minutes and it helped."',
+    },
+    'Diabetes': {
+      'status': 'Meal and glucose tips trending',
+      'preview': '"Post-meal walk lowered my afternoon spike today."',
+    },
+    'Sleep': {
+      'status': 'Wind-down routine check-ins are trending',
+      'preview': '"No screens for 20 mins before bed actually worked."',
+    },
+    'Exercise': {
+      'status': 'Mobility streaks are heating up',
+      'preview': '"15-minute mobility challenge day 6 complete."',
+    },
+    'General': {
+      'status': 'Daily accountability thread is active',
+      'preview': '"One goal today: move, hydrate, and check in."',
+    },
+  };
+
   @override
   void initState() {
     super.initState();
@@ -22,9 +45,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   Future<void> _initializePremadeSpheres() async {
-    final spheresRef = FirebaseFirestore.instance.collection('spheres');
+    final CollectionReference<Map<String, dynamic>> spheresRef =
+        FirebaseFirestore.instance.collection('spheres');
 
-    final premade = [
+    final premade = <Map<String, String>>[
       {
         'name': 'Mental Health',
         'description': 'Share and discuss mental health topics',
@@ -35,22 +59,119 @@ class _CommunityScreenState extends State<CommunityScreen> {
       {'name': 'General', 'description': 'General health discussions'},
     ];
 
-    for (var sphere in premade) {
+    for (final sphere in premade) {
       final query = await spheresRef
           .where('name', isEqualTo: sphere['name'])
           .limit(1)
           .get();
 
+      DocumentReference<Map<String, dynamic>> sphereRef;
+
       if (query.docs.isEmpty) {
-        await spheresRef.add({
+        sphereRef = await spheresRef.add({
           'name': sphere['name'],
           'description': sphere['description'],
           'memberCount': 0,
           'createdAt': FieldValue.serverTimestamp(),
           'isPremade': true,
         });
+      } else {
+        sphereRef = query.docs.first.reference;
       }
+
+      await _seedDummySphereData(sphereRef, sphere['name']!);
     }
+  }
+
+  Future<void> _seedDummySphereData(
+    DocumentReference<Map<String, dynamic>> sphereRef,
+    String sphereName,
+  ) async {
+    final sphereSnapshot = await sphereRef.get();
+    final existing = sphereSnapshot.data();
+
+    if (existing?['dummySeedVersion'] == 1) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final members = [
+      {'id': 'demo_member_alex', 'nickname': 'AlexPulse'},
+      {'id': 'demo_member_river', 'nickname': 'RiverMind'},
+      {'id': 'demo_member_sam', 'nickname': 'SamBalance'},
+      {'id': 'demo_member_jo', 'nickname': 'JoSpark'},
+    ];
+
+    final messagesBySphere = {
+      'Mental Health': [
+        'Small win today: I took a 10-minute walk before work and felt less overwhelmed.',
+        'Sharing a grounding trick: name 5 things you can see, 4 you can feel, 3 you can hear.',
+        'Anyone else trying to reduce doom-scrolling before bed?',
+      ],
+      'Diabetes': [
+        'Reminder: hydrated + short walk after meals has helped my afternoon numbers.',
+        'What low-prep snacks are working for everyone this week?',
+        'I started logging meals with mood and energy. Patterns are finally making sense.',
+      ],
+      'Sleep': [
+        'Last night I set a wind-down alarm and actually fell asleep faster.',
+        'Trying to keep wake-up time consistent even on weekends. Hard but helping.',
+        'Drop your favorite no-screen routine for the last 20 minutes before bed.',
+      ],
+      'Exercise': [
+        'Did a 15-minute mobility session today and my back feels better already.',
+        'Anyone doing beginner-friendly strength plans at home?',
+        'Stacking movement with music has made it easier to stay consistent.',
+      ],
+      'General': [
+        'Goal for today: one healthy meal, one walk, one check-in.',
+        'What is one habit that gave you the biggest boost this month?',
+        'Keeping this thread for quick daily accountability check-ins.',
+      ],
+    };
+
+    final seededMessages =
+        messagesBySphere[sphereName] ??
+        [
+          'Welcome to the sphere. Share what you are working on this week.',
+          'Daily check-in: one win and one challenge.',
+          'Use this space to support each other with practical tips.',
+        ];
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (int i = 0; i < members.length; i++) {
+      final member = members[i];
+      final memberRef = sphereRef.collection('members').doc(member['id']);
+      batch.set(memberRef, {
+        'nickname': member['nickname'],
+        'joinedAt': Timestamp.fromDate(now.subtract(Duration(days: 10 - i))),
+        'warningCount': 0,
+      }, SetOptions(merge: true));
+    }
+
+    for (int i = 0; i < seededMessages.length; i++) {
+      final messageRef = sphereRef
+          .collection('messages')
+          .doc('demo_msg_${i + 1}');
+      final author = members[i % members.length];
+      batch.set(messageRef, {
+        'text': seededMessages[i],
+        'userId': author['id'],
+        'nickname': author['nickname'],
+        'timestamp': Timestamp.fromDate(
+          now.subtract(Duration(minutes: (i + 1) * 18)),
+        ),
+      }, SetOptions(merge: true));
+    }
+
+    batch.set(sphereRef, {
+      'memberCount': members.length,
+      'dummySeedVersion': 1,
+      'lastDummySeedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await batch.commit();
   }
 
   @override
@@ -61,7 +182,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
       backgroundColor: cs.surface,
       body: Column(
         children: [
-          // Search bar and add button
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -97,8 +217,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
               ],
             ),
           ),
-
-          // Spheres list
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -160,7 +278,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Widget _buildSphereCard(BuildContext context, Sphere sphere) {
     final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     final userId = FirebaseAuth.instance.currentUser?.uid;
+    final demo =
+        _sphereUiDemo[sphere.name] ??
+        const {
+          'status': 'Community updates available',
+          'preview': '"New check-ins are coming in for this sphere."',
+        };
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -170,7 +295,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
         onTap: () async {
           if (userId == null) return;
 
-          // Check if user is already a member
           final memberDoc = await FirebaseFirestore.instance
               .collection('spheres')
               .doc(sphere.id)
@@ -179,10 +303,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
               .get();
 
           if (!memberDoc.exists) {
-            // Show nickname prompt
             _showNicknamePrompt(context, sphere);
           } else {
-            // Navigate to chat
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -194,74 +316,100 @@ class _CommunityScreenState extends State<CommunityScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Icon
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.groups_rounded, size: 32, color: cs.primary),
-              ),
-              const SizedBox(width: 16),
-
-              // Sphere info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      sphere.name,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: cs.onSurface,
-                      ),
-                    ),
-                    if (sphere.description != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        sphere.description!,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: cs.onSurfaceVariant,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              // Member count
-              Column(
+              Row(
                 children: [
-                  Icon(Icons.people, color: cs.primary, size: 20),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${sphere.memberCount}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: cs.onSurface,
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.groups_rounded,
+                      size: 32,
+                      color: cs.primary,
                     ),
                   ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          sphere.name,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                        if (sphere.description != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            sphere.description!,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Column(
+                    children: [
+                      Icon(Icons.people, color: cs.primary, size: 20),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${sphere.memberCount}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!sphere.isPremade && sphere.creatorId == userId) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline, color: cs.error),
+                      onPressed: () => _confirmDeleteSphere(context, sphere),
+                      tooltip: 'Delete sphere',
+                    ),
+                  ],
                 ],
               ),
-
-              // Delete button for user-created spheres
-              if (!sphere.isPremade && sphere.creatorId == userId) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(Icons.delete_outline, color: cs.error),
-                  onPressed: () => _confirmDeleteSphere(context, sphere),
-                  tooltip: 'Delete sphere',
+              const SizedBox(height: 10),
+              Text(
+                demo['status'] ?? '',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w700,
                 ),
-              ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  demo['preview'] ?? '',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -341,17 +489,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
           .collection('spheres')
           .doc(sphere.id);
 
-      // Add user to members
       await sphereRef.collection('members').doc(userId).set({
         'nickname': nickname,
         'joinedAt': FieldValue.serverTimestamp(),
       });
 
-      // Increment member count
       await sphereRef.update({'memberCount': FieldValue.increment(1)});
 
       if (mounted) {
-        // Navigate to chat
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -490,19 +635,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
           .collection('spheres')
           .doc(sphere.id);
 
-      // Delete all messages
       final messages = await sphereRef.collection('messages').get();
-      for (var doc in messages.docs) {
+      for (final doc in messages.docs) {
         await doc.reference.delete();
       }
 
-      // Delete all members
       final members = await sphereRef.collection('members').get();
-      for (var doc in members.docs) {
+      for (final doc in members.docs) {
         await doc.reference.delete();
       }
 
-      // Delete the sphere
       await sphereRef.delete();
 
       if (mounted) {
