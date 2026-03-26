@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:lifelens/widgets/home_dashboard.dart';
 import '../auth/SignupLogin.dart';
 import '../loading_screen.dart';
 import '../HomeScreen.dart';
@@ -9,20 +8,33 @@ import '../intro_screen.dart';
 import '../auth/verifyemail_screen.dart';
 import 'app_init.dart';
 
-class AppRoot extends StatelessWidget {
+class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
+
+  @override
+  State<AppRoot> createState() => _AppRootState();
+}
+
+class _AppRootState extends State<AppRoot> {
+  late final Future<void> _initFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initFuture = initializeApp();
+  }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<void>(
-      future: initializeApp(),
+      future: _initFuture,
       builder: (context, initSnapshot) {
         if (initSnapshot.connectionState != ConnectionState.done) {
           return const LoadingScreen();
         }
 
         return StreamBuilder<User?>(
-          stream: FirebaseAuth.instance.authStateChanges(),
+          stream: FirebaseAuth.instance.idTokenChanges(),
           builder: (context, authSnapshot) {
             if (authSnapshot.connectionState == ConnectionState.waiting) {
               return const LoadingScreen();
@@ -33,13 +45,14 @@ class AppRoot extends StatelessWidget {
             }
 
             final user = authSnapshot.data!;
+
             if (!user.emailVerified) {
               return VerifyEmailScreen(email: user.email ?? '');
             }
 
             final uid = user.uid;
 
-            return StreamBuilder<DocumentSnapshot>(
+            return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
                   .collection('users')
                   .doc(uid)
@@ -49,12 +62,17 @@ class AppRoot extends StatelessWidget {
                   return const LoadingScreen();
                 }
 
-                if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-                  return const LoadingScreen();
+                if (userSnapshot.hasError) {
+                  return const IntroScreen();
                 }
 
-                final data = userSnapshot.data!.data() as Map<String, dynamic>;
-                final onboardingComplete = data['onboardingComplete'] ?? false;
+                final doc = userSnapshot.data;
+                if (doc == null || !doc.exists) {
+                  return const IntroScreen();
+                }
+
+                final data = doc.data() ?? <String, dynamic>{};
+                final onboardingComplete = data['onboardingComplete'] == true;
 
                 if (!onboardingComplete) {
                   return const IntroScreen();

@@ -13,7 +13,8 @@ android {
 
     defaultConfig {
         applicationId = "com.example.lifelens"
-        minSdk = flutter.minSdkVersion
+        // Changed: health plugin requires Android API level 26 or higher.
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -5,6 +5,7 @@ import 'package:lifelens/screens/sleep_screen.dart';
 import 'package:lifelens/models/quick_action.dart';
 import 'package:lifelens/models/summary_item.dart';
 import 'package:lifelens/moodlog_screen.dart';
+import 'package:lifelens/screens/symptoms_screen.dart';
 import 'package:lifelens/shared_widgets/section_title.dart';
 import 'package:lifelens/widgets/contextual_sugestions.dart';
 import 'package:lifelens/widgets/continue_card.dart';
@@ -98,7 +99,11 @@ class HomeDashboard extends StatelessWidget {
               Quickaction(
                 icon: Icons.healing_outlined,
                 label: "Symptoms",
-                onTap: () => _toast(context, "Symptoms (UI only)"),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SymptomsScreen()),
+                  );
+                }
               ),
             ],
           ),

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/minime_screen.dart';
 import 'package:lifelens/profile_screen.dart';
 import 'package:lifelens/shared_widgets/bottom_nav.dart';
-import 'package:lifelens/widgets/home_dashboard.dart';
 import 'package:lifelens/community/community_screen.dart';
+import 'package:lifelens/screens/log_hub_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.userName});
@@ -16,20 +15,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedMood = -1;
   int _navIndex = 0;
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomeDashboard(
-        userName: widget.userName,
-        selectedMood: _selectedMood,
-        onMoodSelected: (i) => setState(() => _selectedMood = i),
-        onOpenMiniMe: () => setState(() => _navIndex = 2),
-      ),
-      const MoodLogScreen(source: LogSource.tab),
       const MiniMeScreen(),
+      LogHubScreen(userName: widget.userName),
       const CommunityScreen(),
       const ProfileScreen(),
     ];
