@@ -62,8 +62,7 @@ class AppServices {
 
   // Asset paths
   static const String _mobileBertAsset = 'assets/models/mobile_bert_emotion.onnx';
-  //static const String _disEmbedAsset   = 'assets/models/disembed_fp16.onnx';
-  static const String _disEmbedAsset   = 'assets/models/for MVP/disembed_fp32.onnx';
+  static const String _disEmbedAsset   = 'assets/models/disembed_fp16.onnx';
   //static const String _fitnessAsset    = 'assets/models/fitness_model.onnx';
   static const String _fitnessAsset    = 'assets/models/for MVP/fitness_model_v9.onnx';
   static const String _vocabAsset      = 'assets/models/vocab.txt';
