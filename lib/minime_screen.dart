@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
-import 'package:lifelens/services/daily_suggestions_service.dart';
+import 'package:lifelens/services/streak_service.dart';
+import 'package:lifelens/services/minime_shop_service.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
 
@@ -24,7 +25,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   final List<_MiniMeChatMessage> _messages = [
     _MiniMeChatMessage(
       role: _ChatRole.assistant,
-      text: 'Daily guidance is ready. Share what you want to improve and I will build a simple plan.',
+      text:
+          'Daily guidance is ready. Share what you want to improve and I will build a simple plan.',
     ),
   ];
 
@@ -61,7 +63,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _scrollToBottom();
   }
 
-  String _buildOfflineReply({required String userText, required String moodLabel}) {
+  String _buildOfflineReply({
+    required String userText,
+    required String moodLabel,
+  }) {
     final q = userText.toLowerCase();
 
     if (q.contains('anx') || q.contains('stress')) {
@@ -90,6 +95,28 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     });
   }
 
+  Future<void> _openShop({
+    required MoodLogStore moodStore,
+    required AvatarStore avatarStore,
+  }) async {
+    final streak = await StreakService.instance.buildSnapshot(
+      moodLogs: moodStore.items,
+    );
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _MiniMeShopSheet(
+          avatarStore: avatarStore,
+          streakSnapshot: streak,
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -99,8 +126,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
-        title: const Text("Mini-Me"),
+        title: Consumer<AvatarStore>(
+          builder: (context, avatarStore, _) => Text(avatarStore.miniMeName),
+        ),
         actions: [
+          IconButton(
+            tooltip: 'Mini-Me shop',
+            onPressed: () {
+              final moodStore = context.read<MoodLogStore>();
+              final avatarStore = context.read<AvatarStore>();
+              _openShop(moodStore: moodStore, avatarStore: avatarStore);
+            },
+            icon: const Icon(Icons.storefront_rounded),
+          ),
           IconButton(
             tooltip: 'Customize avatar',
             onPressed: () {
@@ -117,6 +155,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       ),
       body: Consumer2<MoodLogStore, AvatarStore>(
         builder: (context, moodStore, avatarStore, _) {
+          final miniMeName = avatarStore.miniMeName;
           final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
           final intensity = latest?.intensity ?? 0;
           final moodLabel = latest?.moodLabel ?? 'Neutral';
@@ -129,58 +168,44 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  cs.surface,
-                  cs.surfaceContainerHighest,
-                ],
+                colors: [cs.surface, cs.surfaceContainerHighest],
               ),
             ),
             child: SafeArea(
               child: Column(
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: _MiniMeStreakSection(moodLogs: moodStore.items),
+                  ),
                   Expanded(
-                    child: FutureBuilder<List<DailySuggestion>>(
-                      key: const ValueKey('avatar-panel'),
-                      future: DailySuggestionsService.instance
-                          .getDailySuggestions(moodLogs: moodStore.items),
-                      builder: (context, snapshot) {
-                        final defaultSuggestion = snapshot.connectionState ==
-                                ConnectionState.waiting
-                            ? 'I am preparing your suggestion...'
-                            : 'Model not connected yet. Placeholder guidance is active.';
-
-                        final suggestion = snapshot.data?.isNotEmpty == true
-                            ? snapshot.data!.first.action
-                            : defaultSuggestion;
-
-                        return _AvatarPanel(
-                          avatarStore: avatarStore,
-                          glow: glow,
-                          moodLabel: latest?.moodLabel,
-                          moodEmoji: latest?.emoji,
-                          suggestionText: suggestion,
-                          chatController: _chatController,
-                          chatFocusNode: _chatFocusNode,
-                          isReplying: _isReplying,
-                          isCoachExpanded: _isCoachExpanded,
-                          messages: _messages,
-                          scrollController: _scrollController,
-                          onToggleCoachExpanded: () {
-                            setState(() {
-                              _isCoachExpanded = !_isCoachExpanded;
-                            });
-                            if (_isCoachExpanded) {
-                              _scrollToBottom();
-                            }
-                          },
-                          onExpandCoach: () {
-                            if (!_isCoachExpanded) {
-                              setState(() => _isCoachExpanded = true);
-                            }
-                          },
-                          onSend: () => _sendMessage(moodLabel),
-                        );
+                    child: _AvatarPanel(
+                      miniMeName: miniMeName,
+                      avatarStore: avatarStore,
+                      glow: glow,
+                      moodLabel: latest?.moodLabel,
+                      moodEmoji: latest?.emoji,
+                      suggestionText: '(...)',
+                      chatController: _chatController,
+                      chatFocusNode: _chatFocusNode,
+                      isReplying: _isReplying,
+                      isCoachExpanded: _isCoachExpanded,
+                      messages: _messages,
+                      scrollController: _scrollController,
+                      onToggleCoachExpanded: () {
+                        setState(() {
+                          _isCoachExpanded = !_isCoachExpanded;
+                        });
+                        if (_isCoachExpanded) {
+                          _scrollToBottom();
+                        }
                       },
+                      onExpandCoach: () {
+                        if (!_isCoachExpanded) {
+                          setState(() => _isCoachExpanded = true);
+                        }
+                      },
+                      onSend: () => _sendMessage(moodLabel),
                     ),
                   ),
                 ],
@@ -195,6 +220,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
 class _AvatarPanel extends StatelessWidget {
   const _AvatarPanel({
+    required this.miniMeName,
     required this.avatarStore,
     required this.glow,
     required this.moodLabel,
@@ -211,6 +237,7 @@ class _AvatarPanel extends StatelessWidget {
     required this.onSend,
   });
 
+  final String miniMeName;
   final AvatarStore avatarStore;
   final Color glow;
   final String? moodLabel;
@@ -230,8 +257,10 @@ class _AvatarPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final avatarSize = (constraints.biggest.shortestSide * 0.82)
-            .clamp(260.0, 700.0);
+        final avatarSize = (constraints.biggest.shortestSide * 0.82).clamp(
+          260.0,
+          700.0,
+        );
 
         return Stack(
           children: [
@@ -265,6 +294,7 @@ class _AvatarPanel extends StatelessWidget {
                 child: Opacity(
                   opacity: isCoachExpanded ? 1 : 0,
                   child: _InlineCoachPanel(
+                    miniMeName: miniMeName,
                     messages: messages,
                     isReplying: isReplying,
                     scrollController: scrollController,
@@ -280,13 +310,14 @@ class _AvatarPanel extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surface.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .outlineVariant
-                        .withOpacity(0.45),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outlineVariant.withOpacity(0.45),
                   ),
                 ),
                 child: Row(
@@ -313,7 +344,7 @@ class _AvatarPanel extends StatelessWidget {
                         maxLines: 5,
                         onTap: onExpandCoach,
                         decoration: InputDecoration(
-                          hintText: 'Type to Mini-Me...',
+                          hintText: 'Type to $miniMeName...',
                           filled: true,
                           fillColor: Theme.of(context)
                               .colorScheme
@@ -403,28 +434,15 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Mini-Me says',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: cs.primary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            text,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onPrimaryContainer,
-                              fontWeight: FontWeight.w700,
-                              height: 1.25,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        text,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w700,
+                          height: 1.25,
+                        ),
                       ),
                     ),
                   ],
@@ -450,7 +468,10 @@ class _AvatarSuggestionBubble extends StatelessWidget {
 }
 
 class _SpeechTailPainter extends CustomPainter {
-  const _SpeechTailPainter({required this.fillColor, required this.borderColor});
+  const _SpeechTailPainter({
+    required this.fillColor,
+    required this.borderColor,
+  });
 
   final Color fillColor;
   final Color borderColor;
@@ -485,12 +506,14 @@ class _SpeechTailPainter extends CustomPainter {
 
 class _InlineCoachPanel extends StatelessWidget {
   const _InlineCoachPanel({
+    required this.miniMeName,
     required this.moodLabel,
     required this.isReplying,
     required this.messages,
     required this.scrollController,
   });
 
+  final String miniMeName;
   final String moodLabel;
   final bool isReplying;
   final List<_MiniMeChatMessage> messages;
@@ -524,7 +547,7 @@ class _InlineCoachPanel extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Guidance Center • Mood: $moodLabel',
+                    '$miniMeName Guidance • Mood: $moodLabel',
                     style: theme.textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: cs.onSurfaceVariant,
@@ -542,7 +565,7 @@ class _InlineCoachPanel extends StatelessWidget {
               itemCount: messages.length + (isReplying ? 1 : 0),
               itemBuilder: (context, index) {
                 if (isReplying && index == messages.length) {
-                  return const _TypingBubble();
+                  return _TypingBubble(miniMeName: miniMeName);
                 }
 
                 final message = messages[index];
@@ -582,7 +605,7 @@ class _InlineCoachPanel extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            isUser ? 'Your note' : 'Mini-Me guidance',
+                            isUser ? 'Your note' : '$miniMeName guidance',
                             style: theme.textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w700,
                               color: isUser
@@ -596,9 +619,7 @@ class _InlineCoachPanel extends StatelessWidget {
                       Text(
                         message.text,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: isUser
-                              ? cs.onTertiaryContainer
-                              : cs.onSurface,
+                          color: isUser ? cs.onTertiaryContainer : cs.onSurface,
                           height: 1.3,
                         ),
                       ),
@@ -615,7 +636,9 @@ class _InlineCoachPanel extends StatelessWidget {
 }
 
 class _TypingBubble extends StatelessWidget {
-  const _TypingBubble();
+  const _TypingBubble({required this.miniMeName});
+
+  final String miniMeName;
 
   @override
   Widget build(BuildContext context) {
@@ -638,15 +661,651 @@ class _TypingBubble extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Text(
-            'Mini-Me is preparing your next step...',
+            '$miniMeName is preparing your next step...',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
-                ),
+              color: cs.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _MiniMeStreakSection extends StatefulWidget {
+  const _MiniMeStreakSection({required this.moodLogs});
+
+  final List<MoodCheckIn> moodLogs;
+
+  @override
+  State<_MiniMeStreakSection> createState() => _MiniMeStreakSectionState();
+}
+
+class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
+  late Future<StreakSnapshot> _future;
+  String _signature = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _signature = _buildSignature(widget.moodLogs);
+    _future = _loadSnapshot();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MiniMeStreakSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newSignature = _buildSignature(widget.moodLogs);
+    if (newSignature != _signature) {
+      _signature = newSignature;
+      _future = _loadSnapshot();
+    }
+  }
+
+  Future<StreakSnapshot> _loadSnapshot() {
+    return StreakService.instance.buildSnapshot(moodLogs: widget.moodLogs);
+  }
+
+  String _buildSignature(List<MoodCheckIn> logs) {
+    final latest = logs.isEmpty ? '' : logs.first.createdAt.toIso8601String();
+    return '${logs.length}|$latest';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return FutureBuilder<StreakSnapshot>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _StreakShell(
+            title: 'Daily Streak',
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: List<Widget>.generate(
+                7,
+                (index) => _DayCircle(
+                  label: const Text(''),
+                  icon: Icons.circle_outlined,
+                  filled: false,
+                ),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || snapshot.data == null) {
+          return _StreakShell(
+            title: 'Daily Streak',
+            child: Text(
+              'Streak data will update after your next log.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          );
+        }
+
+        final streak = snapshot.data!;
+        final badgeIcon = _badgeToIcon(streak.badge);
+
+        return _StreakShell(
+          title: 'Daily Streak',
+          headerTrailing: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(badgeIcon, size: 16, color: cs.onPrimaryContainer),
+                const SizedBox(width: 6),
+                Text(
+                  '${streak.currentStreak} days',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: cs.onPrimaryContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: streak.recentDays.map((day) {
+                  final weekday = _weekdayLetter(day.date.weekday);
+                  return _DayCircle(
+                    label: Text(
+                      weekday,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    icon: _levelToIcon(day.runLevel),
+                    filled: day.isLogged,
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                streak.message,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Best streak: ${streak.bestStreak} day${streak.bestStreak == 1 ? '' : 's'}',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _weekdayLetter(int weekday) {
+    const letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    return letters[(weekday - 1).clamp(0, 6)];
+  }
+
+  IconData _badgeToIcon(String badge) {
+    switch (badge) {
+      case 'sprout':
+        return Icons.spa_rounded;
+      case 'leaf':
+        return Icons.eco_rounded;
+      case 'bolt':
+        return Icons.bolt_rounded;
+      case 'flame':
+        return Icons.local_fire_department_rounded;
+      case 'star':
+        return Icons.star_rounded;
+      case 'crown':
+        return Icons.workspace_premium_rounded;
+      case 'spark':
+      default:
+        return Icons.auto_awesome_rounded;
+    }
+  }
+
+  IconData _levelToIcon(int runLevel) {
+    if (runLevel <= 0) {
+      return Icons.circle_outlined;
+    }
+    if (runLevel == 1) {
+      return Icons.done_rounded;
+    }
+    if (runLevel == 2) {
+      return Icons.spa_rounded;
+    }
+    if (runLevel == 3) {
+      return Icons.eco_rounded;
+    }
+    if (runLevel == 4) {
+      return Icons.bolt_rounded;
+    }
+    if (runLevel <= 6) {
+      return Icons.local_fire_department_rounded;
+    }
+    return Icons.workspace_premium_rounded;
+  }
+}
+
+class _StreakShell extends StatelessWidget {
+  const _StreakShell({
+    required this.title,
+    required this.child,
+    this.headerTrailing,
+  });
+
+  final String title;
+  final Widget child;
+  final Widget? headerTrailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.7),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (headerTrailing != null) headerTrailing!,
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _DayCircle extends StatelessWidget {
+  const _DayCircle({
+    required this.label,
+    required this.icon,
+    required this.filled,
+  });
+
+  final Widget label;
+  final IconData icon;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        label,
+        const SizedBox(height: 6),
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled ? cs.primary : cs.surface,
+            border: Border.all(
+              color: filled ? cs.primary : cs.outlineVariant,
+              width: 1.2,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: filled ? cs.onPrimary : cs.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniMeShopSheet extends StatefulWidget {
+  const _MiniMeShopSheet({
+    required this.avatarStore,
+    required this.streakSnapshot,
+  });
+
+  final AvatarStore avatarStore;
+  final StreakSnapshot streakSnapshot;
+
+  @override
+  State<_MiniMeShopSheet> createState() => _MiniMeShopSheetState();
+}
+
+class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
+  final MiniMeShopService _shopService = MiniMeShopService.instance;
+  late Future<MiniMeShopState> _stateFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _stateFuture = _loadState();
+  }
+
+  Future<MiniMeShopState> _loadState() async {
+    final rewarded = await _shopService.grantDailyRewards(
+      streak: widget.streakSnapshot,
+    );
+
+    if (rewarded.lastReward.rewarded) {
+      return rewarded;
+    }
+
+    return _shopService.loadState();
+  }
+
+  Future<void> _unlock(String itemId) async {
+    setState(() {
+      _stateFuture = _shopService.unlockItem(itemId: itemId);
+    });
+  }
+
+  void _equip(MiniMeShopItem item) {
+    switch (item.type) {
+      case MiniMeItemType.hair:
+        widget.avatarStore.setHairModel(item.assetPath ?? '');
+        break;
+      case MiniMeItemType.shirt:
+        widget.avatarStore.setShirtModel(item.assetPath ?? '');
+        break;
+      case MiniMeItemType.bodyScale:
+        widget.avatarStore.setBodyWidthScale(item.bodyScale ?? 1.0);
+        break;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${item.name} equipped.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  bool _isEquipped(MiniMeShopItem item) {
+    switch (item.type) {
+      case MiniMeItemType.hair:
+        return widget.avatarStore.hairModel == (item.assetPath ?? '');
+      case MiniMeItemType.shirt:
+        return widget.avatarStore.shirtModel == (item.assetPath ?? '');
+      case MiniMeItemType.bodyScale:
+        return widget.avatarStore.bodyWidthScale == (item.bodyScale ?? 1.0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.78,
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: FutureBuilder<MiniMeShopState>(
+          future: _stateFuture,
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final state = snapshot.data!;
+
+            return Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.outlineVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Mini-Me Shop',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.monetization_on_rounded,
+                              size: 16,
+                              color: cs.onPrimaryContainer,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${state.coins}',
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: cs.onPrimaryContainer,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (state.lastReward.message.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: state.lastReward.rewarded
+                            ? cs.tertiaryContainer
+                            : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: state.lastReward.rewarded
+                              ? cs.tertiary.withOpacity(0.35)
+                              : cs.outlineVariant.withOpacity(0.35),
+                        ),
+                      ),
+                      child: Text(
+                        state.lastReward.rewarded
+                            ? '+${state.lastReward.amount} coins • ${state.lastReward.message}'
+                            : state.lastReward.message,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: state.lastReward.rewarded
+                              ? cs.onTertiaryContainer
+                              : cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                    itemCount: state.items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final item = state.items[index];
+                      final unlocked = state.unlockedIds.contains(item.id);
+                      final equipped = unlocked && _isEquipped(item);
+                      final canBuy = state.coins >= item.cost;
+
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              cs.surfaceContainerHighest,
+                              cs.surfaceContainer,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: equipped
+                                ? cs.primary
+                                : cs.outlineVariant.withOpacity(0.4),
+                            width: equipped ? 1.4 : 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: cs.shadow.withOpacity(0.08),
+                              blurRadius: 10,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: _itemAccent(item, cs).withOpacity(0.18),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                _itemIcon(item),
+                                color: _itemAccent(item, cs),
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          item.name,
+                                          style: theme.textTheme.titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _itemAccent(
+                                            item,
+                                            cs,
+                                          ).withOpacity(0.14),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _itemTypeLabel(item.type),
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                                color: _itemAccent(item, cs),
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.description,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            if (equipped)
+                              FilledButton(
+                                onPressed: null,
+                                child: const Text('Equipped'),
+                              )
+                            else if (unlocked)
+                              FilledButton(
+                                onPressed: () => _equip(item),
+                                child: const Text('Equip'),
+                              )
+                            else
+                              FilledButton.tonal(
+                                onPressed: canBuy
+                                    ? () => _unlock(item.id)
+                                    : null,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.monetization_on_rounded,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text('${item.cost}'),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  IconData _itemIcon(MiniMeShopItem item) {
+    switch (item.type) {
+      case MiniMeItemType.hair:
+        return Icons.face_4_rounded;
+      case MiniMeItemType.shirt:
+        return Icons.checkroom_rounded;
+      case MiniMeItemType.bodyScale:
+        return Icons.accessibility_new_rounded;
+    }
+  }
+
+  String _itemTypeLabel(MiniMeItemType type) {
+    switch (type) {
+      case MiniMeItemType.hair:
+        return 'Hair';
+      case MiniMeItemType.shirt:
+        return 'Outfit';
+      case MiniMeItemType.bodyScale:
+        return 'Stance';
+    }
+  }
+
+  Color _itemAccent(MiniMeShopItem item, ColorScheme cs) {
+    switch (item.type) {
+      case MiniMeItemType.hair:
+        return cs.secondary;
+      case MiniMeItemType.shirt:
+        return cs.primary;
+      case MiniMeItemType.bodyScale:
+        return cs.tertiary;
+    }
   }
 }
 

@@ -13,6 +13,7 @@ class MiniMeAvatar extends StatefulWidget {
   final double size;
   final VoidCallback? onAvatarTap;
   final ValueChanged<double>? onRotate;
+  final bool enableAutoRotate;
 
   const MiniMeAvatar({
     super.key,
@@ -26,15 +27,14 @@ class MiniMeAvatar extends StatefulWidget {
     this.size = 220,
     this.onAvatarTap,
     this.onRotate,
+    this.enableAutoRotate = false,
   });
 
   @override
   State<MiniMeAvatar> createState() => _MiniMeAvatarState();
 }
 
-class _MiniMeAvatarState extends State<MiniMeAvatar>
-    {
-
+class _MiniMeAvatarState extends State<MiniMeAvatar> {
   @override
   Widget build(BuildContext context) {
     final expression = widget.moodEmoji ?? miniMeFaceForMood(widget.moodLabel);
@@ -50,11 +50,7 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(
-              color: widget.glow,
-              blurRadius: 36,
-              spreadRadius: 4,
-            ),
+            BoxShadow(color: widget.glow, blurRadius: 24, spreadRadius: 2),
           ],
         ),
         child: Stack(
@@ -73,9 +69,9 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                         src: widget.bodyModel,
                         alt: "Avatar Body",
                         ar: false,
-                        autoRotate: true,
+                        autoRotate: widget.enableAutoRotate,
                         autoRotateDelay: 0,
-                        rotationPerSecond: '25deg',
+                        rotationPerSecond: '12deg',
                         cameraControls: false,
                         disableZoom: true,
                         disablePan: true,
@@ -85,9 +81,9 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                           src: widget.hairModel,
                           alt: "Avatar Hair",
                           ar: false,
-                          autoRotate: true,
+                          autoRotate: widget.enableAutoRotate,
                           autoRotateDelay: 0,
-                          rotationPerSecond: '25deg',
+                          rotationPerSecond: '12deg',
                           cameraControls: false,
                           disableZoom: true,
                           disablePan: true,
@@ -97,9 +93,9 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                           src: widget.shirtModel,
                           alt: "Avatar Shirt",
                           ar: false,
-                          autoRotate: true,
+                          autoRotate: widget.enableAutoRotate,
                           autoRotateDelay: 0,
-                          rotationPerSecond: '25deg',
+                          rotationPerSecond: '12deg',
                           cameraControls: false,
                           disableZoom: true,
                           disablePan: true,
