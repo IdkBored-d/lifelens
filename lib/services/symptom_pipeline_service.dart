@@ -7,10 +7,8 @@ import 'disembed_service.dart';
 import 'weaviate_service.dart';
 import 'gemma_service.dart';
 import 'gemini_service.dart';
-
-// TODO: Uncomment once ISAR schema is generated
-// import '../database/isar_service.dart';
-// import '../database/symptom_entry.dart';
+import '../database/isar_service.dart';
+import '../database/symptom_entry.dart';
 
 /// Orchestrates USE CASE 2: Symptom reporting pipeline.
 ///
@@ -60,11 +58,11 @@ class SymptomPipelineService {
 
     // ── STEP 2: Placeholder disease lookup ────────────────────────────────
     // TODO: Replace with a real on-device disease embedding index lookup.
-    // For MVP, DisEmbed score is 0.0 so it always escalates to Gemma2b,
+    // For MVP, DisEmbed score is 0.3846 so it always escalates to Gemma2b,
     // which handles the full diagnosis using Weaviate RAG (online) or
     // parametric knowledge (offline).
     const placeholderDiseaseName = 'Unknown';
-    const placeholderScore       = 0.0;
+    const placeholderScore       = 0.3846; // Forces uncertain zone escalation
 
     final deConfidence = _confidence.evaluateDisEmbed(placeholderScore);
 
@@ -135,8 +133,8 @@ class SymptomPipelineService {
     if (isOnline) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
-    final ragContext = ragResults.isNotEmpty
-        ? _weaviate.buildRagContext(ragResults) : null;
+    // isOnline determines offline warning. If online but empty, passes an empty string.
+    final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
     final context   = await _quickTrack.buildSymptomContext();
 
     final gemmaRaw = await _gemma.expandDiagnosis(
@@ -206,26 +204,27 @@ class SymptomPipelineService {
         .where((s) => s.isNotEmpty)
         .toList();
 
-    // ── 1. WRITE TO ISAR (source of truth) ────────────────────────────────
-    // TODO: Uncomment once ISAR schema is generated
-    // await IsarService.instance.writeSymptomEntry(SymptomEntry()
-    //   ..date             = dateStr
-    //   ..rawSymptoms      = userSymptoms
-    //   ..symptomList      = symptomList
-    //   ..predictedAilment = topDisease
-    //   ..disEmbedScore    = disEmbedResult?.cosineScore
-    //   ..diagnosesJson    = jsonEncode(diagnoses.map((d) => {
-    //       'disease':    d.diseaseName,
-    //       'reasoning':  d.reasoning,
-    //       'next_steps': d.nextSteps,
-    //       'is_urgent':  d.isUrgent,
-    //     }).toList())
-    //   ..resolvedBy       = resolvedBy.name
-    //   ..ragUsed          = ragUsed
-    //   ..wasOffline       = isOffline
-    //   ..status           = 'active'
-    //   ..timestamp        = now
-    //   ..updatedAt        = now);
+// ── 1. WRITE TO ISAR (source of truth) ────────────────────────────────
+    final symptomEntry = SymptomEntry()
+      ..date             = dateStr
+      ..rawSymptoms      = userSymptoms
+      ..symptomList      = symptomList
+      ..predictedAilment = topDisease
+      ..disEmbedScore    = disEmbedResult?.cosineScore ?? 0.0
+      ..diagnosesJson    = jsonEncode(diagnoses.map((d) => {
+          'disease':    d.diseaseName,
+          'reasoning':  d.reasoning,
+          'next_steps': d.nextSteps,
+          'is_urgent':  d.isUrgent,
+        }).toList())
+      ..resolvedBy       = resolvedBy.name
+      ..ragUsed          = ragUsed
+      ..wasOffline       = isOffline
+      ..status           = 'active'
+      ..timestamp        = now
+      ..updatedAt        = now;
+
+    await IsarService.instance.writeSymptomEntry(symptomEntry);
 
     // ── 2. WRITE TO QUICK-TRACKING FILE ──────────────────────────────────
     await _quickTrack.appendSymptomEntry(SymptomLogEntry(

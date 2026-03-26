@@ -157,28 +157,42 @@ class AppServices {
       weaviate:   weaviate,
       quickTrack: quickTrack,
       fitness:    fitnessPipeline,
+      disEmbed:   disEmbed,
+      tokenize:   _disEmbedTokenize,
     );
   }
 
   // ── Tokenizer functions ───────────────────────────────────────────────────────
 
-  /// MobileBERT tokenizer — maxLen=128.
-  static Map<String, List<int>> _mobileBertTokenize(String text, int _) {
+  /// MobileBERT tokenizer — enforces maxLen slice
+  static Map<String, List<int>> _mobileBertTokenize(String text, int maxLen) {
     final output = _mbTokenizer.encode(text);
     return {
-      'input_ids':      output.inputIds,
-      'attention_mask': output.attentionMask,
+      'input_ids':      output.inputIds.take(maxLen).toList(),
+      'attention_mask': output.attentionMask.take(maxLen).toList(),
     };
   }
 
-  /// DisEmbed tokenizer — maxLen=512.
-  static Map<String, List<int>> _disEmbedTokenize(String text, int _) {
+  /// DisEmbed tokenizer — enforces maxLen slice
+  static Map<String, List<int>> _disEmbedTokenize(String text, int maxLen) {
     final output = _deTokenizer.encode(text);
     return {
-      'input_ids':      output.inputIds,
-      'attention_mask': output.attentionMask,
+      'input_ids':      output.inputIds.take(maxLen).toList(),
+      'attention_mask': output.attentionMask.take(maxLen).toList(),
     };
   }
+
+  // ── Public tokenizer accessors ────────────────────────────────────────────────
+  // These expose the private tokenizer functions so that dev_test_screen and
+  // any other callers outside this class can pass them as callbacks.
+
+  /// Public accessor for MobileBERT tokenizer (maxLen=128).
+  static Map<String, List<int>> mobileBertTokenize(String text, int maxLen) =>
+      _mobileBertTokenize(text, maxLen);
+
+  /// Public accessor for DisEmbed tokenizer (maxLen=512).
+  static Map<String, List<int>> disEmbedTokenize(String text, int maxLen) =>
+      _disEmbedTokenize(text, maxLen);
 
   // ── Startup sync check ───────────────────────────────────────────────────────
 
@@ -214,11 +228,20 @@ class AppServices {
 
   // ── Health data fetcher ───────────────────────────────────────────────────────
 
-  /// TODO: Implement via MethodChannel to call native HealthKit / Health Connect.
   static Future<RawHealthData?> _fetchHealthData() async {
-    return null; // stub
-  }
+    try {
+      // TODO: Implement native side returning a Map of these values
+      final Map<dynamic, dynamic>? raw = await _healthChannel.invokeMethod('getDailyHealthMetrics');
+      
+      if (raw == null) return null;
 
+      // Temporary stub return until native parsing is mapped
+      return null; 
+    } catch (e) {
+      debugPrint('Health channel error: $e');
+      return null;
+    }
+  }
   // ── Runtime helpers ───────────────────────────────────────────────────────────
 
   /// Load Gemma after OTA download completes — no app restart needed.

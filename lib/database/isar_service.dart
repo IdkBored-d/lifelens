@@ -186,6 +186,7 @@ class IsarService {
   }
 
   /// Fitness scores for the last [n] days, one per day (most recent per day).
+  /// Returns scores newest-first so index 0 = today, index n-1 = oldest.
   /// Used by EodPipelineService for trend calculations.
   Future<List<double>> getLastNDaysFitnessScores(int n) async {
     final cutoff = DateTime.now().subtract(Duration(days: n));
@@ -195,7 +196,11 @@ class IsarService {
         .sortByDateDesc()
         .findAll();
 
-    // Deduplicate: keep only the most recent entry per day
+    // Deduplicate: keep only the most recent entry per day.
+    // NOTE: Map insertion order in Dart is guaranteed, but after iterating
+    // all entries in sortByDateDesc order the Map already preserves that.
+    // We sort explicitly after dedup to be safe — Map.values does NOT
+    // guarantee ordering when keys are inserted out of order.
     final Map<String, FitnessEntry> byDate = {};
     for (final e in entries) {
       if (!byDate.containsKey(e.date)) {
@@ -203,11 +208,12 @@ class IsarService {
       }
     }
 
-    // return scores only
-    return byDate.values
-        .toList()
-        .map((e) => e.fitnessScore)
-        .toList();
+    // Sort by date string descending (ISO 8601 sorts lexicographically).
+    // Result: index 0 = most recent day, last index = oldest day.
+    final sorted = byDate.entries.toList()
+      ..sort((a, b) => b.key.compareTo(a.key));
+
+    return sorted.map((e) => e.value.fitnessScore).toList();
   }
 
   // ─────────────────────────────────────────────

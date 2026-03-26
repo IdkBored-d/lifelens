@@ -8,12 +8,14 @@ import 'package:http/http.dart' as http;
 ///   2. User is on Gemma2b result AND requests more information / another opinion
 ///   OR base model + Gemma2b both failed confidence
 ///
-/// Uses gemini-1.5-flash for MVP (fast, cost-effective).
-/// Upgrade to gemini-1.5-pro if deeper reasoning is needed post-MVP.
+/// Uses gemini-2.5-flash.
+/// Token limits (Gemini 2.5 Flash):
+///   Input:  1,048,576 tokens
+///   Output: 65,536 tokens (default cap)
 class GeminiService {
   final String _apiKey;
 
-  static const String _model   = 'gemini-1.5-flash';
+  static const String _model   = 'gemini-2.5-flash';
   static const String _baseUrl =
       'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -21,7 +23,17 @@ class GeminiService {
 
   // ── Core inference ──────────────────────────────────────────────────────────
 
-  Future<String> generate(String prompt) async {
+  /// Core inference method.
+  ///
+  /// [maxOutputTokens] is per-call configurable because different pipelines
+  /// have very different output size needs:
+  ///   Mood response:       ~400 tokens
+  ///   Symptom 2nd opinion: ~3000 tokens (5 diagnoses + reasoning)
+  ///   EOD deep analysis:   ~3000 tokens (summary + correlation JSON)
+  ///
+  /// Gemini 2.5 Flash hard cap is 65,536 output tokens — all values
+  /// used here are well within that limit.
+  Future<String> generate(String prompt, {int maxOutputTokens = 1024}) async {
     final uri = Uri.parse('$_baseUrl/$_model:generateContent?key=$_apiKey');
 
     final body = jsonEncode({
@@ -33,7 +45,7 @@ class GeminiService {
         }
       ],
       'generationConfig': {
-        'maxOutputTokens': 1024,
+        'maxOutputTokens': maxOutputTokens,
         'temperature':     0.7,
         'topP':            0.95,
       },
@@ -89,7 +101,7 @@ Provide a nuanced mood analysis and personalised, supportive response.
 Be warm, specific to their situation, and offer one actionable suggestion.
 Keep to 4 sentences maximum.
 End with: MOOD_LABEL: [single mood word]
-''');
+''', maxOutputTokens: 1024);
   }
 
   // ── SYMPTOM ─────────────────────────────────────────────────────────────────
@@ -132,7 +144,7 @@ Format as JSON:
 }
 
 Always recommend professional medical evaluation. This is a screening tool only.
-''');
+''', maxOutputTokens: 3000);
   }
 
   // ── EOD (deeper correlation analysis) ──────────────────────────────────────
@@ -174,10 +186,10 @@ Your tasks:
 3. Write a 3–4 sentence warm, non-alarmist user-facing summary.
 4. If anything is potentially serious, recommend a doctor. Do not diagnose.
 
-End with:
+End with this JSON on its own line (no markdown fences):
 {"correlation_summary": "...", "flag": false, "flag_reason": "", "rag_match": null}
 
 Tone: supportive, concise, non-clinical.
-''');
+''', maxOutputTokens: 3000);
   }
 }

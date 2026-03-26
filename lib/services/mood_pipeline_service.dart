@@ -5,9 +5,8 @@ import 'quick_track_service.dart';
 import 'mobilebert_service.dart';
 import 'gemma_service.dart';
 import 'gemini_service.dart';
-
-// TODO: Import ISAR database service once schema is defined
-// import '../database/isar_service.dart';
+import '../database/isar_service.dart';
+import '../database/mood_entry.dart';
 
 /// Orchestrates USE CASE 1: Mood logging pipeline.
 ///
@@ -185,17 +184,21 @@ class MoodPipelineService {
     final dateStr   = now.toIso8601String().split('T').first;
     final condensed = _condenseLog(userLog);
 
-    // ── 1. WRITE TO ISAR (source of truth) ────────────────────────────────
-    // TODO: Replace with actual ISAR write once database schema is defined
-    // await IsarService.instance.writeMoodEntry(IsarMoodEntry(
-    //   date:          dateStr,
-    //   rawLog:        userLog,
-    //   resolvedMood:  resolvedMood,
-    //   resolvedBy:    resolvedBy.name,
-    //   fitnessScore:  currentFitnessScore,
-    //   responseText:  responseText,
-    //   timestamp:     now,
-    // ));
+// ── 1. WRITE TO ISAR (source of truth) ────────────────────────────────
+    final moodEntry = MoodEntry()
+      ..date                 = dateStr
+      ..rawLog               = userLog
+      ..condensedLog         = condensed
+      ..resolvedMood         = resolvedMood
+      ..resolvedBy           = resolvedBy.name
+      ..mobileBertPrediction = mobileBertResult.topLabel
+      ..mobileBertTopProb    = mobileBertResult.topProb
+      ..userConfirmed        = userConfirmed ?? false
+      ..responseText         = responseText
+      ..fitnessScoreSnapshot = currentFitnessScore
+      ..timestamp            = now;
+
+    await IsarService.instance.writeMoodEntry(moodEntry);
 
     // ── 2. WRITE TO QUICK-TRACKING FILE ──────────────────────────────────
     await _quickTrack.appendMoodEntry(MoodLogEntry(
@@ -230,11 +233,19 @@ class MoodPipelineService {
       'anxious', 'content', 'neutral',
     ];
     final lower = text.toLowerCase();
+
+    // 1. Prefer the explicit MOOD_LABEL: tag — most reliable signal.
     for (final label in labels) {
-      if (lower.contains('mood_label: $label') || lower.contains(label)) {
-        return label;
-      }
+      if (lower.contains('mood_label: $label')) return label;
     }
+
+    // 2. Fall back to word-boundary matching to avoid false positives
+    //    e.g. "fear" inside "fearful", "anger" inside "danger",
+    //         "content" inside "discontent" or "contents".
+    for (final label in labels) {
+      if (RegExp(r'\b' + label + r'\b').hasMatch(lower)) return label;
+    }
+
     return 'neutral';
   }
 }

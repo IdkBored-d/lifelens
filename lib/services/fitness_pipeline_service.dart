@@ -2,8 +2,9 @@ import '../models/fitness_result.dart';
 import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
 import 'fitness_mlp_service.dart';
+import '../database/isar_service.dart';
+import '../database/fitness_entry.dart';
 
-// TODO: Import ISAR database service once schema is defined
 // import '../database/isar_service.dart';
 
 /// Orchestrates USE CASE 3: Background fitness scoring.
@@ -80,19 +81,26 @@ class FitnessPipelineService {
       dataFreshnessFlagged:  isStale || !mlpResult.confidenceOk,
     );
 
-    // ── STEP 6: WRITE TO ISAR (source of truth) ───────────────────────────
-    // TODO: Replace with actual ISAR write once database schema is defined
-    // await IsarService.instance.writeFitnessEntry(IsarFitnessEntry(
-    //   fitnessScore:        result.fitnessScore,
-    //   isFit:               result.isFit,
-    //   confidenceOk:        result.confidenceOk,
-    //   healthDataTimestamp: result.healthDataTimestamp,
-    //   inferenceTimestamp:  result.inferenceTimestamp,
-    //   dataFlagged:         result.dataFreshnessFlagged,
-    // ));
+// ── STEP 6: WRITE TO ISAR (source of truth) ───────────────────────────
+    final fitnessEntry = FitnessEntry()
+      ..date                  = rawData.timestamp.toIso8601String().split('T').first
+      ..fitnessScore          = result.fitnessScore
+      ..fitProbability        = mlpResult.fitProbability
+      ..isFit                 = result.isFit
+      ..confidenceOk          = result.confidenceOk
+      ..dataFreshnessFlagged  = result.dataFreshnessFlagged
+      ..age                   = rawData.age
+      ..bmi                   = (rawData.heightCm > 0) ? rawData.weightKg / ((rawData.heightCm / 100) * (rawData.heightCm / 100)) : 22.0
+      ..heartRate             = rawData.restingHeartRate.toInt()
+      ..sleepHours            = rawData.sleepHours
+      ..smokes                = rawData.smokes
+      ..nutritionQuality      = rawData.nutritionQuality
+      ..activityIndex         = rawData.activityIndex
+      ..isMale                = rawData.isMale
+      ..healthDataTimestamp   = result.healthDataTimestamp
+      ..inferenceTimestamp    = result.inferenceTimestamp;
 
-    return result;
-  }
+    await IsarService.instance.writeFitnessEntry(fitnessEntry);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 

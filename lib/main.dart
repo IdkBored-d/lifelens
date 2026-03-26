@@ -59,6 +59,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'restart.dart';
 import 'theme_controller.dart';
 
+import 'package:lifelens/dev_test_screen.dart';
+
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -86,7 +89,8 @@ class MyApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'LifeLens',
-          home: const AppRoot(),
+          // home: const AppRoot(),
+          home: const DevTestScreen(),
           theme: controller.theme,
         );
       },
