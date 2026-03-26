@@ -32,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/android/app/build
+assets/models/for MVP/disembed_fp32.onnx
 
 # Symbolication related
 app.*.symbols
