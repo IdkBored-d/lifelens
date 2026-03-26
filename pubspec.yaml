@@ -56,9 +56,8 @@ flutter:
   assets:
     - lib/assets/minime/             # existing
     - assets/models/mobile_bert_emotion.onnx
-  #  - assets/models/disembed_fp16.onnx
+    - assets/models/disembed_fp16.onnx
   #  - assets/models/fitness_model.onnx
-    - assets/models/for MVP/disembed_fp32.onnx
     - assets/models/for MVP/fitness_model_v9.onnx
     - assets/models/vocab.txt
     - lib/assets/minime/body.glb

@@ -1188,6 +1188,8 @@ PODS:
     - abseil/meta/type_traits
     - abseil/xcprivacy
   - abseil/xcprivacy (1.20240722.0)
+  - background_downloader (0.0.1):
+    - Flutter
   - BoringSSL-GRPC (0.0.37):
     - BoringSSL-GRPC/Implementation (= 0.0.37)
     - BoringSSL-GRPC/Interface (= 0.0.37)
@@ -1256,6 +1258,13 @@ PODS:
     - nanopb (~> 3.30910.0)
   - FirebaseSharedSwift (11.15.0)
   - Flutter (1.0.0)
+  - flutter_gemma (0.12.6):
+    - Flutter
+    - MediaPipeTasksGenAI (= 0.10.24)
+    - MediaPipeTasksGenAIC (= 0.10.24)
+    - TensorFlowLiteC (= 0.0.1-nightly.20250619)
+    - TensorFlowLiteSelectTfOps (= 0.0.1-nightly.20250619)
+    - TensorFlowLiteSwift (= 0.0.1-nightly.20250619)
   - GoogleUtilities/AppDelegateSwizzler (8.1.0):
     - GoogleUtilities/Environment
     - GoogleUtilities/Logger
@@ -1372,18 +1381,46 @@ PODS:
   - GTMSessionFetcher/Core (4.5.0)
   - health (13.3.1):
     - Flutter
+  - isar_flutter_libs (1.0.0):
+    - Flutter
+  - large_file_handler (0.0.1):
+    - Flutter
   - leveldb-library (1.22.6)
+  - MediaPipeTasksGenAI (0.10.24):
+    - MediaPipeTasksGenAIC (= 0.10.24)
+  - MediaPipeTasksGenAIC (0.10.24)
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
     - nanopb/encode (= 3.30910.0)
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
+  - onnxruntime (0.0.1):
+    - Flutter
+    - onnxruntime-objc (= 1.15.1)
+  - onnxruntime-c (1.15.1)
+  - onnxruntime-objc (1.15.1):
+    - onnxruntime-objc/Core (= 1.15.1)
+  - onnxruntime-objc/Core (1.15.1):
+    - onnxruntime-c (= 1.15.1)
+  - path_provider_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - RecaptchaInterop (101.0.0)
   - share_plus (0.0.1):
     - Flutter
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
+  - TensorFlowLiteC (0.0.1-nightly.20250619):
+    - TensorFlowLiteC/Core (= 0.0.1-nightly.20250619)
+  - TensorFlowLiteC/Core (0.0.1-nightly.20250619)
+  - TensorFlowLiteSelectTfOps (0.0.1-nightly.20250619)
+  - TensorFlowLiteSwift (0.0.1-nightly.20250619):
+    - TensorFlowLiteSwift/Core (= 0.0.1-nightly.20250619)
+  - TensorFlowLiteSwift/Core (0.0.1-nightly.20250619):
+    - TensorFlowLiteC (= 0.0.1-nightly.20250619)
+    - TensorFlowLiteSwift/Privacy (= 0.0.1-nightly.20250619)
+  - TensorFlowLiteSwift/Privacy (0.0.1-nightly.20250619)
   - url_launcher_ios (0.0.1):
     - Flutter
   - webview_flutter_wkwebview (0.0.1):
@@ -1391,12 +1428,18 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - background_downloader (from `.symlinks/plugins/background_downloader/ios`)
   - cloud_firestore (from `.symlinks/plugins/cloud_firestore/ios`)
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - Flutter (from `Flutter`)
+  - flutter_gemma (from `.symlinks/plugins/flutter_gemma/ios`)
   - health (from `.symlinks/plugins/health/ios`)
+  - isar_flutter_libs (from `.symlinks/plugins/isar_flutter_libs/ios`)
+  - large_file_handler (from `.symlinks/plugins/large_file_handler/ios`)
+  - onnxruntime (from `.symlinks/plugins/onnxruntime/ios`)
+  - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
@@ -1421,10 +1464,19 @@ SPEC REPOS:
     - gRPC-Core
     - GTMSessionFetcher
     - leveldb-library
+    - MediaPipeTasksGenAI
+    - MediaPipeTasksGenAIC
     - nanopb
+    - onnxruntime-c
+    - onnxruntime-objc
     - RecaptchaInterop
+    - TensorFlowLiteC
+    - TensorFlowLiteSelectTfOps
+    - TensorFlowLiteSwift
 
 EXTERNAL SOURCES:
+  background_downloader:
+    :path: ".symlinks/plugins/background_downloader/ios"
   cloud_firestore:
     :path: ".symlinks/plugins/cloud_firestore/ios"
   device_info_plus:
@@ -1435,8 +1487,18 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/firebase_core/ios"
   Flutter:
     :path: Flutter
+  flutter_gemma:
+    :path: ".symlinks/plugins/flutter_gemma/ios"
   health:
     :path: ".symlinks/plugins/health/ios"
+  isar_flutter_libs:
+    :path: ".symlinks/plugins/isar_flutter_libs/ios"
+  large_file_handler:
+    :path: ".symlinks/plugins/large_file_handler/ios"
+  onnxruntime:
+    :path: ".symlinks/plugins/onnxruntime/ios"
+  path_provider_foundation:
+    :path: ".symlinks/plugins/path_provider_foundation/darwin"
   share_plus:
     :path: ".symlinks/plugins/share_plus/ios"
   shared_preferences_foundation:
@@ -1448,6 +1510,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   abseil: a05cc83bf02079535e17169a73c5be5ba47f714b
+  background_downloader: 50e91d979067b82081aba359d7d916b3ba5fadad
   BoringSSL-GRPC: dded2a44897e45f28f08ae87a55ee4bcd19bc508
   cloud_firestore: fdcc87898326e396d6ef6df543acf9b5c2034b95
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
@@ -1464,19 +1527,31 @@ SPEC CHECKSUMS:
   FirebaseFirestoreInternal: df9ab608a59a4e8eefd0796ed7652f3c1a88473a
   FirebaseSharedSwift: e17c654ef1f1a616b0b33054e663ad1035c8fd40
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_gemma: 7ce2780a9f4afaa3ba14efc24841415994e3b2c0
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   "gRPC-C++": cc207623316fb041a7a3e774c252cf68a058b9e8
   gRPC-Core: 860978b7db482de8b4f5e10677216309b5ff6330
   GTMSessionFetcher: fc75fc972958dceedee61cb662ae1da7a83a91cf
   health: 4decf5d74e8f54c58a8c07a385fc72f629a831d9
+  isar_flutter_libs: 9fc2cfb928c539e1b76c481ba5d143d556d94920
+  large_file_handler: b37481e9b4972562ffcdc8f75700f47cd592bcec
   leveldb-library: cc8b8f8e013647a295ad3f8cd2ddf49a6f19be19
+  MediaPipeTasksGenAI: 076ba7032a6e9da16db9c7cf0c3b67c751c18bc1
+  MediaPipeTasksGenAIC: ec35d9f431f6a6b651a0bc9f67a4ed149ffa575c
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
+  onnxruntime: 2ab1957eb029c71d47f7bb35cc4efc9f0d297828
+  onnxruntime-c: ebdcfd8650bcbd10121c125262f99dea681b92a3
+  onnxruntime-objc: ae7acec7a3d03eaf072d340afed7a35635c1c2a6
+  path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
   RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
+  TensorFlowLiteC: 215ef57653dd0fa09a474e7d94d79ae64a870b28
+  TensorFlowLiteSelectTfOps: c71d7dcd063f5d66ae1b9a85cc5aa993f824eff9
+  TensorFlowLiteSwift: 6de8da348de331778167a0f751ad74c41d8b0554
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
-PODFILE CHECKSUM: e30f02f9d1c72c47bb6344a0a748c9d268180865
+PODFILE CHECKSUM: c0915517eae1a513480956f02c7781054ca94770
 
 COCOAPODS: 1.16.2
