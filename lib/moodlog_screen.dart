@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'moodlog_store.dart';
+import 'package:lifelens/database/isar_service.dart';
+import 'package:lifelens/database/mood_entry.dart';
 
 enum LogSource { quickAction, tab }
 
@@ -371,22 +373,41 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                   child: FilledButton(
                     onPressed: selectedMood == -1
                         ? null
-                        : () {
+                        : () async {
                             HapticFeedback.mediumImpact();
 
                             final store = context.read<MoodLogStore>();
                             final m = moods[selectedMood];
-
-                            store.add(
-                              MoodCheckIn(
-                                moodLabel: m.label,
-                                emoji: m.emoji,
-                                intensity: intensity.toInt(),
-                                tags: tags.toList(),
-                                notes: notesCtrl.text.trim(),
-                                createdAt: DateTime.now(),
-                              ),
+                            final now = DateTime.now();
+                            final moodCheckIn = MoodCheckIn(
+                              moodLabel: m.label,
+                              emoji: m.emoji,
+                              intensity: intensity.toInt(),
+                              tags: tags.toList(),
+                              notes: notesCtrl.text.trim(),
+                              createdAt: now,
                             );
+                            store.add(moodCheckIn);
+
+                            // Also persist to Isar as MoodEntry
+                            try {
+                              final moodEntry = MoodEntry()
+                                ..date = now.toIso8601String().substring(0, 10)
+                                ..rawLog = moodCheckIn.notes
+                                ..condensedLog = moodCheckIn.notes
+                                ..resolvedMood = moodCheckIn.moodLabel
+                                ..resolvedBy = "user"
+                                ..mobileBertPrediction = null
+                                ..mobileBertTopProb = null
+                                ..userConfirmed = null
+                                ..responseText = ""
+                                ..fitnessScoreSnapshot = 0.0
+                                ..timestamp = now;
+                              await IsarService.instance.init();
+                              await IsarService.instance.writeMoodEntry(moodEntry);
+                            } catch (e) {
+                              // Optionally handle error (e.g., show a snackbar)
+                            }
 
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(

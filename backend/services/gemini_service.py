@@ -17,7 +17,6 @@ from models.schemas import (
     ConditionPrediction,
     RAGQuery
 )
-from services.rag_service import get_rag_service
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -52,8 +51,19 @@ class GeminiAnalysisService:
     def __init__(self):
         """Initialize Gemini client and RAG service"""
         self.settings = get_settings()
-        self.client = genai.Client(api_key=self.settings.gemini_api_key)
-        self.rag_service = get_rag_service()
+        self.client = (
+            genai.Client(api_key=self.settings.gemini_api_key)
+            if self.settings.gemini_api_key
+            else None
+        )
+        self.rag_service = None
+        try:
+            from services.rag_service import get_rag_service
+            self.rag_service = get_rag_service()
+        except Exception as e:
+            logger.warning(f"RAG service unavailable, continuing without RAG: {e}")
+        if self.client is None:
+            logger.warning("Gemini API key is not configured; Gemini responses will use fallback paths")
         logger.info("Initialized Gemini Analysis Service")
     
     def _check_urgency(self, symptoms: List[str]) -> UrgencyLevel:
@@ -122,6 +132,9 @@ If with others:
             List of relevant knowledge chunks
         """
         try:
+            if self.rag_service is None:
+                return []
+
             # Create search query from symptoms
             query_text = f"Symptoms: {', '.join(symptoms)}. What medical conditions are associated with these symptoms?"
             
@@ -283,6 +296,9 @@ Provide a clear, helpful health assessment with the following sections:
             # Step 4: Call Gemini API
             logger.info("Calling Gemini API for symptom analysis")
             
+            if self.client is None:
+                raise RuntimeError("Gemini client unavailable: missing API key")
+
             response = self.client.models.generate_content(
                 model='gemini-2.5-flash-lite',
                 contents=prompt,

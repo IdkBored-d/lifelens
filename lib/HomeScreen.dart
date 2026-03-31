@@ -16,18 +16,35 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
+  late List<Widget> _pages;
 
   @override
-  Widget build(BuildContext context) {
-    final pages = [
+  void initState() {
+    super.initState();
+    _pages = _buildPages();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userName != widget.userName) {
+      _pages = _buildPages();
+    }
+  }
+
+  List<Widget> _buildPages() {
+    return [
       const MiniMeScreen(),
       LogHubScreen(userName: widget.userName),
       const CommunityScreen(),
       const ProfileScreen(),
     ];
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: pages[_navIndex]),
+      body: IndexedStack(index: _navIndex, children: _pages),
       bottomNavigationBar: BottomNav(
         currentIndex: _navIndex,
         onChanged: (i) => setState(() => _navIndex = i),

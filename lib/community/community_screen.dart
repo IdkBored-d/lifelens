@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -14,6 +16,7 @@ class CommunityScreen extends StatefulWidget {
 class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  static Future<void>? _bootstrapFuture;
 
   static const Map<String, Map<String, String>> _sphereUiDemo = {
     'Mental Health': {
@@ -41,7 +44,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   void initState() {
     super.initState();
-    _initializePremadeSpheres();
+    _bootstrapFuture ??= _initializePremadeSpheres();
+    unawaited(_bootstrapFuture);
   }
 
   Future<void> _initializePremadeSpheres() async {
@@ -59,27 +63,38 @@ class _CommunityScreenState extends State<CommunityScreen> {
       {'name': 'General', 'description': 'General health discussions'},
     ];
 
-    for (final sphere in premade) {
-      final query = await spheresRef
-          .where('name', isEqualTo: sphere['name'])
-          .limit(1)
+    try {
+      final existingDocs = await spheresRef
+          .where('isPremade', isEqualTo: true)
           .get();
+      final existingByName = <String, DocumentReference<Map<String, dynamic>>>{
+        for (final doc in existingDocs.docs)
+          ((doc.data()['name'] as String?) ?? ''): doc.reference,
+      };
 
-      DocumentReference<Map<String, dynamic>> sphereRef;
+      final seedTasks = <Future<void>>[];
 
-      if (query.docs.isEmpty) {
-        sphereRef = await spheresRef.add({
-          'name': sphere['name'],
-          'description': sphere['description'],
-          'memberCount': 0,
-          'createdAt': FieldValue.serverTimestamp(),
-          'isPremade': true,
-        });
-      } else {
-        sphereRef = query.docs.first.reference;
+      for (final sphere in premade) {
+        final name = sphere['name']!;
+        final description = sphere['description']!;
+        var sphereRef = existingByName[name];
+
+        if (sphereRef == null) {
+          sphereRef = await spheresRef.add({
+            'name': name,
+            'description': description,
+            'memberCount': 0,
+            'createdAt': FieldValue.serverTimestamp(),
+            'isPremade': true,
+          });
+        }
+
+        seedTasks.add(_seedDummySphereData(sphereRef, name));
       }
 
-      await _seedDummySphereData(sphereRef, sphere['name']!);
+      await Future.wait(seedTasks);
+    } catch (_) {
+      // Keep the community UI responsive even if bootstrap seeding fails.
     }
   }
 
@@ -180,98 +195,102 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search spheres...',
-                      prefixIcon: Icon(Icons.search, color: cs.primary),
-                      filled: true,
-                      fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                    ),
-                    onChanged: (value) {
-                      setState(() => _searchQuery = value.toLowerCase());
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                FloatingActionButton(
-                  onPressed: () => _showCreateSphereDialog(context),
-                  backgroundColor: cs.primaryContainer,
-                  child: Icon(Icons.add, color: cs.onPrimaryContainer),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('spheres')
-                  .orderBy('memberCount', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                final spheres = snapshot.data!.docs
-                    .map((doc) => Sphere.fromFirestore(doc))
-                    .where(
-                      (sphere) =>
-                          _searchQuery.isEmpty ||
-                          sphere.name.toLowerCase().contains(_searchQuery),
-                    )
-                    .toList();
-
-                if (spheres.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.search_off, size: 64, color: cs.outline),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No spheres found',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: cs.onSurfaceVariant,
-                          ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search spheres...',
+                        prefixIcon: Icon(Icons.search, color: cs.primary),
+                        filled: true,
+                        fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: BorderSide.none,
                         ),
-                      ],
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() => _searchQuery = value.toLowerCase());
+                      },
                     ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: spheres.length,
-                  itemBuilder: (context, index) {
-                    final sphere = spheres[index];
-                    return _buildSphereCard(context, sphere);
-                  },
-                );
-              },
+                  ),
+                  const SizedBox(width: 12),
+                  FloatingActionButton(
+                    heroTag: 'community_add_sphere_fab',
+                    tooltip: 'Create sphere',
+                    onPressed: _showCreateSphereDialog,
+                    backgroundColor: cs.primaryContainer,
+                    child: Icon(Icons.add, color: cs.onPrimaryContainer),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('spheres')
+                    .orderBy('memberCount', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final spheres = snapshot.data!.docs
+                      .map((doc) => Sphere.fromFirestore(doc))
+                      .where(
+                        (sphere) =>
+                            _searchQuery.isEmpty ||
+                            sphere.name.toLowerCase().contains(_searchQuery),
+                      )
+                      .toList();
+
+                  if (spheres.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.search_off, size: 64, color: cs.outline),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No spheres found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: spheres.length,
+                    itemBuilder: (context, index) {
+                      final sphere = spheres[index];
+                      return _buildSphereCard(context, sphere);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -513,7 +532,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
   }
 
-  void _showCreateSphereDialog(BuildContext context) {
+  void _showCreateSphereDialog() {
+    if (FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in to create a sphere.')),
+      );
+      return;
+    }
+
     final nameController = TextEditingController();
     final descController = TextEditingController();
 

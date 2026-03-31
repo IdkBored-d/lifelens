@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Gemini API
-    gemini_api_key: str
+    gemini_api_key: str = ""
     
     # Weaviate
     weaviate_url: str = "http://localhost:8080"
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_db: str = "lifelens"
     postgres_user: str = "lifelens_user"
-    postgres_password: str
+    postgres_password: str = "lifelens_dev"
     
     # Redis
     redis_host: str = "localhost"
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     api_reload: bool = True
     
     # Security
-    secret_key: str
+    secret_key: str = "lifelens-dev-secret"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     

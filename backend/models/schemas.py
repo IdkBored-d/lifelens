@@ -102,6 +102,51 @@ class RAGResult(BaseModel):
     metadata: Dict[str, Any] = {}
 
 
+class MiniMeChatHistoryItem(BaseModel):
+    """Single Mini-Me chat turn for context."""
+    role: str = Field(..., description="user or assistant")
+    text: str = Field(..., min_length=1, max_length=2000)
+
+    @validator('role')
+    def validate_role(cls, v):
+        role = v.strip().lower()
+        if role not in {'user', 'assistant'}:
+            raise ValueError("role must be 'user' or 'assistant'")
+        return role
+
+
+class MiniMeChatRequest(BaseModel):
+    """Request model for Mini-Me chat."""
+    user_message: str = Field('', max_length=2000)
+    latest_mood_label: Optional[str] = Field(None, max_length=80)
+    latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
+    latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    recent_moods: List[str] = Field(default_factory=list, max_items=8)
+    active_symptoms: List[str] = Field(default_factory=list, max_items=20)
+    chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
+    user_id_hash: Optional[str] = Field(None, max_length=128)
+
+    @validator('user_message')
+    def validate_user_message(cls, v):
+        return v.strip()
+
+    @validator('recent_moods', each_item=True)
+    def validate_recent_mood_item(cls, v):
+        return v.strip()
+
+    @validator('active_symptoms', each_item=True)
+    def validate_active_symptom_item(cls, v):
+        return v.strip()
+
+
+class MiniMeChatResponse(BaseModel):
+    """Response model for Mini-Me chat."""
+    opening_suggestion: str
+    reply: str
+    source: str = Field(..., description="gemini or fallback")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
 class HealthDisclaimer(BaseModel):
     """Medical disclaimer"""
     text: str

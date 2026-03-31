@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
-from typing import List
+from typing import List, Any
 import time
 
 from models.schemas import (
@@ -16,11 +16,13 @@ from models.schemas import (
     MedicalKnowledgeDoc,
     RAGQuery,
     RAGResult,
-    ErrorResponse
+    ErrorResponse,
+    MiniMeChatRequest,
+    MiniMeChatResponse,
 )
 from services.gemini_service import get_analysis_service, GeminiAnalysisService
-from services.rag_service import get_rag_service, WeaviateRAGService
 from config.settings import get_settings
+from google.genai import types
 
 # Configure logging
 logging.basicConfig(
@@ -33,6 +35,18 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def get_rag_service_dependency() -> Any:
+    """Lazy RAG dependency loader so app can run without optional RAG deps."""
+    try:
+        from services.rag_service import get_rag_service
+        return get_rag_service()
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"RAG service unavailable: {e}",
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
@@ -42,19 +56,28 @@ async def lifespan(app: FastAPI):
     logger.info(f"Weaviate URL: {settings.weaviate_url}")
     
     # Initialize services
+    analysis_service = None
+    rag_service = None
     try:
         analysis_service = get_analysis_service()
-        rag_service = get_rag_service()
-        logger.info("Services initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize services: {e}")
-        raise
+        logger.error(f"Gemini analysis service initialization failed: {e}")
+
+    try:
+        from services.rag_service import get_rag_service
+        rag_service = get_rag_service()
+    except Exception as e:
+        logger.error(f"RAG service initialization failed: {e}")
+
+    if analysis_service or rag_service:
+        logger.info("Core services initialized with graceful fallbacks")
     
     yield
     
     # Shutdown
     logger.info("Shutting down Lifelens API...")
-    rag_service.close()
+    if rag_service is not None:
+        rag_service.close()
 
 
 # Create FastAPI app
@@ -105,30 +128,29 @@ async def general_exception_handler(request, exc):
 @app.get("/health", tags=["System"])
 async def health_check():
     """Check API health and service status"""
+    weaviate_status = "operational"
+    doc_count = 0
+    rag_error = None
+
     try:
+        from services.rag_service import get_rag_service
         rag_service = get_rag_service()
         doc_count = await rag_service.get_document_count()
-        
-        return {
-            "status": "healthy",
-            "services": {
-                "api": "operational",
-                "gemini": "operational" if settings.gemini_api_key else "not configured",
-                "weaviate": "operational",
-                "knowledge_base_docs": doc_count
-            },
-            "timestamp": time.time()
-        }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "error": str(e),
-                "timestamp": time.time()
-            }
-        )
+        rag_error = str(e)
+        weaviate_status = "degraded"
+
+    return {
+        "status": "degraded" if rag_error else "healthy",
+        "services": {
+            "api": "operational",
+            "gemini": "operational" if settings.gemini_api_key else "not configured",
+            "weaviate": weaviate_status,
+            "knowledge_base_docs": doc_count,
+            "rag_error": rag_error,
+        },
+        "timestamp": time.time(),
+    }
 
 
 # Root endpoint
@@ -143,6 +165,7 @@ async def root():
             "health": "/health",
             "analyze": "/api/v1/symptoms/analyze",
             "batch_analyze": "/api/v1/symptoms/batch-analyze",
+            "minime_chat": "/api/v1/minime/chat",
             "disclaimer": "/api/v1/disclaimer",
             "knowledge": "/api/v1/knowledge/*"
         }
@@ -239,6 +262,136 @@ async def get_disclaimer():
     }
 
 
+def _build_minime_prompt(chat_input: MiniMeChatRequest) -> str:
+    latest_mood = chat_input.latest_mood_label or 'Unknown'
+    intensity = chat_input.latest_mood_intensity
+    mood_notes = chat_input.latest_mood_notes or 'None'
+    recent_moods = chat_input.recent_moods or ['No recent mood logs']
+    active_symptoms = chat_input.active_symptoms or ['No active symptoms logged']
+
+    history_lines = []
+    for item in chat_input.chat_history[-12:]:
+        speaker = 'User' if item.role == 'user' else 'Mini-Me'
+        history_lines.append(f"{speaker}: {item.text}")
+    history_text = '\n'.join(history_lines) if history_lines else 'No previous messages.'
+
+    if not chat_input.user_message:
+        task = (
+            'Return ONLY a 2-3 sentence opening coaching suggestion before the user asks anything. '
+            'It must be specific to the mood/symptom context and include one small actionable step for today.'
+        )
+    else:
+        task = (
+            'Respond to the user message in 3-5 supportive sentences. Build on the logged mood/symptoms. '
+            'Give concrete next-step guidance and keep tone warm, practical, and non-judgmental. '
+            'Do not claim a diagnosis.'
+        )
+
+    return f"""You are Mini-Me, a friendly personal wellness coach in the LifeLens app.
+
+{task}
+
+Current context:
+- Latest mood: {latest_mood}
+- Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
+- Mood notes: {mood_notes}
+- Recent moods: {' | '.join(recent_moods)}
+- Active symptoms: {' | '.join(active_symptoms)}
+
+Conversation so far:
+{history_text}
+
+Current user message:
+{chat_input.user_message or '[none: opening suggestion requested]'}
+
+Rules:
+- Keep response concise and relevant to current logs.
+- If symptoms suggest possible risk, recommend professional care calmly.
+- Never output markdown lists unless asked.
+- Return plain text only.
+"""
+
+
+def _build_opening_fallback(chat_input: MiniMeChatRequest) -> str:
+    mood = chat_input.latest_mood_label or 'neutral'
+    symptoms = ', '.join(chat_input.active_symptoms[:2]) if chat_input.active_symptoms else ''
+    if symptoms:
+        return (
+            f"Based on your recent {mood} mood and symptoms ({symptoms}), start with one gentle reset: "
+            "drink water, take 5 slow breaths, and do a 10-minute low-stress task. "
+            "After that, check if your symptoms are easing."
+        )
+    return (
+        f"Your current mood trend looks {mood}. Start with one small win: a 5-minute pause, "
+        "name your top priority, and complete just the first step."
+    )
+
+
+def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
+    if not chat_input.user_message:
+        return _build_opening_fallback(chat_input)
+
+    mood = chat_input.latest_mood_label or 'neutral'
+    symptoms = ', '.join(chat_input.active_symptoms[:3])
+    if symptoms:
+        return (
+            f"I hear you. With your recent {mood} mood and symptoms ({symptoms}), "
+            "let us keep your next step simple: choose one low-effort action now, "
+            "then reassess how you feel in 20 minutes. If symptoms worsen or feel alarming, seek medical care."
+        )
+
+    return (
+        f"I hear you. With your recent {mood} mood trend, pick one concrete next step you can finish in 10 minutes, "
+        "then send me what changed and I will help you adjust."
+    )
+
+
+@app.post(
+    "/api/v1/minime/chat",
+    response_model=MiniMeChatResponse,
+    tags=["Mini-Me"],
+    summary="Generate context-aware Mini-Me chat responses"
+)
+async def minime_chat(
+    chat_input: MiniMeChatRequest,
+    analysis_service: GeminiAnalysisService = Depends(get_analysis_service)
+):
+    """Generate Mini-Me response grounded in logged mood and symptom context."""
+    is_opening_request = not bool(chat_input.user_message.strip())
+
+    try:
+        prompt = _build_minime_prompt(chat_input)
+        response = analysis_service.client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.55,
+                top_p=0.9,
+                top_k=40,
+                max_output_tokens=500,
+                candidate_count=1,
+            ),
+        )
+
+        text = (response.text or '').strip()
+        if not text:
+            raise ValueError('Empty response from Gemini')
+
+        return MiniMeChatResponse(
+            opening_suggestion=text if is_opening_request else '',
+            reply=text,
+            source='gemini',
+        )
+    except Exception as e:
+        logger.warning(f"Mini-Me chat fallback used: {e}")
+        fallback_opening = _build_opening_fallback(chat_input)
+        return MiniMeChatResponse(
+            opening_suggestion=fallback_opening if is_opening_request else '',
+            reply=_build_reply_fallback(chat_input),
+            source='fallback',
+        )
+
+
 # Knowledge Base Management Endpoints
 @app.post(
     "/api/v1/knowledge/add",
@@ -247,7 +400,7 @@ async def get_disclaimer():
 )
 async def add_knowledge(
     document: MedicalKnowledgeDoc,
-    rag_service: WeaviateRAGService = Depends(get_rag_service)
+    rag_service: Any = Depends(get_rag_service_dependency)
 ):
     """
     Add a medical knowledge document to the RAG system
@@ -283,7 +436,7 @@ async def add_knowledge(
 )
 async def bulk_add_knowledge(
     documents: List[MedicalKnowledgeDoc],
-    rag_service: WeaviateRAGService = Depends(get_rag_service)
+    rag_service: Any = Depends(get_rag_service_dependency)
 ):
     """
     Add multiple medical knowledge documents efficiently
@@ -323,7 +476,7 @@ async def bulk_add_knowledge(
 )
 async def search_knowledge(
     query: RAGQuery,
-    rag_service: WeaviateRAGService = Depends(get_rag_service)
+    rag_service: Any = Depends(get_rag_service_dependency)
 ):
     """
     Search the medical knowledge base using semantic similarity
@@ -351,7 +504,7 @@ async def search_knowledge(
     summary="Get knowledge base document count"
 )
 async def get_knowledge_count(
-    rag_service: WeaviateRAGService = Depends(get_rag_service)
+    rag_service: Any = Depends(get_rag_service_dependency)
 ):
     """Get total number of documents in knowledge base"""
     try:
@@ -375,7 +528,7 @@ async def get_knowledge_count(
 )
 async def delete_knowledge(
     doc_id: str,
-    rag_service: WeaviateRAGService = Depends(get_rag_service)
+    rag_service: Any = Depends(get_rag_service_dependency)
 ):
     """Delete a medical knowledge document by ID"""
     try:

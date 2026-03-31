@@ -3,6 +3,7 @@ import 'package:lifelens/exercises/exercise_screen.dart';
 import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
+import 'package:lifelens/services/mini_me_suggestion_aggregator.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
 import 'package:lifelens/screens/symptoms_screen.dart';
 import 'package:provider/provider.dart';
@@ -18,10 +19,7 @@ class LogHubScreen extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Log Center'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Log Center'), centerTitle: true),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
@@ -52,7 +50,8 @@ class LogHubScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => const MoodLogScreen(source: LogSource.tab),
+                      builder: (_) =>
+                          const MoodLogScreen(source: LogSource.tab),
                     ),
                   );
                 },
@@ -97,41 +96,7 @@ class LogHubScreen extends StatelessWidget {
               const SizedBox(height: 10),
               Consumer<MoodLogStore>(
                 builder: (context, store, _) {
-                  return FutureBuilder<List<DailySuggestion>>(
-                    future: DailySuggestionsService.instance.getDailySuggestions(
-                      moodLogs: store.items,
-                    ),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const _LoadingSuggestionCard();
-                      }
-
-                      if (snapshot.hasError) {
-                        return _EmptyStateCard(
-                          title: 'Suggestions unavailable',
-                          subtitle:
-                              'Could not generate suggestions right now. Try again after your next log.',
-                        );
-                      }
-
-                      final suggestions = snapshot.data ?? const <DailySuggestion>[];
-                      if (suggestions.isEmpty) {
-                        return _EmptyStateCard(
-                          title: 'No suggestions yet',
-                          subtitle: 'Log one update to generate your daily guidance.',
-                        );
-                      }
-
-                      return Column(
-                        children: suggestions.map((item) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _SuggestionCard(item: item),
-                          );
-                        }).toList(),
-                      );
-                    },
-                  );
+                  return _DailySuggestionsSection(moodLogs: store.items);
                 },
               ),
 
@@ -144,7 +109,8 @@ class LogHubScreen extends StatelessWidget {
                   if (store.items.isEmpty) {
                     return _EmptyStateCard(
                       title: 'No logs yet',
-                      subtitle: 'Start with a mood entry to build your timeline.',
+                      subtitle:
+                          'Start with a mood entry to build your timeline.',
                     );
                   }
 
@@ -168,19 +134,22 @@ class LogHubScreen extends StatelessWidget {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         entry.moodLabel,
-                                        style: theme.textTheme.titleSmall?.copyWith(
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                       ),
                                       Text(
                                         'Intensity ${entry.intensity}/5 • $tags',
-                                        style: theme.textTheme.bodySmall?.copyWith(
-                                          color: cs.onSurfaceVariant,
-                                        ),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: cs.onSurfaceVariant,
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -211,9 +180,9 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
     );
   }
 }
@@ -249,9 +218,9 @@ class _LogTile extends StatelessWidget {
         ),
         title: Text(
           title,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right_rounded),
@@ -281,16 +250,16 @@ class _EmptyStateCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
       ),
@@ -375,11 +344,88 @@ class _LoadingSuggestionCard extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           SizedBox(width: 10),
-          Expanded(
-            child: Text('Building your daily suggestions...'),
-          ),
+          Expanded(child: Text('Building your daily suggestions...')),
         ],
       ),
+    );
+  }
+}
+
+class _DailySuggestionsSection extends StatefulWidget {
+  const _DailySuggestionsSection({required this.moodLogs});
+
+  final List<MoodCheckIn> moodLogs;
+
+  @override
+  State<_DailySuggestionsSection> createState() =>
+      _DailySuggestionsSectionState();
+}
+
+class _DailySuggestionsSectionState extends State<_DailySuggestionsSection> {
+  late Future<List<DailySuggestion>> _future;
+  String _signature = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _signature = _buildSignature(widget.moodLogs);
+    _future = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DailySuggestionsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextSignature = _buildSignature(widget.moodLogs);
+    if (nextSignature != _signature) {
+      _signature = nextSignature;
+      _future = _load();
+    }
+  }
+
+  Future<List<DailySuggestion>> _load() {
+    // Use MiniMeSuggestionAggregator for dynamic, trend-based suggestions
+    return MiniMeSuggestionAggregator.generateDailySuggestions(days: 7);
+  }
+
+  String _buildSignature(List<MoodCheckIn> logs) {
+    final latest = logs.isEmpty ? '' : logs.first.createdAt.toIso8601String();
+    return '${logs.length}|$latest';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<DailySuggestion>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const _LoadingSuggestionCard();
+        }
+
+        if (snapshot.hasError) {
+          return _EmptyStateCard(
+            title: 'Suggestions unavailable',
+            subtitle:
+                'Could not generate suggestions right now. Try again after your next log.',
+          );
+        }
+
+        final suggestions = snapshot.data ?? const <DailySuggestion>[];
+        if (suggestions.isEmpty) {
+          return _EmptyStateCard(
+            title: 'No suggestions yet',
+            subtitle: 'Log one update to generate your daily guidance.',
+          );
+        }
+
+        return Column(
+          children: suggestions.map((item) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _SuggestionCard(item: item),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 }

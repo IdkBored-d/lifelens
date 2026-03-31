@@ -5,12 +5,14 @@ import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/minime_shop_service.dart';
+import 'package:lifelens/services/minime_backend_service.dart';
+import 'package:lifelens/database/isar_service.dart';
+import 'package:lifelens/database/mood_entry.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
 
 class MiniMeScreen extends StatefulWidget {
-  const MiniMeScreen({super.key});
-
+  const MiniMeScreen({Key? key}) : super(key: key);
   @override
   State<MiniMeScreen> createState() => _MiniMeScreenState();
 }
@@ -20,15 +22,18 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _chatFocusNode = FocusNode();
 
+  bool _didLoadOpeningSuggestion = false;
   bool _isCoachExpanded = false;
   bool _isReplying = false;
-  final List<_MiniMeChatMessage> _messages = [
-    _MiniMeChatMessage(
-      role: _ChatRole.assistant,
-      text:
-          'Daily guidance is ready. Share what you want to improve and I will build a simple plan.',
-    ),
-  ];
+  final List<_MiniMeChatMessage> _messages = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadOpeningSuggestion();
+    });
+  }
 
   @override
   void dispose() {
@@ -38,9 +43,56 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     super.dispose();
   }
 
-  Future<void> _sendMessage(String moodLabel) async {
+  Future<void> _loadOpeningSuggestion() async {
+    if (_didLoadOpeningSuggestion) return;
+    _didLoadOpeningSuggestion = true;
+
+    final moodStore = context.read<MoodLogStore>();
+    final moodContext = _buildMoodContext(moodStore);
+    final symptomContext = await _buildSymptomContext();
+
+    try {
+      final response = await MiniMeBackendService.instance.chat(
+        userMessage: '',
+        moodLabel: moodContext.label,
+        moodIntensity: moodContext.intensity,
+        moodNotes: moodContext.notes,
+        recentMoods: moodContext.recentMoodSummary,
+        activeSymptoms: symptomContext,
+        history: const [],
+      );
+
+      if (!mounted) return;
+      final opening = response.openingSuggestion.isEmpty
+          ? response.reply
+          : response.openingSuggestion;
+
+      setState(() {
+        _messages.add(
+          _MiniMeChatMessage(role: _ChatRole.assistant, text: opening),
+        );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          _MiniMeChatMessage(
+            role: _ChatRole.assistant,
+            text:
+                'Mini-Me backend is unavailable right now. Start your backend server and try again.',
+          ),
+        );
+      });
+    }
+  }
+
+  Future<void> _sendMessage() async {
     final text = _chatController.text.trim();
     if (text.isEmpty || _isReplying) return;
+
+    final moodStore = context.read<MoodLogStore>();
+    final moodContext = _buildMoodContext(moodStore);
+    final symptomContext = await _buildSymptomContext();
 
     setState(() {
       _isCoachExpanded = true;
@@ -50,38 +102,125 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _chatController.clear();
     _scrollToBottom();
 
-    await Future<void>.delayed(const Duration(milliseconds: 520));
+    try {
+      final history = _messages
+          .take(_messages.length - 1)
+          .map(
+            (m) => MiniMeChatTurn(
+              role: m.role == _ChatRole.user ? 'user' : 'assistant',
+              text: m.text,
+            ),
+          )
+          .toList();
 
-    if (!mounted) return;
+      final response = await MiniMeBackendService.instance.chat(
+        userMessage: text,
+        moodLabel: moodContext.label,
+        moodIntensity: moodContext.intensity,
+        moodNotes: moodContext.notes,
+        recentMoods: moodContext.recentMoodSummary,
+        activeSymptoms: symptomContext,
+        history: history,
+      );
 
-    final reply = _buildOfflineReply(userText: text, moodLabel: moodLabel);
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          _MiniMeChatMessage(role: _ChatRole.assistant, text: response.reply),
+        );
+        _isReplying = false;
+      });
+      _scrollToBottom();
 
-    setState(() {
-      _messages.add(_MiniMeChatMessage(role: _ChatRole.assistant, text: reply));
-      _isReplying = false;
-    });
-    _scrollToBottom();
+      // Persist Mini-Me suggestion as MoodEntry for daily suggestions
+      try {
+        final now = DateTime.now();
+        final dateStr = now.toIso8601String().split('T').first;
+        // Use reply if non-empty, else openingSuggestion
+        final suggestion = (response.reply.trim().isNotEmpty)
+            ? response.reply.trim()
+            : response.openingSuggestion.trim();
+        final moodEntry = MoodEntry()
+          ..date = dateStr
+          ..rawLog = text
+          ..condensedLog = text.length > 60 ? text.substring(0, 60) + '...' : text
+          ..resolvedMood = moodContext.label
+          ..resolvedBy = 'minime'
+          ..mobileBertPrediction = null
+          ..mobileBertTopProb = null
+          ..userConfirmed = null
+          ..responseText = suggestion
+          ..fitnessScoreSnapshot = 0.0
+          ..timestamp = now;
+        await IsarService.instance.writeMoodEntry(moodEntry);
+
+        // Trigger UI refresh for daily suggestions
+        final moodStore = context.read<MoodLogStore>();
+        // Add and remove a dummy entry to force notifyListeners
+        final dummy = MoodCheckIn(
+          moodLabel: moodContext.label,
+          emoji: '',
+          intensity: moodContext.intensity,
+          tags: const [],
+          notes: '',
+          createdAt: now,
+        );
+        moodStore.add(dummy);
+        moodStore.clear(); // Remove all to force refresh (or remove dummy if needed)
+      } catch (e) {
+        // Optionally log error
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(
+          _MiniMeChatMessage(
+            role: _ChatRole.assistant,
+            text:
+                'I could not reach your Mini-Me backend, so I cannot generate a coaching response yet. Please verify the backend is running on port 8000 and send again.',
+          ),
+        );
+        _isReplying = false;
+      });
+      _scrollToBottom();
+    }
   }
 
-  String _buildOfflineReply({
-    required String userText,
-    required String moodLabel,
-  }) {
-    final q = userText.toLowerCase();
+  _MiniMeMoodContext _buildMoodContext(MoodLogStore moodStore) {
+    final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
+    final recent = moodStore.items
+        .take(5)
+        .map((e) => '${e.moodLabel} (${e.intensity}/5)')
+        .toList();
 
-    if (q.contains('anx') || q.contains('stress')) {
-      return 'Today\'s calming plan:\n1) 60-second body reset (jaw, shoulders, breath).\n2) Name one stress trigger in one sentence.\n3) Take one small action in the next 10 minutes.';
+    return _MiniMeMoodContext(
+      label: latest?.moodLabel ?? 'Neutral',
+      intensity: latest?.intensity ?? 0,
+      notes: latest?.notes ?? '',
+      recentMoodSummary: recent,
+    );
+  }
+
+  Future<List<String>> _buildSymptomContext() async {
+    try {
+      final entries = await IsarService.instance.getActiveSymptomEntries();
+      return entries.take(6).map((e) {
+        final symptoms = e.symptomList.take(3).join(', ');
+        return '${e.predictedAilment}: $symptoms';
+      }).toList();
+    } catch (_) {
+      return const [];
     }
+  }
 
-    if (q.contains('sleep') || q.contains('tired')) {
-      return 'Tonight\'s sleep plan:\n1) Set a 20-minute wind-down reminder.\n2) Reduce light and screens.\n3) Write one thought to clear your mind before bed.';
+  String _latestSuggestionText() {
+    for (final message in _messages.reversed) {
+      if (message.role == _ChatRole.assistant &&
+          message.text.trim().isNotEmpty) {
+        return message.text;
+      }
     }
-
-    if (q.contains('plan') || q.contains('routine') || q.contains('organize')) {
-      return 'Your structure for today:\n1) One mood check-in.\n2) One movement block.\n3) One sleep-support action.\nKeep it simple and repeatable.';
-    }
-
-    return 'Model connection is not live yet. Based on your latest mood ($moodLabel), tell me your focus area (mood, sleep, symptoms, or exercise) and I will draft a short plan.';
+    return 'Preparing your daily suggestion...';
   }
 
   void _scrollToBottom() {
@@ -158,8 +297,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           final miniMeName = avatarStore.miniMeName;
           final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
           final intensity = latest?.intensity ?? 0;
-          final moodLabel = latest?.moodLabel ?? 'Neutral';
           final glow = glowForIntensity(theme.colorScheme, intensity);
+          final latestSuggestion = _latestSuggestionText();
 
           return Container(
             width: double.infinity,
@@ -185,7 +324,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       glow: glow,
                       moodLabel: latest?.moodLabel,
                       moodEmoji: latest?.emoji,
-                      suggestionText: '(...)',
+                      suggestionText: latestSuggestion,
                       chatController: _chatController,
                       chatFocusNode: _chatFocusNode,
                       isReplying: _isReplying,
@@ -205,7 +344,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                           setState(() => _isCoachExpanded = true);
                         }
                       },
-                      onSend: () => _sendMessage(moodLabel),
+                      onSend: _sendMessage,
                     ),
                   ),
                 ],
@@ -287,8 +426,8 @@ class _AvatarPanel extends StatelessWidget {
               curve: Curves.easeOut,
               left: 16,
               right: 16,
-              bottom: isCoachExpanded ? 92 : 10,
-              height: isCoachExpanded ? 220 : 0,
+              bottom: isCoachExpanded ? 106 : 12,
+              height: isCoachExpanded ? 252 : 0,
               child: IgnorePointer(
                 ignoring: !isCoachExpanded,
                 child: Opacity(
@@ -306,14 +445,14 @@ class _AvatarPanel extends StatelessWidget {
             Positioned(
               left: 16,
               right: 16,
-              bottom: 10,
+              bottom: 12,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 decoration: BoxDecoration(
                   color: Theme.of(
                     context,
                   ).colorScheme.surface.withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: Theme.of(
                       context,
@@ -345,18 +484,23 @@ class _AvatarPanel extends StatelessWidget {
                         onTap: onExpandCoach,
                         decoration: InputDecoration(
                           hintText: 'Type to $miniMeName...',
+                          isDense: true,
                           filled: true,
                           fillColor: Theme.of(context)
                               .colorScheme
                               .surfaceContainerHighest
                               .withOpacity(0.3),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     FilledButton(
                       onPressed: isReplying ? null : onSend,
                       style: FilledButton.styleFrom(
@@ -540,7 +684,7 @@ class _InlineCoachPanel extends StatelessWidget {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
             child: Row(
               children: [
                 Icon(Icons.psychology_alt_rounded, size: 18, color: cs.primary),
@@ -561,7 +705,7 @@ class _InlineCoachPanel extends StatelessWidget {
           Expanded(
             child: ListView.builder(
               controller: scrollController,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               itemCount: messages.length + (isReplying ? 1 : 0),
               itemBuilder: (context, index) {
                 if (isReplying && index == messages.length) {
@@ -573,19 +717,19 @@ class _InlineCoachPanel extends StatelessWidget {
 
                 return Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 13,
+                    horizontal: 14,
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
                     color: isUser
-                        ? cs.tertiaryContainer.withOpacity(0.55)
+                        ? cs.primaryContainer.withOpacity(0.85)
                         : cs.surfaceContainer,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: isUser
-                          ? cs.tertiary.withOpacity(0.26)
+                          ? cs.primary.withOpacity(0.22)
                           : cs.outlineVariant.withOpacity(0.35),
                     ),
                   ),
@@ -604,13 +748,17 @@ class _InlineCoachPanel extends StatelessWidget {
                                 : cs.onSurfaceVariant,
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            isUser ? 'Your note' : '$miniMeName guidance',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: isUser
-                                  ? cs.onTertiaryContainer
+                          Expanded(
+                            child: Text(
+                              isUser ? 'Your note' : '$miniMeName guidance',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: isUser
+                                  ? cs.onPrimaryContainer
                                   : cs.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ],
@@ -619,7 +767,7 @@ class _InlineCoachPanel extends StatelessWidget {
                       Text(
                         message.text,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: isUser ? cs.onTertiaryContainer : cs.onSurface,
+                          color: isUser ? cs.onPrimaryContainer : cs.onSurface,
                           height: 1.3,
                         ),
                       ),
@@ -660,11 +808,15 @@ class _TypingBubble extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: 10),
-          Text(
-            '$miniMeName is preparing your next step...',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontStyle: FontStyle.italic,
+          Expanded(
+            child: Text(
+              '$miniMeName is preparing your next step...',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
+              ),
             ),
           ),
         ],
@@ -1316,4 +1468,18 @@ class _MiniMeChatMessage {
 
   final _ChatRole role;
   final String text;
+}
+
+class _MiniMeMoodContext {
+  const _MiniMeMoodContext({
+    required this.label,
+    required this.intensity,
+    required this.notes,
+    required this.recentMoodSummary,
+  });
+
+  final String label;
+  final int intensity;
+  final String notes;
+  final List<String> recentMoodSummary;
 }
