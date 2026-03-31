@@ -1,3 +1,5 @@
+# Ignore Python virtual environments
+.venv/
 # Miscellaneous
 *.class
 *.log
