@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:dart_wordpiece/dart_wordpiece.dart';
 
 import 'database/isar_service.dart';
@@ -33,6 +33,9 @@ import 'services/eod_pipeline_service.dart';
 ///     _deTokenizer  → maxLen = 512  (DisEmbed)
 class AppServices {
   AppServices._();
+
+  static const MethodChannel _healthChannel =
+      MethodChannel('lifelens/health');
 
   // ── Singletons ──────────────────────────────────────────────────────────────
   static late final IsarService            isar;

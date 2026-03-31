@@ -91,7 +91,7 @@ class FitnessPipelineService {
       ..dataFreshnessFlagged  = result.dataFreshnessFlagged
       ..age                   = rawData.age
       ..bmi                   = (rawData.heightCm > 0) ? rawData.weightKg / ((rawData.heightCm / 100) * (rawData.heightCm / 100)) : 22.0
-      ..heartRate             = rawData.restingHeartRate.toInt()
+      ..heartRate             = rawData.restingHeartRate
       ..sleepHours            = rawData.sleepHours
       ..smokes                = rawData.smokes
       ..nutritionQuality      = rawData.nutritionQuality
@@ -101,6 +101,9 @@ class FitnessPipelineService {
       ..inferenceTimestamp    = result.inferenceTimestamp;
 
     await IsarService.instance.writeFitnessEntry(fitnessEntry);
+
+    return result;
+  }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 

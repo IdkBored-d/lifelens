@@ -93,10 +93,6 @@ class TrackHubScreen extends StatelessWidget {
               const SizedBox(height: 10),
               Consumer<MoodLogStore>(
                 builder: (context, store, _) {
-                  if (store.isLoading && store.items.isEmpty) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
                   if (store.items.isEmpty) {
                     return Container(
                       padding: const EdgeInsets.all(14),

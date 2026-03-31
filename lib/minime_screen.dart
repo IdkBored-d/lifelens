@@ -445,7 +445,7 @@ class _AvatarPanel extends StatelessWidget {
             Positioned(
               left: 16,
               right: 16,
-              bottom: 12,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12,
               child: Container(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 decoration: BoxDecoration(
@@ -582,6 +582,8 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                         text,
                         maxLines: 4,
                         overflow: TextOverflow.ellipsis,
+                        softWrap: true,
+                        textScaleFactor: 0.95,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: cs.onPrimaryContainer,
                           fontWeight: FontWeight.w700,
@@ -766,6 +768,8 @@ class _InlineCoachPanel extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         message.text,
+                        maxLines: null,
+                        softWrap: true,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: isUser ? cs.onPrimaryContainer : cs.onSurface,
                           height: 1.3,
@@ -813,6 +817,7 @@ class _TypingBubble extends StatelessWidget {
               '$miniMeName is preparing your next step...',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              softWrap: true,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: cs.onSurfaceVariant,
                 fontStyle: FontStyle.italic,
