@@ -9,7 +9,8 @@ import 'package:lifelens/models/mood_result.dart';             // ← ADD (kMobi
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
 import 'package:lifelens/services/quick_track_service.dart';   // ← ADD (MoodLogEntry, SymptomLogEntry)
-import 'package:lifelens/database/eod_entry.dart'; 
+import 'package:lifelens/database/eod_entry.dart';
+import 'package:lifelens/services/gemma_model_manager.dart';
 
 
 /// ─────────────────────────────────────────────────────────────────────────────
@@ -321,8 +322,9 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testIsarEodWrite() async {
+    final todayStr = DateTime.now().toIso8601String().split('T').first;
     final entry = EodEntry()
-      ..date               = '2026-03-21'
+      ..date               = todayStr
       ..summaryText        = 'Dev test EOD summary: Fitness trend is up, mood was joyful.'
       ..correlationSummary = '{"flag": false, "summary": "Great day overall!"}'
       ..flagged            = false
@@ -335,6 +337,51 @@ class _DevTestScreenState extends State<DevTestScreen> {
     await AppServices.isar.writeEodEntry(entry); 
     
     return '✓ EodEntry written to ISAR';
+  }
+
+  Future<String> _testIsarEodRead() async {
+    final todayStr = DateTime.now().toIso8601String().split('T').first;
+    final entry = await AppServices.isar.getEodEntry(todayStr);
+    if (entry == null) {
+      return '✗ No EOD entry found for $todayStr — run Write EOD Entry first';
+    }
+    return '✓ EOD entry found for $todayStr\n'
+        'flagged=${entry.flagged}, fitnessScore=${entry.fitnessScore}\n'
+        'moodEntryCount=${entry.moodEntryCount}, generatedOnline=${entry.generatedOnline}\n'
+        'summary preview: ${entry.summaryText.substring(0, entry.summaryText.length.clamp(0, 80))}...';
+  }
+
+  Future<String> _testEodPipeline() async {
+    final result = await AppServices.eodPipeline.runEndOfDay(isOnline: false);
+    return '✓ EOD pipeline completed (offline/Gemma path)\n'
+        'date=${result.date}\n'
+        'flagged=${result.flagged}\n'
+        'flagReason=${result.flagReason ?? "none"}\n'
+        'fitnessScore=${result.fitnessScore}\n'
+        'correlation=${result.correlation?.summary ?? "none"}\n'
+        'summary preview: ${result.summary.substring(0, result.summary.length.clamp(0, 120))}...';
+  }
+
+  Future<String> _testGemmaStatus() async {
+    final loaded    = AppServices.isGemmaLoaded;
+    final savedPath = await GemmaModelManager.getSavedPath();
+    final skipped   = await GemmaModelManager.wasSkipped();
+    return 'Gemma loaded: $loaded\n'
+        'Saved path: ${savedPath.isEmpty ? "(none)" : savedPath}\n'
+        'Setup skipped: $skipped';
+  }
+
+  Future<String> _testGemmaInference() async {
+    if (!AppServices.isGemmaLoaded) {
+      return '✗ Gemma not loaded — complete setup or use Dev mode in GemmaSetupScreen';
+    }
+    const prompt =
+        'Reply with exactly one sentence confirming you are Gemma 2 2B IT '
+        'and are running on-device.';
+    final response = await AppServices.gemma.generate(prompt);
+    return '✓ Gemma inference succeeded\n'
+        'Prompt: "$prompt"\n'
+        'Response: $response';
   }
 
   Future<String> _testClearAll() async {
@@ -384,6 +431,8 @@ class _DevTestScreenState extends State<DevTestScreen> {
                   _testBtn('Write Symptom Entry', _testIsarSymptomWrite),
                   _testBtn('Write Fitness Entry', _testIsarFitnessWrite),
                   _testBtn('Day Snapshot', _testIsarDaySnapshot),
+                  _testBtn('Write EOD Entry', _testIsarEodWrite),
+                  _testBtn('Read EOD Entry', _testIsarEodRead),
                   _testBtn('Sync Check', _testSyncCheck),
                   _testBtn('⚠ Clear All ISAR', _testClearAll,
                       color: Colors.red.shade800),
@@ -397,6 +446,13 @@ class _DevTestScreenState extends State<DevTestScreen> {
                   _testBtn('MobileBERT Inference', _testMobileBert),
                   _testBtn('DisEmbed Inference', _testDisEmbed),
                   _testBtn('Fitness MLP Inference', _testFitnessMlp),
+
+                  _sectionHeader('PIPELINES'),
+                  _testBtn('EOD Pipeline (offline)', _testEodPipeline),
+
+                  _sectionHeader('GEMMA'),
+                  _testBtn('Gemma Status', _testGemmaStatus),
+                  _testBtn('Gemma Inference', _testGemmaInference),
                 ],
               ),
             ),

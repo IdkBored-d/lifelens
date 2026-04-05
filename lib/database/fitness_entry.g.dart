@@ -82,18 +82,23 @@ const FitnessEntrySchema = CollectionSchema(
       name: r'isMale',
       type: IsarType.bool,
     ),
-    r'nutritionQuality': PropertySchema(
+    r'isOnboardingSnapshot': PropertySchema(
       id: 13,
+      name: r'isOnboardingSnapshot',
+      type: IsarType.bool,
+    ),
+    r'nutritionQuality': PropertySchema(
+      id: 14,
       name: r'nutritionQuality',
       type: IsarType.double,
     ),
     r'sleepHours': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'sleepHours',
       type: IsarType.double,
     ),
     r'smokes': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'smokes',
       type: IsarType.bool,
     )
@@ -168,9 +173,10 @@ void _fitnessEntrySerialize(
   writer.writeDateTime(offsets[10], object.inferenceTimestamp);
   writer.writeBool(offsets[11], object.isFit);
   writer.writeBool(offsets[12], object.isMale);
-  writer.writeDouble(offsets[13], object.nutritionQuality);
-  writer.writeDouble(offsets[14], object.sleepHours);
-  writer.writeBool(offsets[15], object.smokes);
+  writer.writeBool(offsets[13], object.isOnboardingSnapshot);
+  writer.writeDouble(offsets[14], object.nutritionQuality);
+  writer.writeDouble(offsets[15], object.sleepHours);
+  writer.writeBool(offsets[16], object.smokes);
 }
 
 FitnessEntry _fitnessEntryDeserialize(
@@ -194,9 +200,10 @@ FitnessEntry _fitnessEntryDeserialize(
   object.inferenceTimestamp = reader.readDateTime(offsets[10]);
   object.isFit = reader.readBool(offsets[11]);
   object.isMale = reader.readBool(offsets[12]);
-  object.nutritionQuality = reader.readDouble(offsets[13]);
-  object.sleepHours = reader.readDouble(offsets[14]);
-  object.smokes = reader.readBool(offsets[15]);
+  object.isOnboardingSnapshot = reader.readBool(offsets[13]);
+  object.nutritionQuality = reader.readDouble(offsets[14]);
+  object.sleepHours = reader.readDouble(offsets[15]);
+  object.smokes = reader.readBool(offsets[16]);
   return object;
 }
 
@@ -234,10 +241,12 @@ P _fitnessEntryDeserializeProp<P>(
     case 12:
       return (reader.readBool(offset)) as P;
     case 13:
-      return (reader.readDouble(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 14:
       return (reader.readDouble(offset)) as P;
     case 15:
+      return (reader.readDouble(offset)) as P;
+    case 16:
       return (reader.readBool(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1215,6 +1224,16 @@ extension FitnessEntryQueryFilter
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+      isOnboardingSnapshotEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isOnboardingSnapshot',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
       nutritionQualityEqualTo(
     double value, {
     double epsilon = Query.epsilon,
@@ -1533,6 +1552,20 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
+      sortByIsOnboardingSnapshot() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isOnboardingSnapshot', Sort.asc);
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
+      sortByIsOnboardingSnapshotDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isOnboardingSnapshot', Sort.desc);
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
       sortByNutritionQuality() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'nutritionQuality', Sort.asc);
@@ -1754,6 +1787,20 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
+      thenByIsOnboardingSnapshot() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isOnboardingSnapshot', Sort.asc);
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
+      thenByIsOnboardingSnapshotDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isOnboardingSnapshot', Sort.desc);
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
       thenByNutritionQuality() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'nutritionQuality', Sort.asc);
@@ -1880,6 +1927,13 @@ extension FitnessEntryQueryWhereDistinct
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
+      distinctByIsOnboardingSnapshot() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isOnboardingSnapshot');
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
       distinctByNutritionQuality() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'nutritionQuality');
@@ -1986,6 +2040,13 @@ extension FitnessEntryQueryProperty
   QueryBuilder<FitnessEntry, bool, QQueryOperations> isMaleProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'isMale');
+    });
+  }
+
+  QueryBuilder<FitnessEntry, bool, QQueryOperations>
+      isOnboardingSnapshotProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isOnboardingSnapshot');
     });
   }
 

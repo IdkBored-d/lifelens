@@ -1,8 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lifelens/services/symptoms_service.dart';
+import 'package:lifelens/app_services.dart';
+import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/services/symptom_summary_service.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -16,7 +15,6 @@ class SymptomsScreen extends StatefulWidget {
 class _SymptomsScreenState extends State<SymptomsScreen> {
   final TextEditingController _symptomsController = TextEditingController();
   final TextEditingController _symptomFocusController = TextEditingController();
-  final SymptomsService _symptomsService = SymptomsService();
   final SymptomSummaryService _summaryService = SymptomSummaryService();
 
   bool _isSaving = false;
@@ -57,26 +55,37 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     FocusScope.of(context).unfocus();
     setState(() => _isSaving = true);
 
+    final messenger = ScaffoldMessenger.of(context);
+
     try {
-      await _symptomsService.saveSymptoms(
-        symptomsText: _symptomsController.text.trim(),
-        symptoms: parsedSymptoms,
+      final online = await AppServices.isOnline();
+      final result = await AppServices.symptomPipeline.analyze(
+        userSymptoms: parsedSymptoms.join(', '),
+        isOnline:     online,
       );
 
       if (!mounted) return;
 
       HapticFeedback.mediumImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Symptoms saved.'),
+
+      final topDiagnosis = result.diagnoses.isNotEmpty
+          ? result.diagnoses.first.diseaseName
+          : 'No diagnosis';
+      final urgentCount = result.diagnoses.where((d) => d.isUrgent).length;
+      final urgentNote  = urgentCount > 0 ? ' · $urgentCount urgent' : '';
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Symptoms saved · $topDiagnosis$urgentNote'),
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
         ),
       );
 
       _symptomsController.clear();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('Could not save right now. Please try again.'),
           behavior: SnackBarBehavior.floating,
@@ -87,20 +96,11 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     }
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>>? _trendStream() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) {
-      return null;
-    }
-
-    return FirebaseFirestore.instance
-        .collection('symptom_entries')
-        .where('userId', isEqualTo: userId)
-        .limit(250)
-        .snapshots();
+  Stream<List<SymptomEntry>> _trendStream() {
+    return AppServices.isar.watchRecentSymptomEntries();
   }
 
-  _TrendSummary _buildTrendSummary(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+  _TrendSummary _buildTrendSummary(List<SymptomEntry> docs) {
     final now = DateTime.now();
     final weekAgo = now.subtract(const Duration(days: 7));
     final twoWeeksAgo = now.subtract(const Duration(days: 14));
@@ -109,20 +109,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     final previousCounts = <String, int>{};
 
     for (final doc in docs) {
-      final data = doc.data();
-      final ts = data['createdAt'];
-      if (ts is! Timestamp) {
-        continue;
-      }
+      final createdAt = doc.timestamp;
 
-      final createdAt = ts.toDate();
-      final rawSymptoms = data['symptoms'];
-      if (rawSymptoms is! List) {
-        continue;
-      }
-
-      final symptoms = rawSymptoms
-          .whereType<String>()
+      final symptoms = doc.symptomList
           .map((s) => s.trim().toLowerCase())
           .where((s) => s.isNotEmpty)
           .toList();
@@ -171,30 +160,19 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   }
 
   int _countSymptomInWindow(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    List<SymptomEntry> docs,
     String symptom,
     DateTime start,
     DateTime end,
   ) {
     var count = 0;
     for (final doc in docs) {
-      final data = doc.data();
-      final ts = data['createdAt'];
-      if (ts is! Timestamp) {
-        continue;
-      }
-
-      final createdAt = ts.toDate();
+      final createdAt = doc.timestamp;
       if (createdAt.isBefore(start) || !createdAt.isBefore(end)) {
         continue;
       }
 
-      final rawSymptoms = data['symptoms'];
-      if (rawSymptoms is! List) {
-        continue;
-      }
-
-      final hasSymptom = rawSymptoms.whereType<String>().any(
+      final hasSymptom = doc.symptomList.any(
         (s) => s.trim().toLowerCase() == symptom,
       );
 
@@ -206,7 +184,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   }
 
   int _activeDaysWithSymptom(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    List<SymptomEntry> docs,
     String symptom,
     int days,
   ) {
@@ -214,23 +192,12 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     final daySet = <DateTime>{};
 
     for (final doc in docs) {
-      final data = doc.data();
-      final ts = data['createdAt'];
-      if (ts is! Timestamp) {
-        continue;
-      }
-
-      final createdAt = ts.toDate();
+      final createdAt = doc.timestamp;
       if (!createdAt.isAfter(cutoff)) {
         continue;
       }
 
-      final rawSymptoms = data['symptoms'];
-      if (rawSymptoms is! List) {
-        continue;
-      }
-
-      final hasSymptom = rawSymptoms.whereType<String>().any(
+      final hasSymptom = doc.symptomList.any(
         (s) => s.trim().toLowerCase() == symptom,
       );
 
@@ -243,7 +210,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   }
 
   List<int> _buildDailySeries(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    List<SymptomEntry> docs,
     String symptom,
   ) {
     final now = DateTime.now();
@@ -257,23 +224,12 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     };
 
     for (final doc in docs) {
-      final data = doc.data();
-      final ts = data['createdAt'];
-      if (ts is! Timestamp) {
-        continue;
-      }
-
-      final day = _startOfDay(ts.toDate());
+      final day = _startOfDay(doc.timestamp);
       if (!countsByDay.containsKey(day)) {
         continue;
       }
 
-      final rawSymptoms = data['symptoms'];
-      if (rawSymptoms is! List) {
-        continue;
-      }
-
-      final matches = rawSymptoms.whereType<String>().any(
+      final matches = doc.symptomList.any(
         (s) => s.trim().toLowerCase() == symptom,
       );
 
@@ -612,7 +568,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   Future<void> _showTrendDetails(
     BuildContext context,
     String symptom,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+    List<SymptomEntry> docs,
   ) async {
     final values = _buildDailySeries(docs, symptom);
     final now = DateTime.now();
@@ -762,18 +718,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                     children: [
                       const _SectionHeader(title: 'Trends'),
                       const SizedBox(height: 8),
-                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      StreamBuilder<List<SymptomEntry>>(
                         stream: _trendStream(),
                         builder: (context, snapshot) {
-                          if (FirebaseAuth.instance.currentUser == null) {
-                            return Text(
-                              'Sign in to see trends.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: cs.onSurfaceVariant,
-                              ),
-                            );
-                          }
-
                           if (snapshot.connectionState == ConnectionState.waiting) {
                             return const Padding(
                               padding: EdgeInsets.symmetric(vertical: 8),
@@ -781,7 +728,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                             );
                           }
 
-                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
                             return Text(
                               'No symptom trends yet. Add a few entries to start seeing patterns.',
                               style: theme.textTheme.bodyMedium?.copyWith(
@@ -790,7 +737,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                             );
                           }
 
-                          final summary = _buildTrendSummary(snapshot.data!.docs);
+                          final summary = _buildTrendSummary(snapshot.data!);
 
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -810,7 +757,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                                     _showTrendDetails(
                                       context,
                                       symptom,
-                                      snapshot.data!.docs,
+                                      snapshot.data!,
                                     );
                                   },
                                 ),

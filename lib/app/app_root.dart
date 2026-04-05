@@ -7,6 +7,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../intro_screen.dart';
 import '../auth/verifyemail_screen.dart';
 import 'app_init.dart';
+import '../screens/gemma_setup_screen.dart';
+import '../services/gemma_model_manager.dart';
+import '../app_services.dart';
 
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
@@ -16,21 +19,46 @@ class AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<AppRoot> {
-  late final Future<void> _initFuture;
+  late final Future<bool> _initFuture;
+  bool _gemmaSetupDone = false;
 
   @override
   void initState() {
     super.initState();
-    _initFuture = initializeApp();
+    _initFuture = initializeApp().then((_) async {
+      if (AppServices.isGemmaLoaded) return false;
+      final skipped = await GemmaModelManager.wasSkipped();
+      return !skipped;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<void>(
+    return FutureBuilder<bool>(
       future: _initFuture,
       builder: (context, initSnapshot) {
         if (initSnapshot.connectionState != ConnectionState.done) {
           return const LoadingScreen();
+        }
+
+        if (initSnapshot.hasError) {
+          return _InitErrorScreen(
+            error: initSnapshot.error.toString(),
+            onRetry: () => setState(() {
+              _initFuture = initializeApp().then((_) async {
+                if (AppServices.isGemmaLoaded) return false;
+                final skipped = await GemmaModelManager.wasSkipped();
+                return !skipped;
+              });
+            }),
+          );
+        }
+
+        final showSetup = initSnapshot.data ?? false;
+        if (showSetup && !_gemmaSetupDone) {
+          return GemmaSetupScreen(
+            onComplete: () => setState(() => _gemmaSetupDone = true),
+          );
         }
 
         return StreamBuilder<User?>(
@@ -85,6 +113,42 @@ class _AppRootState extends State<AppRoot> {
           },
         );
       },
+    );
+  }
+}
+
+class _InitErrorScreen extends StatelessWidget {
+  const _InitErrorScreen({required this.error, required this.onRetry});
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48),
+              const SizedBox(height: 16),
+              const Text(
+                'Failed to start LifeLens',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                error,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

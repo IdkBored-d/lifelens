@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show SocketException;
 import 'package:http/http.dart' as http;
 
 /// Calls the Gemini API for deepest-level analysis.
@@ -51,27 +52,65 @@ class GeminiService {
       },
     });
 
-    try {
-      final response = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: body,
-          )
-          .timeout(const Duration(seconds: 15));
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final response = await http
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: body,
+            )
+            .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode != 200) {
-        throw Exception('Gemini API error ${response.statusCode}: ${response.body}');
+        // 4xx errors are not retryable (bad key, quota, bad request).
+        if (response.statusCode >= 400 && response.statusCode < 500) {
+          return 'Unable to reach Gemini. Please try again when online.';
+        }
+
+        // 5xx errors are transient — retry.
+        if (response.statusCode >= 500) {
+          if (attempt < maxAttempts) {
+            await Future<void>.delayed(const Duration(seconds: 1));
+            continue;
+          }
+          return 'Unable to reach Gemini. Please try again when online.';
+        }
+
+        final decoded  = jsonDecode(response.body) as Map<String, dynamic>;
+        final parts    = decoded['candidates']?[0]?['content']?['parts'] as List?;
+        final text     = parts?.map((p) => p['text'] as String).join('') ?? '';
+        return text.trim();
+      } on SocketException {
+        if (attempt < maxAttempts) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+          continue;
+        }
+      } catch (_) {
+        // TimeoutException and any other transient error — retry.
+        if (attempt < maxAttempts) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+          continue;
+        }
       }
-
-      final decoded  = jsonDecode(response.body) as Map<String, dynamic>;
-      final parts    = decoded['candidates']?[0]?['content']?['parts'] as List?;
-      final text     = parts?.map((p) => p['text'] as String).join('') ?? '';
-      return text.trim();
-    } catch (e) {
-      // Return a safe fallback message — callers should check for this
-      return 'Unable to reach Gemini. Please try again when online.';
     }
+    return 'Unable to reach Gemini. Please try again when online.';
+  }
+
+  // ── MINIME CHAT ──────────────────────────────────────────────────────────────
+
+  Future<String> generateMiniMeReply({
+    required String userMessage,
+    required String moodLabel,
+  }) async {
+    return generate(
+      'You are Mini-Me, a warm personal health coach in the LifeLens app.\n\n'
+      "The user's current mood is: $moodLabel\n\n"
+      'User says: "$userMessage"\n\n'
+      'Reply in 2–3 sentences with warm, actionable guidance. '
+      'Do not diagnose. Stay practical and supportive.',
+      maxOutputTokens: 512,
+    );
   }
 
   // ── MOOD ────────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import '../models/fitness_result.dart';
 
 /// Runs the Fitness MLP (sklearn Pipeline: StandardScaler + MLP) on-device.
 ///
-/// Model:   fitness_model.onnx (exported via skl2onnx)
+/// Model:   fitness_model_v9.onnx (exported via skl2onnx; FP32 for MVP)
 /// Input:   float_input [1, 8] float32
 ///          features: [age, bmi, heart_rate, sleep_hours, smokes,
 ///                     nutrition_quality, activity_index, gender_M]

@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:lifelens/app_services.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
@@ -41,6 +43,50 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _scrollController.dispose();
     _chatFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _runDaySummary() async {
+    if (_isReplying) return;
+
+    setState(() {
+      _isCoachExpanded = true;
+      _isReplying = true;
+      _messages.add(const _MiniMeChatMessage(
+        role: _ChatRole.user,
+        text: 'Generate my day summary',
+      ));
+    });
+    _scrollToBottom();
+
+    try {
+      // TODO: replace `true` with a real connectivity check (connectivity_plus).
+      final result = await AppServices.eodPipeline.runEndOfDay(isOnline: await AppServices.isOnline());
+
+      if (!mounted) return;
+
+      final flagNote = result.flagged && (result.flagReason?.isNotEmpty ?? false)
+          ? '\n\n⚠ ${result.flagReason}'
+          : '';
+      final replyText = result.summary.isNotEmpty
+          ? '${result.summary}$flagNote'
+          : 'Day summary complete. No significant patterns detected today.';
+
+      setState(() {
+        _messages.add(_MiniMeChatMessage(role: _ChatRole.assistant, text: replyText));
+        _isReplying = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(const _MiniMeChatMessage(
+          role: _ChatRole.assistant,
+          text: 'Could not generate day summary right now. Please try again later.',
+        ));
+        _isReplying = false;
+      });
+    }
+
+    _scrollToBottom();
   }
 
   Future<void> _loadOpeningSuggestion() async {
@@ -92,7 +138,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     final moodStore = context.read<MoodLogStore>();
     final moodContext = _buildMoodContext(moodStore);
-    final symptomContext = await _buildSymptomContext();
+    final moodLabel = moodContext.label;
 
     setState(() {
       _isCoachExpanded = true;
@@ -102,88 +148,79 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _chatController.clear();
     _scrollToBottom();
 
+    String reply;
+
     try {
-      final history = _messages
-          .take(_messages.length - 1)
-          .map(
-            (m) => MiniMeChatTurn(
-              role: m.role == _ChatRole.user ? 'user' : 'assistant',
-              text: m.text,
-            ),
-          )
-          .toList();
-
-      final response = await MiniMeBackendService.instance.chat(
-        userMessage: text,
-        moodLabel: moodContext.label,
-        moodIntensity: moodContext.intensity,
-        moodNotes: moodContext.notes,
-        recentMoods: moodContext.recentMoodSummary,
-        activeSymptoms: symptomContext,
-        history: history,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _messages.add(
-          _MiniMeChatMessage(role: _ChatRole.assistant, text: response.reply),
-        );
-        _isReplying = false;
-      });
-      _scrollToBottom();
-
-      // Persist Mini-Me suggestion as MoodEntry for daily suggestions
-      try {
-        final now = DateTime.now();
-        final dateStr = now.toIso8601String().split('T').first;
-        // Use reply if non-empty, else openingSuggestion
-        final suggestion = (response.reply.trim().isNotEmpty)
-            ? response.reply.trim()
-            : response.openingSuggestion.trim();
-        final moodEntry = MoodEntry()
-          ..date = dateStr
-          ..rawLog = text
-          ..condensedLog = text.length > 60 ? text.substring(0, 60) + '...' : text
-          ..resolvedMood = moodContext.label
-          ..resolvedBy = 'minime'
-          ..mobileBertPrediction = null
-          ..mobileBertTopProb = null
-          ..userConfirmed = null
-          ..responseText = suggestion
-          ..fitnessScoreSnapshot = 0.0
-          ..timestamp = now;
-        await IsarService.instance.writeMoodEntry(moodEntry);
-
-        // Trigger UI refresh for daily suggestions
-        final moodStore = context.read<MoodLogStore>();
-        // Add and remove a dummy entry to force notifyListeners
-        final dummy = MoodCheckIn(
-          moodLabel: moodContext.label,
-          emoji: '',
-          intensity: moodContext.intensity,
-          tags: const [],
-          notes: '',
-          createdAt: now,
-        );
-        moodStore.add(dummy);
-        moodStore.clear(); // Remove all to force refresh (or remove dummy if needed)
-      } catch (e) {
-        // Optionally log error
+      // Tier 1: Gemma (on-device, no network required)
+      if (AppServices.isGemmaLoaded) {
+        try {
+          reply = await AppServices.gemma.generateMiniMeReply(
+            userMessage: text,
+            moodLabel: moodLabel,
+          );
+        } catch (_) {
+          reply = await _geminiOrOffline(text, moodLabel);
+        }
+      } else {
+        reply = await _geminiOrOffline(text, moodLabel);
       }
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _messages.add(
-          _MiniMeChatMessage(
-            role: _ChatRole.assistant,
-            text:
-                'I could not reach your Mini-Me backend, so I cannot generate a coaching response yet. Please verify the backend is running on port 8000 and send again.',
-          ),
-        );
-        _isReplying = false;
-      });
-      _scrollToBottom();
+      reply = _buildOfflineReply(userText: text, moodLabel: moodLabel);
     }
+
+    if (!mounted) return;
+    setState(() {
+      _messages.add(_MiniMeChatMessage(role: _ChatRole.assistant, text: reply));
+      _isReplying = false;
+    });
+    _scrollToBottom();
+  }
+
+  /// Tier 2: Gemini if online, else Tier 3: offline template.
+  Future<String> _geminiOrOffline(String text, String moodLabel) async {
+    if (await _isOnline()) {
+      try {
+        final response = await AppServices.gemini.generateMiniMeReply(
+          userMessage: text,
+          moodLabel: moodLabel,
+        );
+        // Gemini returns its fallback message on HTTP errors — treat as failure
+        if (!response.startsWith('Unable to reach Gemini')) return response;
+      } catch (_) {}
+    }
+    return _buildOfflineReply(userText: text, moodLabel: moodLabel);
+  }
+
+  static Future<bool> _isOnline() async {
+    try {
+      final result = await InternetAddress.lookup(
+        'generativelanguage.googleapis.com',
+      ).timeout(const Duration(seconds: 3));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _buildOfflineReply({
+    required String userText,
+    required String moodLabel,
+  }) {
+    final q = userText.toLowerCase();
+
+    if (q.contains('anx') || q.contains('stress')) {
+      return 'Today\'s calming plan:\n1) 60-second body reset (jaw, shoulders, breath).\n2) Name one stress trigger in one sentence.\n3) Take one small action in the next 10 minutes.';
+    }
+
+    if (q.contains('sleep') || q.contains('tired')) {
+      return 'Tonight\'s sleep plan:\n1) Set a 20-minute wind-down reminder.\n2) Reduce light and screens.\n3) Write one thought to clear your mind before bed.';
+    }
+
+    if (q.contains('plan') || q.contains('routine') || q.contains('organize')) {
+      return 'Your structure for today:\n1) One mood check-in.\n2) One movement block.\n3) One sleep-support action.\nKeep it simple and repeatable.';
+    }
+
+    return 'Model connection is not live yet. Based on your latest mood ($moodLabel), tell me your focus area (mood, sleep, symptoms, or exercise) and I will draft a short plan.';
   }
 
   _MiniMeMoodContext _buildMoodContext(MoodLogStore moodStore) {
@@ -269,6 +306,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           builder: (context, avatarStore, _) => Text(avatarStore.miniMeName),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Day summary',
+            onPressed: _isReplying ? null : _runDaySummary,
+            icon: const Icon(Icons.insights_rounded),
+          ),
           IconButton(
             tooltip: 'Mini-Me shop',
             onPressed: () {
@@ -671,6 +713,7 @@ class _InlineCoachPanel extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
+      clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         color: cs.surface.withOpacity(0.97),
         borderRadius: BorderRadius.circular(16),
@@ -683,8 +726,12 @@ class _InlineCoachPanel extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        children: [
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: SizedBox(
+          height: 220,
+          child: Column(
+            children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
             child: Row(
@@ -781,7 +828,9 @@ class _InlineCoachPanel extends StatelessWidget {
               },
             ),
           ),
-        ],
+          ],
+          ),
+        ),
       ),
     );
   }

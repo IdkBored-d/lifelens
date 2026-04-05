@@ -46,4 +46,8 @@ class FitnessEntry {
   /// Timestamp of when inference was run.
   @Index()
   late DateTime inferenceTimestamp;
+
+  /// True when this entry was written from manual onboarding input
+  /// rather than from a real FitnessMLP inference run.
+  late bool isOnboardingSnapshot;
 }

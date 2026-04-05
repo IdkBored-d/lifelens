@@ -48,7 +48,7 @@ class IsarService {
   }
 
   Isar get _db {
-    assert(isOpen, 'IsarService not initialised. Call init() first.');
+    if (!isOpen) throw StateError('IsarService not initialised. Call init() first.');
     return _isar!;
   }
 
@@ -143,6 +143,16 @@ class IsarService {
         .sortByTimestampDesc()
         .findFirst();
     return entry?.date;
+  }
+
+  /// Live stream of the most recent [limit] symptom entries, newest first.
+  /// Fires immediately with current data, then re-emits on every write.
+  Stream<List<SymptomEntry>> watchRecentSymptomEntries({int limit = 250}) {
+    return _db.symptomEntrys
+        .where()
+        .sortByTimestampDesc()
+        .limit(limit)
+        .watch(fireImmediately: true);
   }
 
   /// Update the status of a symptom entry.

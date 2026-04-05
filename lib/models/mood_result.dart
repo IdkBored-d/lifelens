@@ -1,5 +1,17 @@
 import 'escalation_level.dart';
 
+// TODO(ML): Expand to ~28 emotion classes when the model is retrained.
+// Current model is fine-tuned on 6 GoEmotions-derived classes (sadness, joy,
+// love, anger, fear, surprise). The architecture targets ~28 classes from
+// the full GoEmotions taxonomy (Demszky et al. 2020).
+// When retraining:
+//   1. Update kMobileBertLabels with all 28 labels in the model's output order.
+//   2. Update ConfidenceManager.evaluateMobileBert() — per-class thresholds
+//      will need re-calibration against the new class distribution.
+//   3. Update dev_test_screen _testConfidenceManager and _testMobileBert —
+//      test vectors currently use 6 probabilities; expand to 28.
+//   4. Update the architecture doc (says 28 classes already — doc is ahead of code).
+
 /// Labels matching training notebook ID2LABEL order.
 /// Index must match the ONNX model's output logit positions.
 const List<String> kMobileBertLabels = [

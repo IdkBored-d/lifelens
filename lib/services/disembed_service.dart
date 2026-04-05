@@ -36,7 +36,7 @@ class DisEmbedService {
     String text,
     Map<String, List<int>> Function(String text, int maxLen) tokenize,
   ) async {
-    assert(_isLoaded, 'DisEmbedService not loaded. Call load() first.');
+    if (!_isLoaded) throw StateError('DisEmbedService not loaded. Call load() first.');
 
     final tokens = tokenize(text, _maxSeqLen);
     final ids    = tokens['input_ids']!;

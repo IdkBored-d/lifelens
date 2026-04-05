@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dart_wordpiece/dart_wordpiece.dart';
 
 import 'database/isar_service.dart';
@@ -57,16 +58,24 @@ class AppServices {
   static late final WordPieceTokenizer _deTokenizer; // maxLen=512 for DisEmbed
 
   // ── Configuration ────────────────────────────────────────────────────────────
-  // TODO: Move to environment variables / secrets manager before production.
+  // Keys are injected at build time via --dart-define-from-file=config.json.
+  // config.json is gitignored — never commit real keys.
+  //
+  // TODO(prod): Move key retrieval to a server-side call before release.
+  //   The client should fetch a short-lived token from the backend at login
+  //   rather than bundling API keys in the binary.
 
-  static const String _weaviateHost   = 'https://your-cluster.weaviate.network';
-  static const String _weaviateApiKey = 'YOUR_WEAVIATE_API_KEY';
-  static const String _geminiApiKey   = 'YOUR_GEMINI_API_KEY';
+  static const String _weaviateHost   = String.fromEnvironment('WEAVIATE_HOST',    defaultValue: '');
+  static const String _weaviateApiKey = String.fromEnvironment('WEAVIATE_API_KEY', defaultValue: '');
+  static const String _geminiApiKey   = String.fromEnvironment('GEMINI_API_KEY',   defaultValue: '');
 
   // Asset paths
   static const String _mobileBertAsset = 'assets/models/mobile_bert_emotion.onnx';
-  static const String _disEmbedAsset   = 'assets/models/disembed_fp16.onnx';
-  //static const String _fitnessAsset    = 'assets/models/fitness_model.onnx';
+  // TODO(ship): Switch back to FP16 model when shipping — FP32 is for MVP only.
+  //static const String _disEmbedAsset = 'assets/models/disembed_fp16.onnx';
+  static const String _disEmbedAsset   = 'assets/models/for MVP/disembed_fp32.onnx';
+  // TODO(ship): Retrain/re-export and swap in a versioned production model before shipping.
+  //static const String _fitnessAsset = 'assets/models/fitness_model.onnx';
   static const String _fitnessAsset    = 'assets/models/for MVP/fitness_model_v9.onnx';
   static const String _vocabAsset      = 'assets/models/vocab.txt';
 
@@ -79,53 +88,88 @@ class AppServices {
   /// on-device LLM and escalate to Gemini when online.
   static Future<void> init({required String gemmaPath}) async {
     WidgetsFlutterBinding.ensureInitialized();
+    final sw = Stopwatch()..start();
+    debugPrint('[AppServices] init: start');
 
     // ── 1. Database ──────────────────────────────────────────────────────────
     isar = IsarService.instance;
-    await isar.init();
+    final dbStart = sw.elapsedMilliseconds;
+    try {
+      await isar.init();
+      debugPrint('[AppServices] init: Isar initialised in ${sw.elapsedMilliseconds - dbStart}ms (total ${sw.elapsedMilliseconds}ms)');
+    } catch (e) {
+      debugPrint('[AppServices] init: Isar init failed (non-fatal): $e');
+    }
 
     // ── 2. Shared BERT tokenizers ────────────────────────────────────────────
-    // Same vocab file works for both models.
-    // Two instances needed because maxLength is set at construction time.
-    final vocabRaw = await rootBundle.loadString(_vocabAsset);
-    final vocab    = VocabLoader.fromString(vocabRaw);
-
-    _mbTokenizer = WordPieceTokenizer(
-      vocab:  vocab,
-      config: TokenizerConfig(maxLength: 128, normalizeText: true),
-    );
-    _deTokenizer = WordPieceTokenizer(
-      vocab:  vocab,
-      config: TokenizerConfig(maxLength: 512, normalizeText: true),
-    );
+    final vocabStart = sw.elapsedMilliseconds;
+    try {
+      final vocabRaw = await rootBundle.loadString(_vocabAsset);
+      final vocab    = VocabLoader.fromString(vocabRaw);
+      _mbTokenizer = WordPieceTokenizer(
+        vocab:  vocab,
+        config: TokenizerConfig(maxLength: 128, normalizeText: true),
+      );
+      _deTokenizer = WordPieceTokenizer(
+        vocab:  vocab,
+        config: TokenizerConfig(maxLength: 512, normalizeText: true),
+      );
+      debugPrint('[AppServices] init: Tokenizers ready in ${sw.elapsedMilliseconds - vocabStart}ms (total ${sw.elapsedMilliseconds}ms)');
+    } catch (e) {
+      debugPrint('[AppServices] init: Tokenizer init failed (non-fatal): $e');
+    }
 
     // ── 3. Stateless services ────────────────────────────────────────────────
+    final statelessStart = sw.elapsedMilliseconds;
     confidence = const ConfidenceManager();
     quickTrack = QuickTrackService();
+    debugPrint('[AppServices] init: Stateless services in ${sw.elapsedMilliseconds - statelessStart}ms');
 
     // ── 4. External services ─────────────────────────────────────────────────
+    final externalStart = sw.elapsedMilliseconds;
     weaviate = WeaviateService(host: _weaviateHost, apiKey: _weaviateApiKey);
     gemini   = GeminiService(apiKey: _geminiApiKey);
+    debugPrint('[AppServices] init: External services init in ${sw.elapsedMilliseconds - externalStart}ms');
 
     // ── 5. ONNX model services (load in parallel) ────────────────────────────
+    final modelsStart = sw.elapsedMilliseconds;
     mobileBert = MobileBertService();
     disEmbed   = DisEmbedService();
     fitnessMlp = FitnessMlpService();
 
-    await Future.wait([
-      mobileBert.load(_mobileBertAsset),
-      disEmbed.load(_disEmbedAsset),
-      fitnessMlp.load(_fitnessAsset),
-    ]);
-
-    // ── 6. Gemma 2 2B IT (skip gracefully if not yet downloaded) ────────────
-    gemma = GemmaService();
-    if (gemmaPath.isNotEmpty) {
-      await gemma.load(gemmaPath);
+    try {
+      await Future.wait([
+        mobileBert.load(_mobileBertAsset),
+        disEmbed.load(_disEmbedAsset),
+        fitnessMlp.load(_fitnessAsset),
+      ]);
+      debugPrint('[AppServices] init: ONNX models loaded in ${sw.elapsedMilliseconds - modelsStart}ms');
+    } catch (e) {
+      debugPrint('[AppServices] init: ONNX model load failed: $e');
     }
 
-    // ── 7. Startup sync check ────────────────────────────────────────────────
-    await _runStartupSyncCheck();
+    // ── 6. Gemma 2 2B IT (skip gracefully if not yet downloaded) ────────────
+    final gemmaStart = sw.elapsedMilliseconds;
+    gemma = GemmaService();
+    if (gemmaPath.isNotEmpty) {
+      try {
+        await gemma.load(gemmaPath);
+        debugPrint('[AppServices] init: Gemma loaded in ${sw.elapsedMilliseconds - gemmaStart}ms');
+      } catch (e) {
+        debugPrint('[AppServices] init: Gemma load failed: $e');
+      }
+    } else {
+      debugPrint('[AppServices] init: Gemma skipped (no path provided)');
+    }
+
+    // ── 7. Startup sync check ───────────────────────────────────────────────
+    final syncStart = sw.elapsedMilliseconds;
+    try {
+      await _runStartupSyncCheck();
+      debugPrint('[AppServices] init: Startup sync check in ${sw.elapsedMilliseconds - syncStart}ms');
+    } catch (e) {
+      debugPrint('[AppServices] startup sync check failed (non-fatal): $e');
+    }
 
     // ── 8. Pipeline services ─────────────────────────────────────────────────
     moodPipeline = MoodPipelineService(
@@ -157,11 +201,13 @@ class AppServices {
       gemma:      gemma,
       gemini:     gemini,
       weaviate:   weaviate,
-      quickTrack: quickTrack,
-      fitness:    fitnessPipeline,
-      disEmbed:   disEmbed,
-      tokenize:   _disEmbedTokenize,
+      quickTrack:  quickTrack,
+      fitness:     fitnessPipeline,
+      disEmbed:    disEmbed,
+      tokenize:    _disEmbedTokenize,
     );
+
+    debugPrint('[AppServices] init: completed in ${sw.elapsedMilliseconds}ms');
   }
 
   // ── Tokenizer functions ───────────────────────────────────────────────────────
@@ -253,6 +299,12 @@ class AppServices {
   }
 
   static bool get isGemmaLoaded => gemma.isLoaded;
+
+  /// Returns true if the device has any active network connection.
+  static Future<bool> isOnline() async {
+    final results = await Connectivity().checkConnectivity();
+    return results.any((r) => r != ConnectivityResult.none);
+  }
 
   // ── Teardown ─────────────────────────────────────────────────────────────────
 

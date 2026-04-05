@@ -7,6 +7,7 @@ import 'preferences_screen.dart';
 import 'privacy_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
+import 'dev_test_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -158,6 +159,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _ProfileSection(
               title: 'Actions',
               children: [
+                Container(
+                  color: Colors.red,
+                  child: _ProfileTile(
+                    icon: Icons.bug_report_outlined,
+                    label: 'Dev Tools',
+                    value: '',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const DevTestScreen()),
+                    ),
+                  ),
+                ),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.logout),
                   label: const Text('Log out'),

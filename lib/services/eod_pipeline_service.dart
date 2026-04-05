@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/fitness_result.dart';
 import 'quick_track_service.dart';
 import 'fitness_pipeline_service.dart';
@@ -76,9 +77,11 @@ class EodPipelineService {
         ? last7FitnessScores.reduce((a, b) => a + b) / last7FitnessScores.length
         : todayFitnessScore;
         
-    final trend = last7FitnessScores.length > 1
-        ? (last7FitnessScores.first > last7FitnessScores.last ? 'upward' : 'downward')
-        : 'stable';
+    // Fix 5: Delegate to FitnessPipelineService.fitnessTrend() — uses a 3-day
+    // rolling average vs the prior 4 days with a ±3-point deadband.
+    // The old first-vs-last ternary is noise-sensitive and always returns
+    // 'upward'/'downward', never 'stable'.
+    final trend = _fitness.fitnessTrend(last7FitnessScores);
 
     // ── STEP 4: Build context strings ─────────────────────────────────────
     final todayMoodStr = todayMood.isNotEmpty
@@ -97,8 +100,9 @@ class EodPipelineService {
         .join('\n');
 
     // ── STEP 5: Correlation analysis ──────────────────────────────────────
-    String summaryText;
+    String summaryText = 'End-of-day summary unavailable.';
     EodCorrelation? correlation;
+    var useGemma = !isOnline; // flipped to true if Gemini fails
 
     if (isOnline) {
       // Build a real query vector from active symptoms, not a zero vector.
@@ -106,36 +110,52 @@ class EodPipelineService {
       // a zero vector returns arbitrary results which misleads the model.
       String ragContext = '';
       if (activeSymptoms.isNotEmpty) {
-        final symptomQueryText = activeSymptoms
-            .map((e) => '${e.predictedAilment}: ${e.symptoms.join(", ")}')
-            .join('. ');
-        final queryVector = await _disEmbed.embed(symptomQueryText, _tokenize);
-        final ragResults  = await _weaviate.queryByVector(queryVector, topK: 3);
-        ragContext = _weaviate.buildRagContext(ragResults);
+        try {
+          final symptomQueryText = activeSymptoms
+              .map((e) => '${e.predictedAilment}: ${e.symptoms.join(", ")}')
+              .join('. ');
+          final queryVector = await _disEmbed.embed(symptomQueryText, _tokenize);
+          final ragResults  = await _weaviate.queryByVector(queryVector, topK: 3);
+          ragContext = _weaviate.buildRagContext(ragResults);
+        } catch (e) {
+          debugPrint('[EodPipeline] RAG query failed (non-fatal): $e');
+        }
       }
 
-      final geminiRaw = await _gemini.generateDeepEodAnalysis(
-        todayMoodEntry:       todayMoodStr,
-        activeSymptomEntries: activeSymptomsStr,
-        todayFitnessScore:    todayFitnessScore,
-        weekAvgFitnessScore:  weekAvg,
-        fitnessTrend:         trend,
-        last7MoodEntries:     last7MoodStr,
-        ragContext:           ragContext,
-      );
-      summaryText = _extractUserFacingSummary(geminiRaw);
-      correlation = _extractCorrelation(geminiRaw);
-    } else {
-      final gemmaRaw = await _gemma.generateEodSummary(
-        todayMoodEntry:       todayMoodStr,
-        activeSymptomEntries: activeSymptomsStr,
-        todayFitnessScore:    todayFitnessScore,
-        weekAvgFitnessScore:  weekAvg,
-        fitnessTrend:         trend,
-        last7MoodEntries:     last7MoodStr,
-      );
-      summaryText = _extractUserFacingSummary(gemmaRaw);
-      correlation = _extractCorrelation(gemmaRaw);
+      try {
+        final geminiRaw = await _gemini.generateDeepEodAnalysis(
+          todayMoodEntry:       todayMoodStr,
+          activeSymptomEntries: activeSymptomsStr,
+          todayFitnessScore:    todayFitnessScore,
+          weekAvgFitnessScore:  weekAvg,
+          fitnessTrend:         trend,
+          last7MoodEntries:     last7MoodStr,
+          ragContext:           ragContext,
+        );
+        summaryText = _extractUserFacingSummary(geminiRaw);
+        correlation = _extractCorrelation(geminiRaw);
+      } catch (e) {
+        debugPrint('[EodPipeline] Gemini failed, falling back to Gemma: $e');
+        useGemma = true;
+      }
+    }
+
+    if (useGemma) {
+      try {
+        final gemmaRaw = await _gemma.generateEodSummary(
+          todayMoodEntry:       todayMoodStr,
+          activeSymptomEntries: activeSymptomsStr,
+          todayFitnessScore:    todayFitnessScore,
+          weekAvgFitnessScore:  weekAvg,
+          fitnessTrend:         trend,
+          last7MoodEntries:     last7MoodStr,
+        );
+        summaryText = _extractUserFacingSummary(gemmaRaw);
+        correlation = _extractCorrelation(gemmaRaw);
+      } catch (e) {
+        debugPrint('[EodPipeline] Gemma failed, using stub summary: $e');
+        summaryText = 'End-of-day summary unavailable.';
+      }
     }
 
     // ── STEP 6: WRITE EOD SUMMARY TO ISAR ─────────────────────────────────

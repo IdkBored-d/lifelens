@@ -26,7 +26,8 @@ class GemmaService {
       modelType: ModelType.gemmaIt,
     ).fromFile(modelPath).install();
 
-    _model    = await FlutterGemma.getActiveModel(maxTokens: 2048);
+    _model = await FlutterGemma.getActiveModel(maxTokens: 2048);
+    if (_model == null) throw StateError('FlutterGemma.getActiveModel returned null');
     _isLoaded = true;
   }
 
@@ -44,7 +45,7 @@ class GemmaService {
   ///   EOD summary:     ~1100 prompt + ~900 output  = ~2000  tokens
   /// All well within the 8192-token limit at maxTokens=2048.
   Future<String> generate(String prompt) async {
-    assert(_isLoaded, 'GemmaService not loaded. Call load() first.');
+    if (!_isLoaded) throw StateError('GemmaService not loaded. Call load() first.');
 
     final session = await _model!.createSession(
       temperature: 0.4,   // lower = more predictable, less rambling
@@ -59,6 +60,33 @@ class GemmaService {
       return await session.getResponse();
     } finally {
       // Always close, even if getResponse() throws — prevents handle leaks.
+      await session.close();
+    }
+  }
+
+  /// Streaming variant of [generate] — yields tokens as they are produced.
+  ///
+  /// Use this for UI "typing" effects (e.g. MiniMe chat bubbles).
+  /// The caller is responsible for concatenating tokens into the final string.
+  ///
+  /// The session is closed after the stream completes or if an error occurs.
+  /// Cancellation: cancel the StreamSubscription — the finally block will
+  /// still close the session on the next yield after cancellation.
+  Stream<String> generateStreaming(String prompt) async* {
+    if (!_isLoaded) throw StateError('GemmaService not loaded. Call load() first.');
+
+    final session = await _model!.createSession(
+      temperature: 0.4,
+      randomSeed:  42,
+      topK:        20,
+    );
+
+    try {
+      await session.addQueryChunk(
+        Message.text(text: prompt, isUser: true),
+      );
+      yield* session.getResponseAsync();
+    } finally {
       await session.close();
     }
   }
@@ -115,6 +143,22 @@ class GemmaService {
   }) async {
     return generate(_symptomDirectPrompt(userSymptoms, context, ragContext));
   }
+
+  // ── MINIME CHAT ──────────────────────────────────────────────────────────────
+
+  Future<String> generateMiniMeReply({
+    required String userMessage,
+    required String moodLabel,
+  }) async {
+    return generate(_miniMeChatPrompt(userMessage, moodLabel));
+  }
+
+  static String _miniMeChatPrompt(String msg, String mood) =>
+      'You are Mini-Me, a warm personal health coach in the LifeLens app.\n\n'
+      "The user's current mood is: $mood\n\n"
+      'User says: "$msg"\n\n'
+      'Reply in 2–3 sentences with warm, actionable guidance. '
+      'Do not diagnose. Stay practical and supportive.';
 
   // ── EOD PIPELINE ────────────────────────────────────────────────────────────
 
