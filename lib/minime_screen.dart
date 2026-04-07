@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'moodlog_store.dart';
@@ -6,13 +8,17 @@ import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/minime_shop_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
+import 'package:lifelens/services/minime_chat_storage_service.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
 
 class MiniMeScreen extends StatefulWidget {
-  const MiniMeScreen({Key? key}) : super(key: key);
+  const MiniMeScreen({super.key, required this.userName});
+
+  final String userName;
+
   @override
   State<MiniMeScreen> createState() => _MiniMeScreenState();
 }
@@ -31,7 +37,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadOpeningSuggestion();
+      _bootstrapMiniMe();
     });
   }
 
@@ -72,6 +78,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           _MiniMeChatMessage(role: _ChatRole.assistant, text: opening),
         );
       });
+      await _persistMessages();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -83,7 +90,34 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           ),
         );
       });
+      await _persistMessages();
     }
+  }
+
+  Future<void> _bootstrapMiniMe() async {
+    final stored = await MiniMeChatStorageService.instance.loadMessages();
+    if (!mounted) return;
+
+    if (stored.isNotEmpty) {
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(
+            stored.map(
+              (message) => _MiniMeChatMessage(
+                role: message.role == 'user'
+                    ? _ChatRole.user
+                    : _ChatRole.assistant,
+                text: message.text,
+              ),
+            ),
+          );
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    await _loadOpeningSuggestion();
   }
 
   Future<void> _sendMessage() async {
@@ -99,6 +133,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       _messages.add(_MiniMeChatMessage(role: _ChatRole.user, text: text));
       _isReplying = true;
     });
+    await _persistMessages();
     _chatController.clear();
     _scrollToBottom();
 
@@ -130,6 +165,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         );
         _isReplying = false;
       });
+      await _persistMessages();
       _scrollToBottom();
 
       // Persist Mini-Me suggestion as MoodEntry for daily suggestions
@@ -143,7 +179,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         final moodEntry = MoodEntry()
           ..date = dateStr
           ..rawLog = text
-          ..condensedLog = text.length > 60 ? text.substring(0, 60) + '...' : text
+          ..condensedLog = text.length > 60
+              ? '${text.substring(0, 60)}...'
+              : text
           ..resolvedMood = moodContext.label
           ..resolvedBy = 'minime'
           ..mobileBertPrediction = null
@@ -154,19 +192,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           ..timestamp = now;
         await IsarService.instance.writeMoodEntry(moodEntry);
 
-        // Trigger UI refresh for daily suggestions
-        final moodStore = context.read<MoodLogStore>();
-        // Add and remove a dummy entry to force notifyListeners
-        final dummy = MoodCheckIn(
-          moodLabel: moodContext.label,
-          emoji: '',
-          intensity: moodContext.intensity,
-          tags: const [],
-          notes: '',
-          createdAt: now,
-        );
-        moodStore.add(dummy);
-        moodStore.clear(); // Remove all to force refresh (or remove dummy if needed)
+        if (!mounted) return;
+        await context.read<MoodLogStore>().refreshFromPersistence();
       } catch (e) {
         // Optionally log error
       }
@@ -177,13 +204,27 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           _MiniMeChatMessage(
             role: _ChatRole.assistant,
             text:
-                'I could not reach your Mini-Me backend, so I cannot generate a coaching response yet. Please verify the backend is running on port 8000 and send again.',
+                'I could not reach your Mini-Me backend, so I cannot generate a response yet. Please verify the backend is running on port 8000 and send again.',
           ),
         );
         _isReplying = false;
       });
+      await _persistMessages();
       _scrollToBottom();
     }
+  }
+
+  Future<void> _persistMessages() {
+    return MiniMeChatStorageService.instance.saveMessages(
+      _messages
+          .map(
+            (message) => MiniMeStoredMessage(
+              role: message.role == _ChatRole.user ? 'user' : 'assistant',
+              text: message.text,
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   _MiniMeMoodContext _buildMoodContext(MoodLogStore moodStore) {
@@ -270,6 +311,45 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Clear chat',
+            onPressed: _messages.isEmpty
+                ? null
+                : () async {
+                    final shouldClear = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Clear chat'),
+                        content: const Text(
+                          'This will remove your current Mini-Me conversation and start fresh.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Clear'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (shouldClear != true || !context.mounted) return;
+
+                    setState(() {
+                      _messages.clear();
+                      _isCoachExpanded = false;
+                      _isReplying = false;
+                      _didLoadOpeningSuggestion = false;
+                    });
+                    await MiniMeChatStorageService.instance.clear();
+                    if (!context.mounted) return;
+                    await _loadOpeningSuggestion();
+                  },
+            icon: const Icon(Icons.delete_sweep_rounded),
+          ),
+          IconButton(
             tooltip: 'Mini-Me shop',
             onPressed: () {
               final moodStore = context.read<MoodLogStore>();
@@ -320,6 +400,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   Expanded(
                     child: _AvatarPanel(
                       miniMeName: miniMeName,
+                      userName: widget.userName,
                       avatarStore: avatarStore,
                       glow: glow,
                       moodLabel: latest?.moodLabel,
@@ -360,6 +441,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 class _AvatarPanel extends StatelessWidget {
   const _AvatarPanel({
     required this.miniMeName,
+    required this.userName,
     required this.avatarStore,
     required this.glow,
     required this.moodLabel,
@@ -377,6 +459,7 @@ class _AvatarPanel extends StatelessWidget {
   });
 
   final String miniMeName;
+  final String userName;
   final AvatarStore avatarStore;
   final Color glow;
   final String? moodLabel;
@@ -396,123 +479,121 @@ class _AvatarPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final avatarSize = (constraints.biggest.shortestSide * 0.82).clamp(
-          260.0,
-          700.0,
+        const collapsedComposerHeight = 96.0;
+        const collapsedBottomInset = 20.0;
+        const suggestionBubbleReserve = 72.0;
+        final availableAvatarHeight =
+            constraints.maxHeight -
+            collapsedComposerHeight -
+            collapsedBottomInset -
+            suggestionBubbleReserve;
+        final avatarSize = math.min(
+          constraints.biggest.shortestSide * 1.04,
+          availableAvatarHeight.clamp(320.0, 820.0),
         );
 
         return Stack(
           children: [
-            Positioned(
-              top: 6,
-              left: 18,
-              right: 18,
-              child: _AvatarSuggestionBubble(text: suggestionText),
-            ),
-            Center(
-              child: MiniMeAvatar(
-                bodyModel: avatarStore.bodyModel,
-                hairModel: avatarStore.hairModel,
-                shirtModel: avatarStore.shirtModel,
-                bodyWidthScale: avatarStore.bodyWidthScale,
-                moodLabel: moodLabel,
-                moodEmoji: moodEmoji,
-                glow: glow,
-                size: avatarSize,
-              ),
-            ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOut,
-              left: 16,
-              right: 16,
-              bottom: isCoachExpanded ? 106 : 12,
-              height: isCoachExpanded ? 252 : 0,
-              child: IgnorePointer(
-                ignoring: !isCoachExpanded,
-                child: Opacity(
-                  opacity: isCoachExpanded ? 1 : 0,
-                  child: _InlineCoachPanel(
-                    miniMeName: miniMeName,
-                    messages: messages,
-                    isReplying: isReplying,
-                    scrollController: scrollController,
-                    moodLabel: moodLabel ?? 'Neutral',
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 12,
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.surface.withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.outlineVariant.withOpacity(0.45),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+            IgnorePointer(
+              ignoring: isCoachExpanded,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                opacity: isCoachExpanded ? 0 : 1,
+                child: Stack(
                   children: [
-                    IconButton(
-                      onPressed: onToggleCoachExpanded,
-                      icon: Icon(
-                        isCoachExpanded
-                            ? Icons.keyboard_arrow_down_rounded
-                            : Icons.keyboard_arrow_up_rounded,
+                    Positioned(
+                      top: 10,
+                      left: 18,
+                      right: 18,
+                      child: _AvatarSuggestionBubble(
+                        text: 'Hi, ${_displayFirstName(userName)}',
                       ),
-                      tooltip: isCoachExpanded
-                          ? 'Hide guidance'
-                          : 'Show guidance',
                     ),
-                    Expanded(
-                      child: TextField(
-                        controller: chatController,
-                        focusNode: chatFocusNode,
-                        keyboardType: TextInputType.multiline,
-                        textInputAction: TextInputAction.newline,
-                        minLines: 1,
-                        maxLines: 5,
-                        onTap: onExpandCoach,
-                        decoration: InputDecoration(
-                          hintText: 'Type to $miniMeName...',
-                          isDense: true,
-                          filled: true,
-                          fillColor: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withOpacity(0.3),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                    Positioned.fill(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          4,
+                          suggestionBubbleReserve - 8,
+                          4,
+                          collapsedComposerHeight + collapsedBottomInset - 10,
+                        ),
+                        child: Align(
+                          alignment: const Alignment(0, -0.06),
+                          child: MiniMeAvatar(
+                            bodyModel: avatarStore.bodyModel,
+                            hairModel: avatarStore.hairModel,
+                            shirtModel: avatarStore.shirtModel,
+                            bodyWidthScale: avatarStore.bodyWidthScale,
+                            moodLabel: moodLabel,
+                            moodEmoji: moodEmoji,
+                            glow: glow,
+                            size: avatarSize,
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton(
-                      onPressed: isReplying ? null : onSend,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size(48, 48),
-                        padding: EdgeInsets.zero,
-                      ),
-                      child: const Icon(Icons.arrow_upward_rounded, size: 18),
                     ),
                   ],
                 ),
               ),
             ),
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              left: 16,
+              right: 16,
+              top: isCoachExpanded ? 8 : constraints.maxHeight - 120,
+              bottom: 12,
+              child: IgnorePointer(
+                ignoring: !isCoachExpanded,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  opacity: isCoachExpanded ? 1 : 0,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: _InlineCoachPanel(
+                          miniMeName: miniMeName,
+                          messages: messages,
+                          isReplying: isReplying,
+                          scrollController: scrollController,
+                          moodLabel: moodLabel ?? 'Neutral',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _CoachComposerCard(
+                        miniMeName: miniMeName,
+                        chatController: chatController,
+                        chatFocusNode: chatFocusNode,
+                        isCoachExpanded: isCoachExpanded,
+                        isReplying: isReplying,
+                        messageCount: messages.length,
+                        onExpandCoach: onExpandCoach,
+                        onSend: onSend,
+                        onToggleCoachExpanded: onToggleCoachExpanded,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (!isCoachExpanded)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 12,
+                child: _CoachComposerCard(
+                  miniMeName: miniMeName,
+                  chatController: chatController,
+                  chatFocusNode: chatFocusNode,
+                  isCoachExpanded: isCoachExpanded,
+                  isReplying: isReplying,
+                  messageCount: messages.length,
+                  onExpandCoach: onExpandCoach,
+                  onSend: onSend,
+                  onToggleCoachExpanded: onToggleCoachExpanded,
+                ),
+              ),
           ],
         );
       },
@@ -529,12 +610,12 @@ class _AvatarSuggestionBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final bubbleColor = cs.primaryContainer.withOpacity(0.92);
-    final bubbleBorder = cs.primary.withOpacity(0.32);
+    final bubbleColor = cs.surface.withValues(alpha: 0.98);
+    final bubbleBorder = cs.outlineVariant.withValues(alpha: 0.62);
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
+        constraints: const BoxConstraints(maxWidth: 260),
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.96, end: 1),
           duration: const Duration(milliseconds: 280),
@@ -546,57 +627,38 @@ class _AvatarSuggestionBubble extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Container(
-                margin: const EdgeInsets.only(bottom: 14),
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
                 decoration: BoxDecoration(
                   color: bubbleColor,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: bubbleBorder, width: 1.2),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: bubbleBorder, width: 1.15),
                   boxShadow: [
                     BoxShadow(
-                      color: cs.shadow.withOpacity(0.12),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
+                      color: cs.shadow.withValues(alpha: 0.1),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: cs.primary.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Icon(
-                        Icons.campaign_rounded,
-                        size: 14,
-                        color: cs.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        text,
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  text,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                  ),
                 ),
               ),
               Positioned(
-                bottom: 2,
-                left: 36,
+                bottom: 3,
+                left: 0,
+                right: 0,
                 child: CustomPaint(
-                  size: const Size(20, 14),
+                  size: const Size(34, 18),
                   painter: _SpeechTailPainter(
                     fillColor: bubbleColor,
                     borderColor: bubbleBorder,
@@ -623,9 +685,25 @@ class _SpeechTailPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final path = Path()
-      ..moveTo(2, 0)
-      ..lineTo(size.width - 2, 0)
-      ..lineTo(7, size.height)
+      ..moveTo(size.width * 0.22, 0)
+      ..quadraticBezierTo(
+        size.width * 0.5,
+        size.height * 0.16,
+        size.width * 0.72,
+        0,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.62,
+        size.height * 0.46,
+        size.width * 0.52,
+        size.height * 0.98,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.47,
+        size.height * 0.58,
+        size.width * 0.22,
+        0,
+      )
       ..close();
 
     final fillPaint = Paint()
@@ -646,6 +724,14 @@ class _SpeechTailPainter extends CustomPainter {
     return oldDelegate.fillColor != fillColor ||
         oldDelegate.borderColor != borderColor;
   }
+}
+
+String _displayFirstName(String userName) {
+  final trimmed = userName.trim();
+  if (trimmed.isEmpty) {
+    return 'Friend';
+  }
+  return trimmed.split(RegExp(r'\s+')).first;
 }
 
 class _InlineCoachPanel extends StatelessWidget {
@@ -670,114 +756,433 @@ class _InlineCoachPanel extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: cs.surface.withOpacity(0.97),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            cs.surface.withValues(alpha: 0.98),
+            cs.surfaceContainerHighest.withValues(alpha: 0.98),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withOpacity(0.12),
-            blurRadius: 14,
-            offset: const Offset(0, 8),
+            color: cs.shadow.withValues(alpha: 0.16),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.psychology_alt_rounded, size: 18, color: cs.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$miniMeName Guidance • Mood: $moodLabel',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurfaceVariant,
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: cs.primaryContainer,
+                    border: Border.all(
+                      color: cs.primary.withValues(alpha: 0.16),
                     ),
+                  ),
+                  child: Icon(
+                    Icons.psychology_alt_rounded,
+                    size: 20,
+                    color: cs.primary,
                   ),
                 ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.builder(
-              controller: scrollController,
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              itemCount: messages.length + (isReplying ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (isReplying && index == messages.length) {
-                  return _TypingBubble(miniMeName: miniMeName);
-                }
-
-                final message = messages[index];
-                final isUser = message.role == _ChatRole.user;
-
-                return Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? cs.primaryContainer.withOpacity(0.85)
-                        : cs.surfaceContainer,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isUser
-                          ? cs.primary.withOpacity(0.22)
-                          : cs.outlineVariant.withOpacity(0.35),
-                    ),
-                  ),
+                const SizedBox(width: 12),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Text(
+                        miniMeName,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
-                          Icon(
-                            isUser
-                                ? Icons.edit_note_rounded
-                                : Icons.psychology_alt_rounded,
-                            size: 16,
-                            color: isUser
-                                ? cs.onTertiaryContainer
-                                : cs.onSurfaceVariant,
+                          _CoachStatusPill(
+                            icon: Icons.favorite_rounded,
+                            label: 'Mood $moodLabel',
+                            background: cs.secondaryContainer,
+                            foreground: cs.onSecondaryContainer,
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              isUser ? 'Your note' : '$miniMeName guidance',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: isUser
-                                  ? cs.onPrimaryContainer
-                                  : cs.onSurfaceVariant,
-                              ),
-                            ),
+                          _CoachStatusPill(
+                            icon: Icons.forum_rounded,
+                            label: '${messages.length} messages',
+                            background: cs.surface,
+                            foreground: cs.onSurfaceVariant,
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        message.text,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: isUser ? cs.onPrimaryContainer : cs.onSurface,
-                          height: 1.3,
-                        ),
-                      ),
                     ],
                   ),
-                );
-              },
+                ),
+                if (isReplying)
+                  Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Thinking',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: cs.onPrimaryContainer,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.6)),
+          Expanded(
+            child: messages.isEmpty && !isReplying
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Start the conversation below and $miniMeName will build on your latest check-ins.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                    itemCount: messages.length + (isReplying ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (isReplying && index == messages.length) {
+                        return _TypingBubble(miniMeName: miniMeName);
+                      }
+
+                      final message = messages[index];
+                      return _ChatBubbleCard(
+                        miniMeName: miniMeName,
+                        message: message,
+                        isUser: message.role == _ChatRole.user,
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoachComposerCard extends StatelessWidget {
+  const _CoachComposerCard({
+    required this.miniMeName,
+    required this.chatController,
+    required this.chatFocusNode,
+    required this.isCoachExpanded,
+    required this.isReplying,
+    required this.messageCount,
+    required this.onExpandCoach,
+    required this.onSend,
+    required this.onToggleCoachExpanded,
+  });
+
+  final String miniMeName;
+  final TextEditingController chatController;
+  final FocusNode chatFocusNode;
+  final bool isCoachExpanded;
+  final bool isReplying;
+  final int messageCount;
+  final VoidCallback onExpandCoach;
+  final VoidCallback onSend;
+  final VoidCallback onToggleCoachExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: cs.surface.withValues(alpha: 0.98),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.14),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      miniMeName,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      messageCount == 0
+                          ? 'Ask for support, reflection, or your next step.'
+                          : 'Continue the thread with $miniMeName.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _CoachStatusPill(
+                icon: Icons.forum_rounded,
+                label: '$messageCount',
+                background: cs.primaryContainer,
+                foreground: cs.onPrimaryContainer,
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: onToggleCoachExpanded,
+                tooltip: isCoachExpanded ? 'Hide guidance' : 'Show guidance',
+                icon: Icon(
+                  isCoachExpanded
+                      ? Icons.keyboard_arrow_down_rounded
+                      : Icons.keyboard_arrow_up_rounded,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: chatController,
+                  focusNode: chatFocusNode,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  minLines: 1,
+                  maxLines: 5,
+                  onTap: onExpandCoach,
+                  decoration: InputDecoration(
+                    hintText: 'Message $miniMeName...',
+                    isDense: true,
+                    filled: true,
+                    fillColor: cs.surface.withValues(alpha: 0.72),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 13,
+                    ),
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        color: cs.primary,
+                        size: 18,
+                      ),
+                    ),
+                    prefixIconConstraints: const BoxConstraints(
+                      minHeight: 18,
+                      minWidth: 34,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide(
+                        color: cs.outlineVariant.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton(
+                onPressed: isReplying ? null : onSend,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(54, 54),
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: Icon(
+                  isReplying
+                      ? Icons.hourglass_top_rounded
+                      : Icons.arrow_upward_rounded,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CoachStatusPill extends StatelessWidget {
+  const _CoachStatusPill({
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ChatBubbleCard extends StatelessWidget {
+  const _ChatBubbleCard({
+    required this.miniMeName,
+    required this.message,
+    required this.isUser,
+  });
+
+  final String miniMeName;
+  final _MiniMeChatMessage message;
+  final bool isUser;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final bubbleColor = isUser
+        ? cs.primaryContainer.withValues(alpha: 0.96)
+        : cs.surface.withValues(alpha: 0.92);
+    final borderColor = isUser
+        ? cs.primary.withValues(alpha: 0.24)
+        : cs.outlineVariant.withValues(alpha: 0.5);
+
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            color: bubbleColor,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(20),
+              topRight: const Radius.circular(20),
+              bottomLeft: Radius.circular(isUser ? 20 : 8),
+              bottomRight: Radius.circular(isUser ? 8 : 20),
+            ),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: cs.shadow.withValues(alpha: 0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isUser
+                          ? cs.primary.withValues(alpha: 0.12)
+                          : cs.secondaryContainer,
+                    ),
+                    child: Icon(
+                      isUser
+                          ? Icons.edit_note_rounded
+                          : Icons.psychology_alt_rounded,
+                      size: 14,
+                      color: isUser ? cs.primary : cs.onSecondaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      isUser ? 'You' : miniMeName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: isUser
+                            ? cs.onPrimaryContainer
+                            : cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message.text,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isUser ? cs.onPrimaryContainer : cs.onSurface,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -791,36 +1196,95 @@ class _TypingBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainer,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(
-            height: 14,
-            width: 14,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '$miniMeName is preparing your next step...',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontStyle: FontStyle.italic,
-              ),
+    final theme = Theme.of(context);
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 280),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: cs.surface.withValues(alpha: 0.92),
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+              bottomLeft: Radius.circular(8),
+              bottomRight: Radius.circular(20),
             ),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
           ),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _TypingDots(),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '$miniMeName is shaping your next step...',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+}
+
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final phase = (_controller.value + index * 0.18) % 1.0;
+            final active = phase < 0.5;
+            return Container(
+              width: 8,
+              height: 8,
+              margin: EdgeInsets.only(right: index == 2 ? 0 : 5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: (active ? cs.primary : cs.outlineVariant).withValues(
+                  alpha: active ? 1 : 0.65,
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
@@ -1036,9 +1500,9 @@ class _StreakShell extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.7),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1187,7 +1651,11 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
       child: Container(
         height: MediaQuery.of(context).size.height * 0.78,
         decoration: BoxDecoration(
-          color: cs.surface,
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [cs.surfaceContainerHighest, cs.surface, cs.surface],
+          ),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: FutureBuilder<MiniMeShopState>(
@@ -1198,6 +1666,7 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
             }
 
             final state = snapshot.data!;
+            final featuredItem = state.items.isEmpty ? null : state.items.first;
 
             return Column(
               children: [
@@ -1210,213 +1679,524 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Mini-Me Shop',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.monetization_on_rounded,
-                              size: 16,
-                              color: cs.onPrimaryContainer,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${state.coins}',
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: cs.onPrimaryContainer,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (state.lastReward.message.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: state.lastReward.rewarded
-                            ? cs.tertiaryContainer
-                            : cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: state.lastReward.rewarded
-                              ? cs.tertiary.withOpacity(0.35)
-                              : cs.outlineVariant.withOpacity(0.35),
-                        ),
-                      ),
-                      child: Text(
-                        state.lastReward.rewarded
-                            ? '+${state.lastReward.amount} coins • ${state.lastReward.message}'
-                            : state.lastReward.message,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: state.lastReward.rewarded
-                              ? cs.onTertiaryContainer
-                              : cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
                 Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                    itemCount: state.items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final item = state.items[index];
-                      final unlocked = state.unlockedIds.contains(item.id);
-                      final equipped = unlocked && _isEquipped(item);
-                      final canBuy = state.coins >= item.cost;
-
-                      return Container(
-                        padding: const EdgeInsets.all(12),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
+                              cs.primaryContainer,
+                              cs.secondaryContainer,
                               cs.surfaceContainerHighest,
-                              cs.surfaceContainer,
                             ],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: equipped
-                                ? cs.primary
-                                : cs.outlineVariant.withOpacity(0.4),
-                            width: equipped ? 1.4 : 1,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: cs.shadow.withOpacity(0.08),
-                              blurRadius: 10,
-                              offset: const Offset(0, 6),
+                              color: cs.shadow.withValues(alpha: 0.16),
+                              blurRadius: 24,
+                              offset: const Offset(0, 16),
                             ),
                           ],
                         ),
-                        child: Row(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 42,
-                              height: 42,
-                              decoration: BoxDecoration(
-                                color: _itemAccent(item, cs).withOpacity(0.18),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                _itemIcon(item),
-                                color: _itemAccent(item, cs),
-                                size: 22,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 7,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: cs.surface.withValues(alpha: 0.36),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Expanded(
-                                        child: Text(
-                                          item.name,
-                                          style: theme.textTheme.titleSmall
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
+                                      Icon(
+                                        Icons.videogame_asset_rounded,
+                                        size: 16,
+                                        color: cs.onSurface,
                                       ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _itemAccent(
-                                            item,
-                                            cs,
-                                          ).withOpacity(0.14),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          _itemTypeLabel(item.type),
-                                          style: theme.textTheme.labelSmall
-                                              ?.copyWith(
-                                                color: _itemAccent(item, cs),
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Loadout Shop',
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w900,
+                                            ),
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    item.description,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
+                                ),
+                                const Spacer(),
+                                _ShopHudPill(
+                                  icon: Icons.monetization_on_rounded,
+                                  label: '${state.coins}',
+                                  background: cs.primary,
+                                  foreground: cs.onPrimary,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Upgrade your Mini-Me like a main character.',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                height: 1.05,
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            if (equipped)
-                              FilledButton(
-                                onPressed: null,
-                                child: const Text('Equipped'),
-                              )
-                            else if (unlocked)
-                              FilledButton(
-                                onPressed: () => _equip(item),
-                                child: const Text('Equip'),
-                              )
-                            else
-                              FilledButton.tonal(
-                                onPressed: canBuy
-                                    ? () => _unlock(item.id)
-                                    : null,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.monetization_on_rounded,
-                                      size: 16,
+                            const SizedBox(height: 8),
+                            Text(
+                              'Collect coins from daily check-ins, unlock cosmetics, and equip a stronger look for your next streak.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _ShopStatCard(
+                                    title: 'Streak Power',
+                                    value:
+                                        '${widget.streakSnapshot.currentStreak}',
+                                    suffix: 'days',
+                                    icon: Icons.local_fire_department_rounded,
+                                    accent: cs.tertiary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _ShopStatCard(
+                                    title: 'Unlocked',
+                                    value: '${state.unlockedIds.length}',
+                                    suffix: 'items',
+                                    icon: Icons.auto_awesome_rounded,
+                                    accent: cs.secondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (featuredItem != null) ...[
+                              const SizedBox(height: 18),
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: cs.surface.withValues(alpha: 0.44),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: cs.outlineVariant.withValues(
+                                      alpha: 0.38,
                                     ),
-                                    const SizedBox(width: 4),
-                                    Text('${item.cost}'),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 52,
+                                      height: 52,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: RadialGradient(
+                                          colors: [
+                                            _itemAccent(
+                                              featuredItem,
+                                              cs,
+                                            ).withValues(alpha: 0.34),
+                                            cs.surface.withValues(alpha: 0.2),
+                                          ],
+                                        ),
+                                        border: Border.all(
+                                          color: _itemAccent(
+                                            featuredItem,
+                                            cs,
+                                          ).withValues(alpha: 0.5),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        _itemIcon(featuredItem),
+                                        color: _itemAccent(featuredItem, cs),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Featured Drop',
+                                            style: theme.textTheme.labelLarge
+                                                ?.copyWith(
+                                                  color: cs.primary,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            featuredItem.name,
+                                            style: theme.textTheme.titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            _rarityLabel(featuredItem),
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: cs.onSurfaceVariant,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
+                            ],
                           ],
                         ),
-                      );
-                    },
+                      ),
+                      if (state.lastReward.message.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: state.lastReward.rewarded
+                                  ? [cs.tertiaryContainer, cs.primaryContainer]
+                                  : [
+                                      cs.surfaceContainerHighest,
+                                      cs.surfaceContainer,
+                                    ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: state.lastReward.rewarded
+                                  ? cs.tertiary.withValues(alpha: 0.35)
+                                  : cs.outlineVariant.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: state.lastReward.rewarded
+                                      ? cs.tertiary.withValues(alpha: 0.14)
+                                      : cs.surface.withValues(alpha: 0.5),
+                                ),
+                                child: Icon(
+                                  state.lastReward.rewarded
+                                      ? Icons.workspace_premium_rounded
+                                      : Icons.event_repeat_rounded,
+                                  color: state.lastReward.rewarded
+                                      ? cs.tertiary
+                                      : cs.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  state.lastReward.rewarded
+                                      ? '+${state.lastReward.amount} coins unlocked. ${state.lastReward.message}'
+                                      : state.lastReward.message,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: state.lastReward.rewarded
+                                        ? cs.onTertiaryContainer
+                                        : cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Text(
+                            'Inventory',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${state.items.length} unlockables',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      ...state.items.map<Widget>((item) {
+                        final unlocked = state.unlockedIds.contains(item.id);
+                        final equipped = unlocked && _isEquipped(item);
+                        final canBuy = state.coins >= item.cost;
+                        final accent = _itemAccent(item, cs);
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(22),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  accent.withValues(alpha: 0.18),
+                                  cs.surfaceContainerHighest,
+                                  cs.surfaceContainer,
+                                ],
+                              ),
+                              border: Border.all(
+                                color: equipped
+                                    ? accent
+                                    : cs.outlineVariant.withValues(alpha: 0.34),
+                                width: equipped ? 1.6 : 1.0,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: accent.withValues(alpha: 0.12),
+                                  blurRadius: 22,
+                                  offset: const Offset(0, 14),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 58,
+                                      height: 58,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: RadialGradient(
+                                          colors: [
+                                            accent.withValues(alpha: 0.34),
+                                            accent.withValues(alpha: 0.08),
+                                          ],
+                                        ),
+                                        border: Border.all(
+                                          color: accent.withValues(alpha: 0.45),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        _itemIcon(item),
+                                        color: accent,
+                                        size: 28,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: [
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 9,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: accent.withValues(
+                                                    alpha: 0.14,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
+                                                ),
+                                                child: Text(
+                                                  _itemTypeLabel(item.type),
+                                                  style: theme
+                                                      .textTheme
+                                                      .labelSmall
+                                                      ?.copyWith(
+                                                        color: accent,
+                                                        fontWeight:
+                                                            FontWeight.w900,
+                                                      ),
+                                                ),
+                                              ),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 9,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: cs.surface.withValues(
+                                                    alpha: 0.56,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
+                                                ),
+                                                child: Text(
+                                                  _rarityLabel(item),
+                                                  style: theme
+                                                      .textTheme
+                                                      .labelSmall
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        color: cs.onSurface,
+                                                      ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            item.name,
+                                            style: theme.textTheme.titleMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            item.description,
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: cs.onSurfaceVariant,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: cs.surface.withValues(
+                                          alpha: 0.52,
+                                        ),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: cs.outlineVariant.withValues(
+                                            alpha: 0.24,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Icon(
+                                            Icons.monetization_on_rounded,
+                                            size: 18,
+                                            color: cs.primary,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${item.cost}',
+                                            style: theme.textTheme.titleSmall
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        equipped
+                                            ? 'Currently in loadout'
+                                            : unlocked
+                                            ? 'Owned and ready to equip'
+                                            : canBuy
+                                            ? 'Available for unlock'
+                                            : 'Need ${item.cost - state.coins} more coins',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: equipped
+                                                  ? accent
+                                                  : cs.onSurfaceVariant,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    if (equipped)
+                                      FilledButton(
+                                        onPressed: null,
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: accent.withValues(
+                                            alpha: 0.9,
+                                          ),
+                                          disabledBackgroundColor: accent
+                                              .withValues(alpha: 0.9),
+                                          disabledForegroundColor: cs.onPrimary,
+                                        ),
+                                        child: const Text('Equipped'),
+                                      )
+                                    else if (unlocked)
+                                      FilledButton.icon(
+                                        onPressed: () => _equip(item),
+                                        icon: const Icon(
+                                          Icons.flash_on_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Equip'),
+                                      )
+                                    else
+                                      FilledButton.tonalIcon(
+                                        onPressed: canBuy
+                                            ? () => _unlock(item.id)
+                                            : null,
+                                        icon: const Icon(
+                                          Icons.lock_open_rounded,
+                                          size: 18,
+                                        ),
+                                        label: Text(
+                                          canBuy
+                                              ? 'Unlock for ${item.cost}'
+                                              : 'Locked',
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
                   ),
                 ),
               ],
@@ -1441,12 +2221,18 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
   String _itemTypeLabel(MiniMeItemType type) {
     switch (type) {
       case MiniMeItemType.hair:
-        return 'Hair';
+        return 'Headgear';
       case MiniMeItemType.shirt:
         return 'Outfit';
       case MiniMeItemType.bodyScale:
         return 'Stance';
     }
+  }
+
+  String _rarityLabel(MiniMeShopItem item) {
+    if (item.cost >= 30) return 'Epic Drop';
+    if (item.cost >= 20) return 'Rare Skin';
+    return 'Starter Gear';
   }
 
   Color _itemAccent(MiniMeShopItem item, ColorScheme cs) {
@@ -1458,6 +2244,125 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
       case MiniMeItemType.bodyScale:
         return cs.tertiary;
     }
+  }
+}
+
+class _ShopHudPill extends StatelessWidget {
+  const _ShopHudPill({
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShopStatCard extends StatelessWidget {
+  const _ShopStatCard({
+    required this.title,
+    required this.value,
+    required this.suffix,
+    required this.icon,
+    required this.accent,
+  });
+
+  final String title;
+  final String value;
+  final String suffix;
+  final IconData icon;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surface.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: accent.withValues(alpha: 0.16),
+            ),
+            child: Icon(icon, color: accent, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                RichText(
+                  text: TextSpan(
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: cs.onSurface,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: value,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      TextSpan(
+                        text: ' $suffix',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

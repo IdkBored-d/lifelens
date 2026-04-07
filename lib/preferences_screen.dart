@@ -146,8 +146,6 @@ class _PreferenceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Card(
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 6),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:provider/provider.dart';
 import 'moodlog_store.dart';
 import 'package:lifelens/database/isar_service.dart';
@@ -20,6 +21,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   double intensity = 3;
   final notesCtrl = TextEditingController();
   final Set<String> tags = {};
+  bool _restoringDraft = true;
 
   final moods = const [
     _MoodOption("Happy", "😊"),
@@ -41,9 +43,56 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    notesCtrl.addListener(_persistDraft);
+    _restoreDraft();
+  }
+
+  @override
   void dispose() {
+    notesCtrl.removeListener(_persistDraft);
     notesCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _restoreDraft() async {
+    final draft = await MoodLogDraftStorageService.instance.load();
+    if (!mounted) return;
+
+    if (draft != null && draft.hasContent) {
+      setState(() {
+        selectedMood = draft.selectedMood;
+        intensity = draft.intensity.clamp(1, 5);
+        notesCtrl.text = draft.notes;
+        tags
+          ..clear()
+          ..addAll(draft.tags);
+        _restoringDraft = false;
+      });
+      return;
+    }
+
+    setState(() => _restoringDraft = false);
+  }
+
+  Future<void> _persistDraft() {
+    if (_restoringDraft) {
+      return Future.value();
+    }
+
+    return MoodLogDraftStorageService.instance.save(
+      MoodLogDraft(
+        selectedMood: selectedMood,
+        intensity: intensity,
+        notes: notesCtrl.text.trim(),
+        tags: tags.toList(growable: false),
+      ),
+    );
+  }
+
+  Future<void> _clearDraft() async {
+    await MoodLogDraftStorageService.instance.clear();
   }
 
   String get intensityLabel {
@@ -97,6 +146,21 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
         title: const Text("Mood Log"),
+        actions: [
+          IconButton(
+            tooltip: 'Clear draft',
+            onPressed: () async {
+              setState(() {
+                selectedMood = -1;
+                intensity = 3;
+                notesCtrl.clear();
+                tags.clear();
+              });
+              await _clearDraft();
+            },
+            icon: const Icon(Icons.restart_alt_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: GestureDetector(
@@ -120,6 +184,19 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                     color: cs.onSurfaceVariant,
                   ),
                 ),
+                if (!_restoringDraft &&
+                    (selectedMood != -1 ||
+                        notesCtrl.text.trim().isNotEmpty ||
+                        tags.isNotEmpty ||
+                        intensity != 3)) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    "Draft saved automatically",
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
 
                 _SectionCard(
@@ -153,6 +230,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             onTap: () {
                               Feedback.forTap(context);
                               setState(() => selectedMood = i);
+                              _persistDraft();
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 160),
@@ -257,6 +335,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                         onChanged: (v) {
                           HapticFeedback.selectionClick();
                           setState(() => intensity = v);
+                          _persistDraft();
                         },
                       ),
                       Row(
@@ -295,6 +374,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                   tags.remove(t);
                                 }
                               });
+                              _persistDraft();
                             },
                           );
                         }).toList(),
@@ -391,10 +471,16 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
 
                             // Also persist to Isar as MoodEntry
                             try {
+                              final noteText = moodCheckIn.notes.trim();
+                              final persistedSummary = noteText.isEmpty
+                                  ? 'Intensity ${moodCheckIn.intensity}/5'
+                                  : 'Intensity ${moodCheckIn.intensity}/5 · $noteText';
                               final moodEntry = MoodEntry()
                                 ..date = now.toIso8601String().substring(0, 10)
-                                ..rawLog = moodCheckIn.notes
-                                ..condensedLog = moodCheckIn.notes
+                                ..rawLog = noteText.isEmpty
+                                    ? moodCheckIn.moodLabel
+                                    : noteText
+                                ..condensedLog = persistedSummary
                                 ..resolvedMood = moodCheckIn.moodLabel
                                 ..resolvedBy = "user"
                                 ..mobileBertPrediction = null
@@ -404,11 +490,16 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 ..fitnessScoreSnapshot = 0.0
                                 ..timestamp = now;
                               await IsarService.instance.init();
-                              await IsarService.instance.writeMoodEntry(moodEntry);
+                              await IsarService.instance.writeMoodEntry(
+                                moodEntry,
+                              );
                             } catch (e) {
                               // Optionally handle error (e.g., show a snackbar)
                             }
 
+                            await _clearDraft();
+
+                            if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text("Mood saved"),
@@ -424,6 +515,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 notesCtrl.clear();
                                 tags.clear();
                                 intensity = 3;
+                                _restoringDraft = false;
                               });
                             }
                           },

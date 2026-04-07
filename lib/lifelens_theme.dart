@@ -1,5 +1,15 @@
 import 'package:flutter/material.dart';
 
+const PageTransitionsTheme _lifeLensPageTransitionsTheme = PageTransitionsTheme(
+  builders: {
+    TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+    TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+  },
+);
+
 ThemeData lifeLensDarkTheme() {
   const seed = Color(0xFF6D4CFF);
 
@@ -28,6 +38,8 @@ ThemeData lifeLensDarkTheme() {
   final cs = base.colorScheme;
 
   return base.copyWith(
+    splashFactory: InkRipple.splashFactory,
+    pageTransitionsTheme: _lifeLensPageTransitionsTheme,
     scaffoldBackgroundColor: appBg,
     textTheme: base.textTheme.copyWith(
       headlineSmall: base.textTheme.headlineSmall?.copyWith(
@@ -82,7 +94,7 @@ ThemeData lifeLensDarkTheme() {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outlineVariant.withOpacity(0.7)),
+          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.7)),
         ),
         textStyle: base.textTheme.labelLarge?.copyWith(
           fontWeight: FontWeight.w800,
@@ -103,9 +115,14 @@ ThemeData lifeLensDarkTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: cs.primary.withOpacity(0.8), width: 1.4),
+        borderSide: BorderSide(
+          color: cs.primary.withValues(alpha: 0.8),
+          width: 1.4,
+        ),
       ),
-      hintStyle: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.75)),
+      hintStyle: TextStyle(
+        color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+      ),
     ),
     cardTheme: CardThemeData(
       color: cs.surfaceContainerHighest,
@@ -113,13 +130,13 @@ ThemeData lifeLensDarkTheme() {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: cs.outlineVariant.withOpacity(0.7)),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.7)),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 72,
       backgroundColor: appBg,
-      indicatorColor: cs.primaryContainer.withOpacity(0.85),
+      indicatorColor: cs.primaryContainer.withValues(alpha: 0.85),
       labelTextStyle: WidgetStatePropertyAll(
         base.textTheme.labelMedium?.copyWith(
           fontWeight: FontWeight.w800,
@@ -134,7 +151,7 @@ ThemeData lifeLensDarkTheme() {
       }),
     ),
     dividerTheme: DividerThemeData(
-      color: cs.outlineVariant.withOpacity(0.7),
+      color: cs.outlineVariant.withValues(alpha: 0.7),
       thickness: 1,
     ),
   );
@@ -169,6 +186,8 @@ ThemeData lifeLensCalmTheme() {
   final cs = base.colorScheme;
 
   return base.copyWith(
+    splashFactory: InkRipple.splashFactory,
+    pageTransitionsTheme: _lifeLensPageTransitionsTheme,
     scaffoldBackgroundColor: appBg,
 
     textTheme: base.textTheme.copyWith(
@@ -226,7 +245,7 @@ ThemeData lifeLensCalmTheme() {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: cs.outlineVariant.withOpacity(0.7)),
+          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.7)),
         ),
         textStyle: base.textTheme.labelLarge?.copyWith(
           fontWeight: FontWeight.w800,
@@ -248,9 +267,14 @@ ThemeData lifeLensCalmTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: cs.primary.withOpacity(0.8), width: 1.4),
+        borderSide: BorderSide(
+          color: cs.primary.withValues(alpha: 0.8),
+          width: 1.4,
+        ),
       ),
-      hintStyle: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.75)),
+      hintStyle: TextStyle(
+        color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+      ),
     ),
 
     cardTheme: CardThemeData(
@@ -259,14 +283,14 @@ ThemeData lifeLensCalmTheme() {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: cs.outlineVariant.withOpacity(0.7)),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.7)),
       ),
     ),
 
     navigationBarTheme: NavigationBarThemeData(
       height: 72,
       backgroundColor: appBg,
-      indicatorColor: cs.primaryContainer.withOpacity(0.85),
+      indicatorColor: cs.primaryContainer.withValues(alpha: 0.85),
       labelTextStyle: WidgetStatePropertyAll(
         base.textTheme.labelMedium?.copyWith(
           fontWeight: FontWeight.w800,
@@ -282,7 +306,7 @@ ThemeData lifeLensCalmTheme() {
     ),
 
     dividerTheme: DividerThemeData(
-      color: cs.outlineVariant.withOpacity(0.7),
+      color: cs.outlineVariant.withValues(alpha: 0.7),
       thickness: 1,
     ),
   );

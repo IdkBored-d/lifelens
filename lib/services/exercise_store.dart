@@ -4,17 +4,20 @@ import '../models/exercise_model.dart';
 class ExerciseStore {
   static const String _favoritesKey = 'favorite_exercises';
   late SharedPreferences _prefs;
+  late final Future<void> _ready;
   List<ExerciseModel> exercises = [];
   List<String> _favoriteIds = [];
 
   ExerciseStore() {
-    _initializePrefs();
+    _ready = _initializePrefs();
   }
 
   Future<void> _initializePrefs() async {
     _prefs = await SharedPreferences.getInstance();
     _loadFavorites();
   }
+
+  Future<void> ensureReady() => _ready;
 
   /// Load favorite exercise IDs from local storage
   void _loadFavorites() {
@@ -24,6 +27,7 @@ class ExerciseStore {
 
   /// Mark an exercise as favorite
   Future<void> favoriteExercise(String exerciseId) async {
+    await _ready;
     if (!_favoriteIds.contains(exerciseId)) {
       _favoriteIds.add(exerciseId);
       await _prefs.setStringList(_favoritesKey, _favoriteIds);
@@ -32,6 +36,7 @@ class ExerciseStore {
 
   /// Remove an exercise from favorites
   Future<void> unfavoriteExercise(String exerciseId) async {
+    await _ready;
     if (_favoriteIds.contains(exerciseId)) {
       _favoriteIds.remove(exerciseId);
       await _prefs.setStringList(_favoritesKey, _favoriteIds);
@@ -45,7 +50,9 @@ class ExerciseStore {
 
   /// Get all favorite exercises
   List<ExerciseModel> getFavoriteExercises() {
-    return exercises.where((exercise) => _favoriteIds.contains(exercise.id)).toList();
+    return exercises
+        .where((exercise) => _favoriteIds.contains(exercise.id))
+        .toList();
   }
 
   /// Get favorite count
@@ -55,6 +62,7 @@ class ExerciseStore {
 
   /// Clear all favorites
   Future<void> clearFavorites() async {
+    await _ready;
     _favoriteIds.clear();
     await _prefs.remove(_favoritesKey);
   }
@@ -75,8 +83,9 @@ class ExerciseStore {
       'calm': ['any'], // Any exercise works when calm
     };
 
-    final recommendedTypes = moodExerciseMap[currentMood.toLowerCase()] ?? ['any'];
-    
+    final recommendedTypes =
+        moodExerciseMap[currentMood.toLowerCase()] ?? ['any'];
+
     return exercises.where((exercise) {
       if (recommendedTypes.contains('any')) return true;
       return recommendedTypes.contains(exercise.type.toLowerCase());
@@ -85,6 +94,7 @@ class ExerciseStore {
 
   /// Save exercise with associated mood
   Future<void> saveExercise(String exerciseId, String currentMood) async {
+    await _ready;
     // Track the exercise with mood association
     final key = 'exercise_mood_${exerciseId}_$currentMood';
     final count = _prefs.getInt(key) ?? 0;

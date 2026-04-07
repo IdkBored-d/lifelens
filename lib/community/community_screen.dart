@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:lifelens/community/community_prompt_service.dart';
 import '../models/sphere.dart';
 import 'sphere_chat_screen.dart';
 
@@ -39,6 +40,19 @@ class _CommunityScreenState extends State<CommunityScreen> {
       'status': 'Daily accountability thread is active',
       'preview': '"One goal today: move, hydrate, and check in."',
     },
+  };
+
+  static const Map<String, String> _defaultPinnedBodies = {
+    'Mental Health':
+        'Share what is helping, ask for support, and avoid giving medical advice. If you are in immediate danger, contact local emergency support.',
+    'Diabetes':
+        'Share routines, food swaps, and pattern observations. Use this space for peer support, not diagnosis or medication changes.',
+    'Sleep':
+        'Post what helped your wind-down, bedtime, or wake consistency. Keep replies practical and kind.',
+    'Exercise':
+        'Celebrate progress, ask beginner-friendly questions, and share routines people can actually follow.',
+    'General':
+        'Use this sphere for check-ins, support, and realistic habit tips that help you feel better this week.',
   };
 
   @override
@@ -79,15 +93,23 @@ class _CommunityScreenState extends State<CommunityScreen> {
         final description = sphere['description']!;
         var sphereRef = existingByName[name];
 
-        if (sphereRef == null) {
-          sphereRef = await spheresRef.add({
-            'name': name,
-            'description': description,
-            'memberCount': 0,
-            'createdAt': FieldValue.serverTimestamp(),
-            'isPremade': true,
-          });
-        }
+        sphereRef ??= await spheresRef.add({
+          'name': name,
+          'description': description,
+          'memberCount': 0,
+          'createdAt': FieldValue.serverTimestamp(),
+          'isPremade': true,
+          'pinnedTitle': 'Welcome to $name',
+          'pinnedBody':
+              _defaultPinnedBodies[name] ??
+              'Support each other with kindness, practical tips, and privacy in mind.',
+          'dailyPrompt': CommunityPromptService.promptForSphere(name),
+          'dailyPromptDateKey': CommunityPromptService.dateKeyFor(
+            DateTime.now(),
+          ),
+          'lastActivityText': 'Fresh support threads are ready to start.',
+          'lastActivityAt': FieldValue.serverTimestamp(),
+        });
 
         seedTasks.add(_seedDummySphereData(sphereRef, name));
       }
@@ -184,6 +206,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
       'memberCount': members.length,
       'dummySeedVersion': 1,
       'lastDummySeedAt': FieldValue.serverTimestamp(),
+      'pinnedTitle': 'Welcome to $sphereName',
+      'pinnedBody':
+          _defaultPinnedBodies[sphereName] ??
+          'Support each other with kindness, practical tips, and privacy in mind.',
+      'dailyPrompt': CommunityPromptService.promptForSphere(sphereName),
+      'dailyPromptDateKey': CommunityPromptService.dateKeyFor(DateTime.now()),
+      'lastActivityText': seededMessages.first,
+      'lastActivityAt': Timestamp.fromDate(now),
     }, SetOptions(merge: true));
 
     await batch.commit();
@@ -209,7 +239,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         hintText: 'Search spheres...',
                         prefixIcon: Icon(Icons.search, color: cs.primary),
                         filled: true,
-                        fillColor: cs.surfaceContainerHighest.withOpacity(0.3),
+                        fillColor: cs.surfaceContainerHighest.withValues(
+                          alpha: 0.3,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide.none,
@@ -306,6 +338,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
           'preview': '"New check-ins are coming in for this sphere."',
         };
 
+    final sphereRef = FirebaseFirestore.instance
+        .collection('spheres')
+        .doc(sphere.id);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -314,12 +350,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
         onTap: () async {
           if (userId == null) return;
 
-          final memberDoc = await FirebaseFirestore.instance
-              .collection('spheres')
-              .doc(sphere.id)
+          final memberDoc = await sphereRef
               .collection('members')
               .doc(userId)
               .get();
+          if (!context.mounted) return;
 
           if (!memberDoc.exists) {
             _showNicknamePrompt(context, sphere);
@@ -335,101 +370,213 @@ class _CommunityScreenState extends State<CommunityScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: userId == null
+                ? null
+                : sphereRef.collection('members').doc(userId).snapshots(),
+            builder: (context, memberSnapshot) {
+              final memberData = memberSnapshot.data?.data();
+              final lastReadAt = (memberData?['lastReadAt'] as Timestamp?)
+                  ?.toDate();
+              final hasUnread =
+                  lastReadAt == null ||
+                  (sphere.lastActivityAt?.isAfter(lastReadAt) ?? false);
+              final isJoined = memberSnapshot.data?.exists ?? false;
+              final promptText =
+                  CommunityPromptService.isCurrentPrompt(
+                    storedPrompt: sphere.dailyPrompt,
+                    sphereName: sphere.name,
+                    storedDateKey: sphere.dailyPromptDateKey,
+                  )
+                  ? (sphere.dailyPrompt ?? 'Daily prompt')
+                  : CommunityPromptService.promptForSphere(sphere.name);
+              final lastActivityLabel = sphere.lastActivityAt == null
+                  ? 'No recent activity'
+                  : _relativeTimeLabel(sphere.lastActivityAt!);
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: cs.primaryContainer.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.groups_rounded,
+                          size: 32,
+                          color: cs.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    sphere.name,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: cs.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                if (isJoined) ...[
+                                  const SizedBox(width: 8),
+                                  _InfoPill(
+                                    icon: Icons.check_circle_rounded,
+                                    label: 'Joined',
+                                    background: cs.secondaryContainer,
+                                    foreground: cs.onSecondaryContainer,
+                                  ),
+                                ],
+                                if (hasUnread && isJoined) ...[
+                                  const SizedBox(width: 8),
+                                  _InfoPill(
+                                    icon: Icons.mark_chat_unread_rounded,
+                                    label: 'New',
+                                    background: cs.primaryContainer,
+                                    foreground: cs.onPrimaryContainer,
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (sphere.description != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                sphere.description!,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Column(
+                        children: [
+                          Icon(Icons.people, color: cs.primary, size: 20),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${sphere.memberCount}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: cs.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (!sphere.isPremade && sphere.creatorId == userId) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline, color: cs.error),
+                          onPressed: () =>
+                              _confirmDeleteSphere(context, sphere),
+                          tooltip: 'Delete sphere',
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _InfoPill(
+                        icon: Icons.bolt_rounded,
+                        label: demo['status'] ?? 'Community updates available',
+                        background: cs.primaryContainer,
+                        foreground: cs.onPrimaryContainer,
+                      ),
+                      _InfoPill(
+                        icon: Icons.schedule_rounded,
+                        label: lastActivityLabel,
+                        background: cs.surfaceContainerHighest,
+                        foreground: cs.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if ((sphere.pinnedTitle ?? '').isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cs.secondaryContainer.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: cs.secondary.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.push_pin_rounded,
+                            size: 18,
+                            color: cs.secondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              sphere.pinnedTitle!,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                color: cs.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 10),
                   Container(
-                    width: 56,
-                    height: 56,
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: cs.primaryContainer.withOpacity(0.5),
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      Icons.groups_rounded,
-                      size: 32,
-                      color: cs.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          sphere.name,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: cs.onSurface,
+                          promptText,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        if (sphere.description != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            sphere.description!,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: cs.onSurfaceVariant,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 6),
+                        Text(
+                          sphere.lastActivityText ??
+                              demo['preview'] ??
+                              '"New check-ins are coming in for this sphere."',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
                           ),
-                        ],
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   ),
-                  Column(
-                    children: [
-                      Icon(Icons.people, color: cs.primary, size: 20),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${sphere.memberCount}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (!sphere.isPremade && sphere.creatorId == userId) ...[
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(Icons.delete_outline, color: cs.error),
-                      onPressed: () => _confirmDeleteSphere(context, sphere),
-                      tooltip: 'Delete sphere',
-                    ),
-                  ],
                 ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                demo['status'] ?? '',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: cs.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(0.35),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  demo['preview'] ?? '',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
@@ -507,13 +654,28 @@ class _CommunityScreenState extends State<CommunityScreen> {
       final sphereRef = FirebaseFirestore.instance
           .collection('spheres')
           .doc(sphere.id);
+      final memberRef = sphereRef.collection('members').doc(userId);
 
-      await sphereRef.collection('members').doc(userId).set({
-        'nickname': nickname,
-        'joinedAt': FieldValue.serverTimestamp(),
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final sphereDoc = await transaction.get(sphereRef);
+        final memberDoc = await transaction.get(memberRef);
+        final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
+
+        transaction.set(memberRef, {
+          'nickname': nickname,
+          'joinedAt': memberDoc.exists
+              ? (memberDoc.data()?['joinedAt'] ?? FieldValue.serverTimestamp())
+              : FieldValue.serverTimestamp(),
+          'lastReadAt': FieldValue.serverTimestamp(),
+          'lastActiveAt': FieldValue.serverTimestamp(),
+          'warningCount': memberDoc.data()?['warningCount'] ?? 0,
+          'role': sphere.creatorId == userId ? 'owner' : 'member',
+        }, SetOptions(merge: true));
+
+        if (!memberDoc.exists) {
+          transaction.update(sphereRef, {'memberCount': currentCount + 1});
+        }
       });
-
-      await sphereRef.update({'memberCount': FieldValue.increment(1)});
 
       if (mounted) {
         Navigator.push(
@@ -611,6 +773,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'creatorId': userId,
         'isPremade': false,
+        'pinnedTitle': 'Start here',
+        'pinnedBody':
+            'Introduce yourself with a nickname, share what you are working on, and keep replies practical, kind, and privacy-safe.',
+        'dailyPrompt': CommunityPromptService.promptForSphere(name),
+        'dailyPromptDateKey': CommunityPromptService.dateKeyFor(DateTime.now()),
+        'lastActivityText': 'This sphere is ready for its first check-in.',
+        'lastActivityAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
@@ -666,8 +835,33 @@ class _CommunityScreenState extends State<CommunityScreen> {
         await doc.reference.delete();
       }
 
+      final posts = await sphereRef.collection('posts').get();
+      for (final doc in posts.docs) {
+        final replies = await doc.reference.collection('replies').get();
+        for (final reply in replies.docs) {
+          await reply.reference.delete();
+        }
+
+        final reactions = await doc.reference.collection('reactions').get();
+        for (final reaction in reactions.docs) {
+          await reaction.reference.delete();
+        }
+
+        await doc.reference.delete();
+      }
+
       final members = await sphereRef.collection('members').get();
       for (final doc in members.docs) {
+        await doc.reference.delete();
+      }
+
+      final reports = await sphereRef.collection('reports').get();
+      for (final doc in reports.docs) {
+        await doc.reference.delete();
+      }
+
+      final warnings = await sphereRef.collection('warnings').get();
+      for (final doc in warnings.docs) {
         await doc.reference.delete();
       }
 
@@ -691,5 +885,53 @@ class _CommunityScreenState extends State<CommunityScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  static String _relativeTimeLabel(DateTime value) {
+    final diff = DateTime.now().difference(value);
+    if (diff.inMinutes < 1) return 'Active now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return 'Earlier this week';
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
