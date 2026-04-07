@@ -365,10 +365,8 @@ class _DevTestScreenState extends State<DevTestScreen> {
   Future<String> _testGemmaStatus() async {
     final loaded    = AppServices.isGemmaLoaded;
     final savedPath = await GemmaModelManager.getSavedPath();
-    final skipped   = await GemmaModelManager.wasSkipped();
     return 'Gemma loaded: $loaded\n'
-        'Saved path: ${savedPath.isEmpty ? "(none)" : savedPath}\n'
-        'Setup skipped: $skipped';
+        'Saved path: ${savedPath.isEmpty ? "(none)" : savedPath}';
   }
 
   Future<String> _testGemmaInference() async {

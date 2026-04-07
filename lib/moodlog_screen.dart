@@ -344,6 +344,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             final nav       = Navigator.of(context);
 
                             try {
+                              await AppServices.ensureInitialized();
                               final online        = await AppServices.isOnline();
                               final fitnessScore  = await AppServices.isar.getLastFitnessScore();
                               final result = await AppServices.moodPipeline.analyze(

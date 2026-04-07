@@ -66,7 +66,10 @@ class EodPipelineService {
     }
 
     // ── STEP 3: Fitness data ───────────────────────────────────────────────
-    // Wired up to your getLastNDaysFitnessScores method
+    // Attempt a fresh score before reading ISAR — writes a new FitnessEntry
+    // if health data is available. Falls through silently if not.
+    await _fitness.score();
+
     final last7FitnessScores = await IsarService.instance.getLastNDaysFitnessScores(7);
     
     final todayFitnessScore = last7FitnessScores.isNotEmpty 

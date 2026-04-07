@@ -26,14 +26,11 @@ class GemmaModelManager {
 
   // ── SharedPreferences keys ────────────────────────────────────────────────
 
-  static const _pathKey    = 'gemma_model_path';
-  static const _skippedKey = 'gemma_setup_skipped';
+  static const _pathKey = 'gemma_model_path';
 
   // ── Model source ─────────────────────────────────────────────────────────
-  //
-  // TODO: Replace with the real download URL for the quantized Gemma 2 model
-  // once the hosting location is confirmed (e.g. HuggingFace, GCS bucket, CDN).
-  static const String modelUrl = '';
+
+  static const String modelUrl = 'https://huggingface.co/litert-community/Gemma2-2B-IT/resolve/main/gemma-2-2b-it-gpu-int8.bin';
 
   static const String modelFileName = 'gemma-2-2b-it-gpu-int8.bin';
 
@@ -57,23 +54,14 @@ class GemmaModelManager {
     await prefs.remove(_pathKey);
   }
 
-  // ── Skip flag ─────────────────────────────────────────────────────────────
-
-  /// Whether the user tapped "Skip for now" on the setup screen.
-  static Future<bool> wasSkipped() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_skippedKey) ?? false;
-  }
-
-  static Future<void> markSkipped() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_skippedKey, true);
-  }
-
-  /// Clears the skip flag — setup screen will reappear next launch.
-  static Future<void> clearSkip() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_skippedKey);
+  /// Returns true if a model path is saved AND the file exists on disk.
+  /// Automatically clears a stale path if the file is gone.
+  static Future<bool> isModelFilePresent() async {
+    final path = await getSavedPath();
+    if (path.isEmpty) return false;
+    final exists = await File(path).exists();
+    if (!exists) await clearPath();
+    return exists;
   }
 
   // ── Download ──────────────────────────────────────────────────────────────

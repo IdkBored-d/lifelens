@@ -8,6 +8,9 @@ import 'privacy_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
 import 'dev_test_screen.dart';
+import 'package:lifelens/app_services.dart';
+import 'package:lifelens/services/gemma_model_manager.dart';
+import 'package:lifelens/screens/gemma_setup_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -18,11 +21,13 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = true;
+  bool _gemmaLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _loadNotificationPreference();
+    _gemmaLoaded = AppServices.isGemmaLoaded;
   }
 
   Future<void> _loadNotificationPreference() async {
@@ -155,6 +160,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
+
+            const SizedBox(height: 24),
+
+            _ProfileSection(
+              title: 'On-Device AI',
+              children: [
+                _ProfileTile(
+                  icon: Icons.memory_rounded,
+                  label: 'Gemma model',
+                  value: _gemmaLoaded ? 'Loaded' : 'Not loaded',
+                ),
+                if (!_gemmaLoaded)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: FilledButton.icon(
+                      icon: const Icon(Icons.download_rounded),
+                      label: const Text('Set up on-device AI'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GemmaSetupScreen(
+                              onComplete: () => Navigator.pop(context),
+                            ),
+                          ),
+                        ).then((_) {
+                          if (mounted) {
+                            setState(() => _gemmaLoaded = AppServices.isGemmaLoaded);
+                          }
+                        });
+                      },
+                    ),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
 
             _ProfileSection(
               title: 'Actions',

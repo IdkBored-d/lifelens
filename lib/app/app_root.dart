@@ -8,7 +8,6 @@ import '../intro_screen.dart';
 import '../auth/verifyemail_screen.dart';
 import 'app_init.dart';
 import '../screens/gemma_setup_screen.dart';
-import '../services/gemma_model_manager.dart';
 import '../app_services.dart';
 
 class AppRoot extends StatefulWidget {
@@ -22,14 +21,21 @@ class _AppRootState extends State<AppRoot> {
   late final Future<bool> _initFuture;
   bool _gemmaSetupDone = false;
 
+  Future<bool> _buildInitFuture() => initializeApp().then((_) {
+        final isLoaded = AppServices.isGemmaLoaded;
+        final showSetup = !isLoaded;
+        debugPrint('[AppRoot] Gemma: isLoaded=$isLoaded showSetup=$showSetup');
+        return showSetup;
+      }).catchError((Object e) {
+        debugPrint('[AppRoot] initializeApp() error: $e');
+        throw e;
+      });
+
   @override
   void initState() {
     super.initState();
-    _initFuture = initializeApp().then((_) async {
-      if (AppServices.isGemmaLoaded) return false;
-      final skipped = await GemmaModelManager.wasSkipped();
-      return !skipped;
-    });
+    debugPrint('[AppRoot] initState() called');
+    _initFuture = _buildInitFuture();
   }
 
   @override
@@ -45,17 +51,16 @@ class _AppRootState extends State<AppRoot> {
           return _InitErrorScreen(
             error: initSnapshot.error.toString(),
             onRetry: () => setState(() {
-              _initFuture = initializeApp().then((_) async {
-                if (AppServices.isGemmaLoaded) return false;
-                final skipped = await GemmaModelManager.wasSkipped();
-                return !skipped;
-              });
+              _gemmaSetupDone = false;
+              _initFuture = _buildInitFuture();
             }),
           );
         }
 
         final showSetup = initSnapshot.data ?? false;
+        debugPrint('[AppRoot] Build: showSetup=$showSetup, _gemmaSetupDone=$_gemmaSetupDone');
         if (showSetup && !_gemmaSetupDone) {
+          debugPrint('[AppRoot] → Showing GemmaSetupScreen');
           return GemmaSetupScreen(
             onComplete: () => setState(() => _gemmaSetupDone = true),
           );

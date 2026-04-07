@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/symptom_result.dart';
 import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
@@ -145,23 +146,63 @@ class SymptomPipelineService {
     if (isOnline) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
-    // isOnline determines offline warning. If online but empty, passes an empty string.
     final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
     final context   = await _quickTrack.buildSymptomContext();
 
-    final gemmaRaw = await _gemma.expandDiagnosis(
-      disEmbedPrediction: disEmbedPrediction,
-      userSymptoms:       userSymptoms,
-      context:            context,
-      ragContext:         ragContext,
-    );
+    // ── Try Gemma first ────────────────────────────────────────────────────
+    String? gemmaRaw;
+    try {
+      gemmaRaw = await _gemma.expandDiagnosis(
+        disEmbedPrediction: disEmbedPrediction,
+        userSymptoms:       userSymptoms,
+        context:            context,
+        ragContext:         ragContext,
+      );
+    } on StateError catch (e) {
+      debugPrint('[SymptomPipeline] Gemma not ready, skipping: $e');
+    }
 
+    if (gemmaRaw != null) {
+      return _buildAndStore(
+        userSymptoms:       userSymptoms,
+        diagnoses:          _parseGemmaDiagnoses(gemmaRaw),
+        ragUsed:            ragResults.isNotEmpty,
+        isOffline:          !isOnline,
+        resolvedBy:         EscalationLevel.base,
+        disEmbedPrediction: disEmbedPrediction,
+        disEmbedResult:     disEmbedResult,
+      );
+    }
+
+    // ── Gemini fallback (online only) ──────────────────────────────────────
+    if (isOnline) {
+      try {
+        final geminiRaw = await _gemini.analyzeSymptoms(
+          userSymptoms: userSymptoms,
+          context:      context,
+          ragContext:   ragContext ?? '',
+        );
+        return _buildAndStore(
+          userSymptoms:       userSymptoms,
+          diagnoses:          _parseGemmaDiagnoses(geminiRaw),
+          ragUsed:            ragResults.isNotEmpty,
+          isOffline:          false,
+          resolvedBy:         EscalationLevel.gemini,
+          disEmbedPrediction: disEmbedPrediction,
+          disEmbedResult:     disEmbedResult,
+        );
+      } catch (e) {
+        debugPrint('[SymptomPipeline] Gemini failed, using fallback: $e');
+      }
+    }
+
+    // ── Final fallback ─────────────────────────────────────────────────────
     return _buildAndStore(
       userSymptoms:       userSymptoms,
-      diagnoses:          _parseGemmaDiagnoses(gemmaRaw),
-      ragUsed:            ragResults.isNotEmpty,
+      diagnoses:          _fallbackDiagnoses(''),
+      ragUsed:            false,
       isOffline:          !isOnline,
-      resolvedBy:         EscalationLevel.base,
+      resolvedBy:         EscalationLevel.gemini,
       disEmbedPrediction: disEmbedPrediction,
       disEmbedResult:     disEmbedResult,
     );
@@ -177,24 +218,62 @@ class SymptomPipelineService {
     if (isOnline) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
-    // Fix 4: Gate on isOnline, not ragResults.isNotEmpty — same fix as
-    // _expandWithGemma. An online user with zero Weaviate results should NOT
-    // trigger Gemma's offline warning; only a genuinely offline device should.
     final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
     final context   = await _quickTrack.buildSymptomContext();
 
-    final gemmaRaw = await _gemma.analyzeSymptomDirectly(
-      userSymptoms: userSymptoms,
-      context:      context,
-      ragContext:   ragContext,
-    );
+    // ── Try Gemma first ────────────────────────────────────────────────────
+    String? gemmaRaw;
+    try {
+      gemmaRaw = await _gemma.analyzeSymptomDirectly(
+        userSymptoms: userSymptoms,
+        context:      context,
+        ragContext:   ragContext,
+      );
+    } on StateError catch (e) {
+      debugPrint('[SymptomPipeline] Gemma not ready, skipping: $e');
+    }
 
+    if (gemmaRaw != null) {
+      return _buildAndStore(
+        userSymptoms:       userSymptoms,
+        diagnoses:          _parseGemmaDiagnoses(gemmaRaw),
+        ragUsed:            ragResults.isNotEmpty,
+        isOffline:          !isOnline,
+        resolvedBy:         EscalationLevel.gemma,
+        disEmbedPrediction: null,
+        disEmbedResult:     disEmbedResult,
+      );
+    }
+
+    // ── Gemini fallback (online only) ──────────────────────────────────────
+    if (isOnline) {
+      try {
+        final geminiRaw = await _gemini.analyzeSymptoms(
+          userSymptoms: userSymptoms,
+          context:      context,
+          ragContext:   ragContext ?? '',
+        );
+        return _buildAndStore(
+          userSymptoms:       userSymptoms,
+          diagnoses:          _parseGemmaDiagnoses(geminiRaw),
+          ragUsed:            ragResults.isNotEmpty,
+          isOffline:          false,
+          resolvedBy:         EscalationLevel.gemini,
+          disEmbedPrediction: null,
+          disEmbedResult:     disEmbedResult,
+        );
+      } catch (e) {
+        debugPrint('[SymptomPipeline] Gemini failed, using fallback: $e');
+      }
+    }
+
+    // ── Final fallback ─────────────────────────────────────────────────────
     return _buildAndStore(
       userSymptoms:       userSymptoms,
-      diagnoses:          _parseGemmaDiagnoses(gemmaRaw),
-      ragUsed:            ragResults.isNotEmpty,
+      diagnoses:          _fallbackDiagnoses(''),
+      ragUsed:            false,
       isOffline:          !isOnline,
-      resolvedBy:         EscalationLevel.gemma,
+      resolvedBy:         EscalationLevel.gemini,
       disEmbedPrediction: null,
       disEmbedResult:     disEmbedResult,
     );

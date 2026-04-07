@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lifelens/app_services.dart';
 import 'package:lifelens/minime_screen.dart';
 import 'package:lifelens/profile_screen.dart';
 import 'package:lifelens/shared_widgets/bottom_nav.dart';
@@ -22,6 +23,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _pages = _buildPages();
+    // Refresh fitness score in the background on each app open.
+    // No-op if Health permissions are not granted.
+    AppServices.refreshFitnessScore();
   }
 
   @override

@@ -152,13 +152,6 @@ class _GemmaSetupScreenState extends State<GemmaSetupScreen> {
     }
   }
 
-  // ── Skip ──────────────────────────────────────────────────────────────────
-
-  Future<void> _skip() async {
-    await GemmaModelManager.markSkipped();
-    widget.onComplete();
-  }
-
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -227,17 +220,6 @@ class _GemmaSetupScreenState extends State<GemmaSetupScreen> {
                 onLoad:     _loadLocalPath,
               ),
 
-              const SizedBox(height: 36),
-
-              // ── Skip ──────────────────────────────────────────────────────
-              if (_phase == _Phase.idle)
-                TextButton(
-                  onPressed: _skip,
-                  child: Text(
-                    'Skip for now — use cloud AI only',
-                    style: TextStyle(color: colorScheme.onSurfaceVariant),
-                  ),
-                ),
             ],
           ),
         ),

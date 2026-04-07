@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show MethodChannel, rootBundle;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dart_wordpiece/dart_wordpiece.dart';
 
@@ -14,6 +14,7 @@ import 'services/disembed_service.dart';
 import 'services/fitness_mlp_service.dart';
 import 'services/gemma_service.dart';
 import 'services/gemini_service.dart';
+import 'services/health_service.dart';
 import 'services/mood_pipeline_service.dart';
 import 'services/symptom_pipeline_service.dart';
 import 'services/fitness_pipeline_service.dart';
@@ -35,9 +36,6 @@ import 'services/eod_pipeline_service.dart';
 class AppServices {
   AppServices._();
 
-  static const MethodChannel _healthChannel =
-      MethodChannel('lifelens/health');
-
   // ── Singletons ──────────────────────────────────────────────────────────────
   static late final IsarService            isar;
   static late final ConfidenceManager      confidence;
@@ -56,6 +54,9 @@ class AppServices {
   // Two tokenizer instances — same vocab, different maxLength
   static late final WordPieceTokenizer _mbTokenizer; // maxLen=128 for MobileBERT
   static late final WordPieceTokenizer _deTokenizer; // maxLen=512 for DisEmbed
+
+  // Initialisation sentinel — set on first init() call; cleared on failure so retries are possible.
+  static Future<void>? _initFuture;
 
   // ── Configuration ────────────────────────────────────────────────────────────
   // Keys are injected at build time via --dart-define-from-file=config.json.
@@ -81,12 +82,28 @@ class AppServices {
 
   // ── Initialisation ───────────────────────────────────────────────────────────
 
-  /// Initialise all services. Call once in main() before runApp().
+  /// Returns the in-flight or completed init future. Safe to call from any
+  /// screen — awaiting it guarantees all services are ready before use.
+  /// Starts a fresh init if [init] was never called or previously failed.
+  static Future<void> ensureInitialized({String gemmaPath = ''}) =>
+      _initFuture ?? init(gemmaPath: gemmaPath);
+
+  /// Idempotent init — returns the same [Future] on every concurrent call.
+  /// Clears [_initFuture] on failure so the caller can retry by calling [init].
   ///
-  /// [gemmaPath] is the on-device path to the Gemma 2 2B IT model file.
-  /// Pass an empty string if not yet downloaded — the app will run without
-  /// on-device LLM and escalate to Gemini when online.
-  static Future<void> init({required String gemmaPath}) async {
+  /// NOTE: [late final] fields cannot be reassigned, so retrying after a
+  /// partial init failure will throw "already assigned". Treat init failures
+  /// as fatal and guide the user to restart the app.
+  static Future<void> init({required String gemmaPath}) {
+    if (_initFuture != null) return _initFuture!;
+    _initFuture = _initInternal(gemmaPath: gemmaPath).catchError((Object e) {
+      _initFuture = null;
+      throw e;
+    });
+    return _initFuture!;
+  }
+
+  static Future<void> _initInternal({required String gemmaPath}) async {
     WidgetsFlutterBinding.ensureInitialized();
     final sw = Stopwatch()..start();
     debugPrint('[AppServices] init: start');
@@ -278,15 +295,24 @@ class AppServices {
 
   static Future<RawHealthData?> _fetchHealthData() async {
     try {
-      // TODO: Implement native side returning a Map of these values
-      final Map<dynamic, dynamic>? raw = await _healthChannel.invokeMethod('getDailyHealthMetrics');
-      
-      if (raw == null) return null;
-
-      // Temporary stub return until native parsing is mapped
-      return null; 
+      final snapshot = await HealthService().fetchSnapshot();
+      // TODO(health): replace placeholder defaults with real profile values
+      // once onboarding collects height (CLAUDE.md #7) and profile is wired (#10).
+      return RawHealthData(
+        age:              0.0,
+        weightKg:         snapshot.weight ?? 70.0,
+        heightCm:         0.0,
+        restingHeartRate: snapshot.heartRate ?? 70.0,
+        sleepHours:       snapshot.sleepHours ?? 7.0,
+        smokes:           false,
+        nutritionQuality: 5.0,
+        activityIndex:    snapshot.workoutSummary != null ? 6.0 : 3.0,
+        isMale:           true,
+        timestamp:        snapshot.capturedAt,
+      );
     } catch (e) {
-      debugPrint('Health channel error: $e');
+      // No permissions, Health Connect unavailable, or no data — skip silently.
+      debugPrint('[AppServices] HealthService fetch failed: $e');
       return null;
     }
   }
@@ -299,6 +325,12 @@ class AppServices {
   }
 
   static bool get isGemmaLoaded => gemma.isLoaded;
+
+  /// Refresh fitness score from latest health data. Safe to call from any context.
+  /// Returns null silently if health data is unavailable (no permissions, no data).
+  static Future<void> refreshFitnessScore() async {
+    await fitnessPipeline.score();
+  }
 
   /// Returns true if the device has any active network connection.
   static Future<bool> isOnline() async {

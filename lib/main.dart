@@ -10,8 +10,11 @@ import 'avatar_store.dart';
 import 'theme_controller.dart';
 
 void main() async {
+  debugPrint('[main] Starting...');
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('[main] WidgetsFlutterBinding initialized');
   await Firebase.initializeApp();
+  debugPrint('[main] Firebase initialized');
 
   // Initialize the FlutterGemma plugin (required before using Gemma APIs).
   try {
@@ -24,6 +27,7 @@ void main() async {
   // Register the headless background fetch callback for when the app is terminated.
   // Must be called before runApp().
   BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
+  debugPrint('[main] About to call runApp()');
   runApp(
     MultiProvider(
       providers: [
@@ -34,6 +38,7 @@ void main() async {
       child: const MyApp(),
     ),
   );
+  debugPrint('[main] runApp() called');
 }
 
 class MyApp extends StatelessWidget {

@@ -7,7 +7,6 @@ import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/minime_shop_service.dart';
-import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'avatar_store.dart';
@@ -95,41 +94,29 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     final moodStore = context.read<MoodLogStore>();
     final moodContext = _buildMoodContext(moodStore);
-    final symptomContext = await _buildSymptomContext();
 
+    String opening;
     try {
-      final response = await MiniMeBackendService.instance.chat(
-        userMessage: '',
-        moodLabel: moodContext.label,
-        moodIntensity: moodContext.intensity,
-        moodNotes: moodContext.notes,
-        recentMoods: moodContext.recentMoodSummary,
-        activeSymptoms: symptomContext,
-        history: const [],
-      );
-
-      if (!mounted) return;
-      final opening = response.openingSuggestion.isEmpty
-          ? response.reply
-          : response.openingSuggestion;
-
-      setState(() {
-        _messages.add(
-          _MiniMeChatMessage(role: _ChatRole.assistant, text: opening),
-        );
-      });
+      if (AppServices.isGemmaLoaded) {
+        try {
+          opening = await AppServices.gemma.generateMiniMeReply(
+            userMessage: '',
+            moodLabel: moodContext.label,
+          );
+        } catch (_) {
+          opening = await _geminiOrOffline('', moodContext.label);
+        }
+      } else {
+        opening = await _geminiOrOffline('', moodContext.label);
+      }
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _messages.add(
-          _MiniMeChatMessage(
-            role: _ChatRole.assistant,
-            text:
-                'Mini-Me backend is unavailable right now. Start your backend server and try again.',
-          ),
-        );
-      });
+      opening = _buildOfflineReply(userText: '', moodLabel: moodContext.label);
     }
+
+    if (!mounted) return;
+    setState(() {
+      _messages.add(_MiniMeChatMessage(role: _ChatRole.assistant, text: opening));
+    });
   }
 
   Future<void> _sendMessage() async {
