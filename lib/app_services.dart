@@ -4,8 +4,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dart_wordpiece/dart_wordpiece.dart';
 
 import 'database/isar_service.dart';
-import 'database/mood_entry.dart';
-import 'database/symptom_entry.dart';
 import 'services/confidence_manager.dart';
 import 'services/quick_track_service.dart';
 import 'services/weaviate_service.dart';
@@ -203,7 +201,7 @@ class AppServices {
     // ── 7b. Chat session repair ─────────────────────────────────────────────
     // Mark any sessions that had no endTime (app killed mid-chat) as interrupted.
     try {
-      await ChatSessionService(quickTrack).repairIncompleteSessions();
+      await ChatSessionService(quickTrack, gemma).repairIncompleteSessions();
     } catch (e) {
       debugPrint('[AppServices] chat session repair failed (non-fatal): $e');
     }
@@ -280,40 +278,10 @@ class AppServices {
       _disEmbedTokenize(text, maxLen);
 
   // ── Startup sync check ───────────────────────────────────────────────────────
-
-  static Future<void> _runStartupSyncCheck() async {
-    final lastIsarMood    = await isar.lastMoodDate();
-    final lastIsarSymptom = await isar.lastSymptomDate();
-
-    // Fetch per-date counts so the check can catch same-day duplicate entries
-    // that would be invisible to the old date-string-only comparison.
-    final moodCountForDate    = lastIsarMood    != null ? await isar.getMoodCountForDate(lastIsarMood)       : 0;
-    final symptomCountForDate = lastIsarSymptom != null ? await isar.getSymptomCountForDate(lastIsarSymptom) : 0;
-
-    final syncResult = await quickTrack.checkAndRepairSync(
-      lastIsarMoodDate:            lastIsarMood,
-      lastIsarMoodCountForDate:    moodCountForDate,
-      lastIsarSymptomDate:         lastIsarSymptom,
-      lastIsarSymptomCountForDate: symptomCountForDate,
-    );
-
-    if (syncResult.moodNeedsRepair && syncResult.missingMoodDate != null) {
-      // Fetch all ISAR entries for the date, skip the ones already in quick-track.
-      final entries = await isar.getMoodEntriesForDate(syncResult.missingMoodDate!);
-      final toAppend = entries.skip(syncResult.quickMoodCountForDate).toList();
-      for (final entry in toAppend) {
-        await quickTrack.appendMoodEntry(MoodLogEntryAdapter.fromIsarEntry(entry));
-      }
-    }
-
-    if (syncResult.symptomNeedsRepair && syncResult.missingSymptomDate != null) {
-      final allForDate = await isar.getSymptomEntriesForDate(syncResult.missingSymptomDate!);
-      final toAppend = allForDate.skip(syncResult.quickSymptomCountForDate).toList();
-      for (final entry in toAppend) {
-        await quickTrack.appendSymptomEntry(SymptomLogEntryAdapter.fromIsarEntry(entry));
-      }
-    }
-  }
+  // Quick-track files are now plaintext summaries overwritten after each
+  // pipeline run. Deep sync repair (Jaccard comparison vs ISAR) runs inside
+  // EodPipelineService.runEndOfDay() — nothing to do at startup.
+  static Future<void> _runStartupSyncCheck() async {}
 
   // ── Health data fetcher ───────────────────────────────────────────────────────
 
@@ -373,22 +341,3 @@ class AppServices {
   }
 }
 
-// ── ISAR → QuickTrack adapters ─────────────────────────────────────────────────
-
-class MoodLogEntryAdapter {
-  static MoodLogEntry fromIsarEntry(MoodEntry e) => MoodLogEntry(
-        date:          e.date,
-        log:           e.condensedLog,
-        predictedMood: e.resolvedMood,
-        fitnessScore:  e.fitnessScoreSnapshot,
-      );
-}
-
-class SymptomLogEntryAdapter {
-  static SymptomLogEntry fromIsarEntry(SymptomEntry e) => SymptomLogEntry(
-        date:             e.date,
-        symptoms:         e.symptomList,
-        predictedAilment: e.predictedAilment,
-        status:           e.status,
-      );
-}

@@ -5,6 +5,7 @@ import '../database/chat_session.dart';
 import '../database/chat_message.dart';
 import '../database/isar_service.dart';
 import 'quick_track_service.dart';
+import 'gemma_service.dart';
 
 /// Manages MiniMe chat session lifecycle and persistence.
 ///
@@ -13,20 +14,19 @@ import 'quick_track_service.dart';
 ///
 /// Write order (matches the rest of the app):
 ///   1. Write to ISAR (awaited) — source of truth.
-///   2. Append to conversations.json (unawaited) — quick-track file.
+///   2. Regenerate conversation_summary.txt (unawaited) — quick-track file.
 ///
 /// Sessions with no [endTime] are repaired by [repairIncompleteSessions],
 /// which should be called once at app startup.
 class ChatSessionService {
-  ChatSessionService(this._quickTrack);
+  ChatSessionService(this._quickTrack, this._gemma);
 
   final QuickTrackService _quickTrack;
-  final IsarService _isar = IsarService.instance;
+  final GemmaService      _gemma;
+  final IsarService       _isar = IsarService.instance;
 
   // ── Session lifecycle ────────────────────────────────────────────────────────
 
-  /// Create a new session and persist it to ISAR.
-  /// Returns the session ID (UUID v4) that callers must hold onto.
   Future<String> startSession({
     required String moodLabel,
     required int    moodIntensity,
@@ -47,8 +47,8 @@ class ChatSessionService {
     return sessionId;
   }
 
-  /// Persist a single message to ISAR, then fire-and-forget to the quick-track
-  /// file following the standard write-order rule.
+  /// Persist a single message to ISAR. Write order rule: ISAR first, always.
+  /// The conversation summary is regenerated when the session ends, not per message.
   Future<void> addMessage({
     required String sessionId,
     required String role,
@@ -63,33 +63,46 @@ class ChatSessionService {
       ..timestamp      = now
       ..sequenceNumber = sequenceNumber;
     await _isar.writeChatMessage(msg);
-
-    unawaited(
-      _quickTrack.appendChatEntry(ChatLogEntry(
-        sessionId: sessionId,
-        role:      role,
-        text:      text,
-        timestamp: now.toIso8601String(),
-      )).catchError(
-        (Object e) => debugPrint('[ChatSession] QuickTrack write failed: $e'),
-      ),
-    );
   }
 
-  /// Mark the session as cleanly ended. Fire-and-forget — dispose() must not
-  /// block the UI tear-down.
+  /// Mark the session as cleanly ended, then regenerate the conversation
+  /// quick-track summary. Fire-and-forget — dispose() must not block the UI.
   void endSession(String sessionId) {
-    unawaited(
-      _isar.endChatSession(sessionId, DateTime.now()).catchError(
-        (Object e) => debugPrint('[ChatSession] endSession failed: $e'),
-      ),
-    );
+    unawaited(_endSessionAsync(sessionId));
+  }
+
+  Future<void> _endSessionAsync(String sessionId) async {
+    try {
+      await _isar.endChatSession(sessionId, DateTime.now());
+    } catch (e) {
+      debugPrint('[ChatSession] endChatSession failed: $e');
+    }
+    await _generateAndWriteConversationSummary();
+  }
+
+  // ── Quick-track summary generation ──────────────────────────────────────────
+
+  Future<void> _generateAndWriteConversationSummary() async {
+    try {
+      final sessions = await _isar.getChatSessionsForLastNDays(days: 14);
+      final template = QuickTrackService.buildConversationTemplate(sessions);
+
+      String summary = template;
+      try {
+        final insight = await _gemma.generateSummaryInsight(template: template);
+        summary = '$template\n\n$insight';
+      } on StateError catch (e) {
+        debugPrint('[ChatSession] Gemma not ready for summary insight: $e');
+      }
+
+      await _quickTrack.writeConversationSummary(summary);
+    } catch (e) {
+      debugPrint('[ChatSession] Conversation summary write failed: $e');
+    }
   }
 
   // ── Startup repair ───────────────────────────────────────────────────────────
 
-  /// Find sessions that have no endTime (app was killed mid-chat) and mark
-  /// them as interrupted. Called once at app startup before screens load.
   Future<void> repairIncompleteSessions() async {
     try {
       await _isar.markIncompleteChatSessions();
@@ -100,8 +113,6 @@ class ChatSessionService {
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  /// Simple time-based UUID v4 substitute.
-  /// Good enough for a local session ID — collisions are astronomically unlikely.
   static String _uuid() {
     final now = DateTime.now().microsecondsSinceEpoch;
     return '${now.toRadixString(16)}-${_rand4()}-${_rand4()}-${_rand4()}';

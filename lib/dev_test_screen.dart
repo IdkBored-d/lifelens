@@ -190,33 +190,22 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testQuickTrackMood() async {
-    await AppServices.quickTrack.appendMoodEntry(
-      MoodLogEntry(
-        date:          '2026-03-21',
-        log:           'Dev test: feeling good today',
-        predictedMood: 'joy',
-        fitnessScore:  72.0,
-      ),
+    await AppServices.quickTrack.writeMoodSummary(
+      'Mood: Joy (1 day).\nFitness: up 5 pts over 14 days.\n\nDev test insight.',
     );
-    final entries = await AppServices.quickTrack.readMoodLog();
-    final found   = entries.any((e) => e.date == '2026-03-21');
-    return '✓ QuickTrack mood append succeeded\n'
-        'Total entries in file: ${entries.length}\n'
-        'Found 2026-03-21: $found';
+    final summary = await AppServices.quickTrack.readMoodSummary();
+    return '✓ QuickTrack mood summary write succeeded\n'
+        'Summary length: ${summary.length} chars\n'
+        'Preview: ${summary.substring(0, summary.length.clamp(0, 80))}';
   }
 
   Future<String> _testQuickTrackSymptom() async {
-    await AppServices.quickTrack.appendSymptomEntry(
-      SymptomLogEntry(
-        date:             '2026-03-21',
-        symptoms:         ['cough', 'fatigue'],
-        predictedAilment: 'Test Ailment',
-        status:           'active',
-      ),
+    await AppServices.quickTrack.writeSymptomSummary(
+      'Symptoms: Cough (active, 2 days), Fatigue (active, 1 day).\n\nDev test insight.',
     );
-    final entries = await AppServices.quickTrack.readSymptomLog();
-    return '✓ QuickTrack symptom append succeeded\n'
-        'Total entries in file: ${entries.length}';
+    final summary = await AppServices.quickTrack.readSymptomSummary();
+    return '✓ QuickTrack symptom summary write succeeded\n'
+        'Summary length: ${summary.length} chars';
   }
 
   Future<String> _testQuickTrackContext() async {
@@ -307,22 +296,13 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testSyncCheck() async {
-    final lastMood    = await AppServices.isar.lastMoodDate();
-    final lastSymptom = await AppServices.isar.lastSymptomDate();
-    final moodCount    = lastMood    != null ? await AppServices.isar.getMoodCountForDate(lastMood)       : 0;
-    final symptomCount = lastSymptom != null ? await AppServices.isar.getSymptomCountForDate(lastSymptom) : 0;
-    final sync        = await AppServices.quickTrack.checkAndRepairSync(
-      lastIsarMoodDate:           lastMood,
-      lastIsarMoodCountForDate:   moodCount,
-      lastIsarSymptomDate:        lastSymptom,
-      lastIsarSymptomCountForDate: symptomCount,
-    );
-    return '✓ Sync check completed\n'
-        'Last ISAR mood date: $lastMood\n'
-        'Last ISAR symptom date: $lastSymptom\n'
-        'Mood needs repair: ${sync.moodNeedsRepair}\n'
-        'Symptom needs repair: ${sync.symptomNeedsRepair}\n'
-        'Is clean: ${sync.isClean}';
+    final moodSummary    = await AppServices.quickTrack.readMoodSummary();
+    final symptomSummary = await AppServices.quickTrack.readSymptomSummary();
+    final convSummary    = await AppServices.quickTrack.readConversationSummary();
+    return '✓ Quick-track summaries read\n'
+        'Mood summary: ${moodSummary.isEmpty ? "(empty)" : "${moodSummary.length} chars"}\n'
+        'Symptom summary: ${symptomSummary.isEmpty ? "(empty)" : "${symptomSummary.length} chars"}\n'
+        'Conversation summary: ${convSummary.isEmpty ? "(empty)" : "${convSummary.length} chars"}';
   }
 
   Future<String> _testIsarEodWrite() async {

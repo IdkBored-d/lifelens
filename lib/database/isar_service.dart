@@ -178,6 +178,16 @@ class IsarService {
         .count();
   }
 
+  /// Symptom entries for the last [days] days, ordered newest first.
+  Future<List<SymptomEntry>> getRecentSymptomEntries({int days = 14}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    return _db.symptomEntrys
+        .filter()
+        .timestampGreaterThan(cutoff)
+        .sortByTimestampDesc()
+        .findAll();
+  }
+
   /// Live stream of the most recent [limit] symptom entries, newest first.
   /// Fires immediately with current data, then re-emits on every write.
   Stream<List<SymptomEntry>> watchRecentSymptomEntries({int limit = 250}) {
@@ -405,6 +415,17 @@ class IsarService {
         .where()
         .sortByCreatedAtDesc()
         .limit(limit)
+        .findAll();
+  }
+
+  /// Chat sessions created in the last [days] days, newest first.
+  /// Used by ChatSessionService to build the conversation quick-track summary.
+  Future<List<ChatSession>> getChatSessionsForLastNDays({int days = 7}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    return _db.chatSessions
+        .filter()
+        .createdAtGreaterThan(cutoff)
+        .sortByCreatedAtDesc()
         .findAll();
   }
 

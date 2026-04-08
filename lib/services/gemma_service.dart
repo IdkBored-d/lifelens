@@ -212,19 +212,36 @@ class GemmaService {
     required String todayMoodEntry,
     required String activeSymptomEntries,
     required double todayFitnessScore,
-    required double weekAvgFitnessScore,
+    required double periodAvgFitnessScore,
     required String fitnessTrend,
-    required String last7MoodEntries,
+    required String lastPeriodMoodEntries,
+    String? quickTrackSummaries,
   }) async {
     return generate(_eodPrompt(
-      todayMoodEntry:       todayMoodEntry,
-      activeSymptomEntries: activeSymptomEntries,
-      todayFitnessScore:    todayFitnessScore,
-      weekAvgFitnessScore:  weekAvgFitnessScore,
-      fitnessTrend:         fitnessTrend,
-      last7MoodEntries:     last7MoodEntries,
+      todayMoodEntry:        todayMoodEntry,
+      activeSymptomEntries:  activeSymptomEntries,
+      todayFitnessScore:     todayFitnessScore,
+      periodAvgFitnessScore: periodAvgFitnessScore,
+      fitnessTrend:          fitnessTrend,
+      lastPeriodMoodEntries: lastPeriodMoodEntries,
+      quickTrackSummaries:   quickTrackSummaries,
     ));
   }
+
+  // ── QUICK-TRACK SUMMARY INSIGHT ──────────────────────────────────────────────
+
+  /// Appends 2–3 sentences of natural language insight to a template block.
+  /// Called by each pipeline after writing the structured template section.
+  Future<String> generateSummaryInsight({required String template}) async {
+    return generate(_summaryInsightPrompt(template));
+  }
+
+  static String _summaryInsightPrompt(String template) =>
+      'You are a personal health assistant reviewing a health summary.\n\n'
+      '$template\n\n'
+      'In 2–3 sentences, interpret the trends and patterns shown above. '
+      'Be warm, supportive, and concise. '
+      'Do not repeat the data — add insight about what it means for the user.';
 
   // ── Prompt templates ─────────────────────────────────────────────────────────
   // flutter_gemma's session API handles chat formatting automatically.
@@ -298,23 +315,25 @@ class GemmaService {
     required String todayMoodEntry,
     required String activeSymptomEntries,
     required double todayFitnessScore,
-    required double weekAvgFitnessScore,
+    required double periodAvgFitnessScore,
     required String fitnessTrend,
-    required String last7MoodEntries,
+    required String lastPeriodMoodEntries,
+    String? quickTrackSummaries,
   }) =>
       'You are a personal health assistant performing an end-of-day review.\n\n'
       "--- TODAY'S MOOD ---\n$todayMoodEntry\n\n"
       '--- ACTIVE / RECENT SYMPTOMS ---\n$activeSymptomEntries\n\n'
       '--- FITNESS ---\n'
       'Today: ${todayFitnessScore.toStringAsFixed(1)} / 100\n'
-      '7-day average: ${weekAvgFitnessScore.toStringAsFixed(1)} / 100\n'
+      '14-day average: ${periodAvgFitnessScore.toStringAsFixed(1)} / 100\n'
       'Trend: $fitnessTrend\n\n'
-      '--- MOOD HISTORY (last 7 days) ---\n$last7MoodEntries\n\n'
+      '--- MOOD HISTORY (last 14 days) ---\n$lastPeriodMoodEntries\n\n'
       'Tasks:\n'
       '1. Identify correlations between mood, symptoms, and fitness trends.\n'
       '2. Flag anything warranting attention.\n'
       '3. Write a 2-3 sentence warm, non-alarmist user-facing summary.\n'
       '4. Recommend a doctor for anything potentially serious — do not diagnose.\n\n'
+      '${quickTrackSummaries != null ? "--- QUICK-TRACK SUMMARIES (last 7–14 days) ---\n$quickTrackSummaries\n\n" : ""}'
       'Write the user-facing summary first, then end with this JSON on its own line:\n'
       '{"correlation_summary": "...", "flag": false, "flag_reason": ""}\n\n'
       'Tone: supportive, concise, non-clinical.';

@@ -1,128 +1,28 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import '../database/mood_entry.dart';
+import '../database/symptom_entry.dart';
+import '../database/chat_session.dart';
 
-// ─────────────────────────────────────────────
-// QUICK-TRACK FILE SCHEMAS
-// ─────────────────────────────────────────────
-
-/// One entry in mood_log.json
-/// Appended after every mood pipeline run.
-class MoodLogEntry {
-  final String date;          // ISO 8601 date string
-  final String log;           // condensed log text
-  final String predictedMood; // resolved mood label
-  final double fitnessScore;  // snapshot from most recent fitness run
-
-  const MoodLogEntry({
-    required this.date,
-    required this.log,
-    required this.predictedMood,
-    required this.fitnessScore,
-  });
-
-  factory MoodLogEntry.fromJson(Map<String, dynamic> j) => MoodLogEntry(
-        date:           j['date'] as String,
-        log:            j['log'] as String,
-        predictedMood:  j['predicted_mood'] as String,
-        fitnessScore:   (j['fitness_score'] as num).toDouble(),
-      );
-
-  Map<String, dynamic> toJson() => {
-        'date':           date,
-        'log':            log,
-        'predicted_mood': predictedMood,
-        'fitness_score':  fitnessScore,
-      };
-}
-
-/// One entry in symptom_log.json
-/// Appended after every symptom pipeline run.
-class SymptomLogEntry {
-  final String date;
-  final List<String> symptoms;
-  final String predictedAilment;
-
-  /// "active" | "resolved" | "monitoring"
-  final String status;
-
-  const SymptomLogEntry({
-    required this.date,
-    required this.symptoms,
-    required this.predictedAilment,
-    this.status = 'active',
-  });
-
-  factory SymptomLogEntry.fromJson(Map<String, dynamic> j) => SymptomLogEntry(
-        date:             j['date'] as String,
-        symptoms:         List<String>.from(j['symptoms'] as List),
-        predictedAilment: j['predicted_ailment'] as String,
-        status:           j['status'] as String? ?? 'active',
-      );
-
-  Map<String, dynamic> toJson() => {
-        'date':              date,
-        'symptoms':          symptoms,
-        'predicted_ailment': predictedAilment,
-        'status':            status,
-      };
-
-  SymptomLogEntry copyWith({String? status}) => SymptomLogEntry(
-        date:             date,
-        symptoms:         symptoms,
-        predictedAilment: predictedAilment,
-        status:           status ?? this.status,
-      );
-}
-
-/// One entry in conversations.json
-/// Appended after every MiniMe message (user or assistant).
-class ChatLogEntry {
-  final String sessionId;    // UUID linking to ISAR ChatSession
-  final String role;         // 'user' or 'assistant'
-  final String text;
-  final String timestamp;    // ISO 8601 full timestamp
-
-  const ChatLogEntry({
-    required this.sessionId,
-    required this.role,
-    required this.text,
-    required this.timestamp,
-  });
-
-  factory ChatLogEntry.fromJson(Map<String, dynamic> j) => ChatLogEntry(
-        sessionId: j['session_id'] as String,
-        role:      j['role'] as String,
-        text:      j['text'] as String,
-        timestamp: j['timestamp'] as String,
-      );
-
-  Map<String, dynamic> toJson() => {
-        'session_id': sessionId,
-        'role':       role,
-        'text':       text,
-        'timestamp':  timestamp,
-      };
-}
-
-// ─────────────────────────────────────────────
-// SERVICE
-// ─────────────────────────────────────────────
-
-/// Manages reads and writes to the two on-device quick-tracking JSON files.
+/// Manages reads and writes to the three on-device quick-tracking plaintext files.
+///
+/// Each file is a rolling narrative summary for its respective pipeline,
+/// covering the last 7–14 days. Files are overwritten (not appended) after
+/// every pipeline run so they always reflect the current user state.
 ///
 /// WRITE ORDER (enforced by callers, not this service):
 ///   1. Write to ISAR database first (source of truth)
-///   2. Call this service to update the quick-tracking file
+///   2. Call this service to overwrite the quick-tracking summary
 ///
-/// On app startup, callers should invoke [checkAndRepairSync] to detect
-/// any crash that left ISAR ahead of the quick-tracking file.
+/// On app startup, EodPipelineService.repairQuickTrackSummaries() compares
+/// these files against fresh ISAR-derived summaries and regenerates any
+/// that have diverged (e.g. after a crash between the two writes).
 class QuickTrackService {
-  static const _moodFileName    = 'mood_log.json';
-  static const _symptomFileName = 'symptom_log.json';
-  static const _chatFileName    = 'conversations.json';
+  static const _moodFileName         = 'mood_summary.txt';
+  static const _symptomFileName      = 'symptom_summary.txt';
+  static const _conversationFileName = 'conversation_summary.txt';
 
-  // ── File helpers ────────────────────────────────────────────────────────────
+  // ── File helpers ─────────────────────────────────────────────────────────────
 
   Future<File> _moodFile() async {
     final dir = await getApplicationDocumentsDirectory();
@@ -134,225 +34,262 @@ class QuickTrackService {
     return File('${dir.path}/$_symptomFileName');
   }
 
-  Future<File> _chatFile() async {
+  Future<File> _conversationFile() async {
     final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/$_chatFileName');
+    return File('${dir.path}/$_conversationFileName');
   }
 
-  // ── Mood log ─────────────────────────────────────────────────────────────────
+  // ── Mood summary ─────────────────────────────────────────────────────────────
 
-  Future<List<MoodLogEntry>> readMoodLog() async {
+  Future<String> readMoodSummary() async {
     final file = await _moodFile();
-    if (!await file.exists()) return [];
+    if (!await file.exists()) return '';
     try {
-      final raw     = await file.readAsString();
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded
-          .map((e) => MoodLogEntry.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return await file.readAsString();
     } catch (_) {
-      return [];
+      return '';
     }
   }
 
-  /// Append a new mood entry. Called AFTER ISAR write succeeds.
-  Future<void> appendMoodEntry(MoodLogEntry entry) async {
-    final entries = await readMoodLog();
-    entries.add(entry);
-    await _writeMoodLog(entries);
+  /// Overwrite the mood summary. Called AFTER ISAR write succeeds.
+  Future<void> writeMoodSummary(String text) async {
+    final file = await _moodFile();
+    await file.writeAsString(text, flush: true);
   }
 
-  /// Replace an existing mood entry by date (used by EOD consistency check).
-  Future<void> updateMoodEntry(String date, MoodLogEntry updated) async {
-    final entries = await readMoodLog();
-    final idx     = entries.indexWhere((e) => e.date == date);
-    if (idx == -1) {
-      entries.add(updated);
-    } else {
-      entries[idx] = updated;
-    }
-    await _writeMoodLog(entries);
-  }
+  // ── Symptom summary ──────────────────────────────────────────────────────────
 
-  Future<void> _writeMoodLog(List<MoodLogEntry> entries) async {
-    final file    = await _moodFile();
-    final encoded = jsonEncode(entries.map((e) => e.toJson()).toList());
-    await file.writeAsString(encoded, flush: true);
-  }
-
-  // ── Symptom log ──────────────────────────────────────────────────────────────
-
-  Future<List<SymptomLogEntry>> readSymptomLog() async {
+  Future<String> readSymptomSummary() async {
     final file = await _symptomFile();
-    if (!await file.exists()) return [];
+    if (!await file.exists()) return '';
     try {
-      final raw     = await file.readAsString();
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded
-          .map((e) => SymptomLogEntry.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return await file.readAsString();
     } catch (_) {
-      return [];
+      return '';
     }
   }
 
-  /// Append a new symptom entry. Called AFTER ISAR write succeeds.
-  Future<void> appendSymptomEntry(SymptomLogEntry entry) async {
-    final entries = await readSymptomLog();
-    entries.add(entry);
-    await _writeSymptomLog(entries);
+  /// Overwrite the symptom summary. Called AFTER ISAR write succeeds.
+  Future<void> writeSymptomSummary(String text) async {
+    final file = await _symptomFile();
+    await file.writeAsString(text, flush: true);
   }
 
-  /// Update the status of a symptom entry by date + ailment name.
-  Future<void> updateSymptomStatus(
-      String date, String ailment, String status) async {
-    final entries = await readSymptomLog();
-    final idx = entries.indexWhere(
-        (e) => e.date == date && e.predictedAilment == ailment);
-    if (idx != -1) {
-      entries[idx] = entries[idx].copyWith(status: status);
-      await _writeSymptomLog(entries);
+  // ── Conversation summary ─────────────────────────────────────────────────────
+
+  Future<String> readConversationSummary() async {
+    final file = await _conversationFile();
+    if (!await file.exists()) return '';
+    try {
+      return await file.readAsString();
+    } catch (_) {
+      return '';
     }
   }
 
-  Future<void> _writeSymptomLog(List<SymptomLogEntry> entries) async {
-    final file    = await _symptomFile();
-    final encoded = jsonEncode(entries.map((e) => e.toJson()).toList());
-    await file.writeAsString(encoded, flush: true);
+  /// Overwrite the conversation summary. Called AFTER ISAR write succeeds.
+  Future<void> writeConversationSummary(String text) async {
+    final file = await _conversationFile();
+    await file.writeAsString(text, flush: true);
   }
 
-  // ── Context builders for Gemma2b ─────────────────────────────────────────────
+  // ── Context builders for Gemma / pipelines ───────────────────────────────────
 
-  /// Returns a Gemma2b-ready context string from the quick-tracking files.
-  /// Strategy: 100% quick-tracking file, OR 70% quick-track + 30% recent logs.
-  ///
-  /// [recentLogs] should be the last 3 days of raw log text from ISAR.
-  /// Pass null to use quick-tracking file only.
-  Future<String> buildMoodContext({List<String>? recentLogs}) async {
-    final entries = await readMoodLog();
-    if (entries.isEmpty) return 'No mood history available.';
-
-    final buffer = StringBuffer();
-    buffer.writeln('--- MOOD HISTORY (quick-track) ---');
-    for (final e in entries.take(14)) {
-      // Cap at 2 weeks for context window management
-      buffer.writeln('${e.date} | ${e.predictedMood} | ${e.log}');
-    }
-
-    if (recentLogs != null && recentLogs.isNotEmpty) {
-      buffer.writeln('\n--- RECENT DETAILED LOGS (last 3 days) ---');
-      for (final log in recentLogs.take(3)) {
-        buffer.writeln(log);
-      }
-    }
-
-    return buffer.toString();
+  Future<String> buildMoodContext() async {
+    final s = await readMoodSummary();
+    return s.isEmpty ? 'No mood history available.' : s;
   }
 
   Future<String> buildSymptomContext() async {
-    final entries = await readSymptomLog();
-    if (entries.isEmpty) return 'No symptom history available.';
-
-    final buffer = StringBuffer();
-    buffer.writeln('--- SYMPTOM HISTORY ---');
-    for (final e in entries) {
-      buffer.writeln(
-          '${e.date} | ${e.predictedAilment} [${e.status}] | ${e.symptoms.join(", ")}');
-    }
-    return buffer.toString();
+    final s = await readSymptomSummary();
+    return s.isEmpty ? 'No symptom history available.' : s;
   }
 
-  // ── Chat log ─────────────────────────────────────────────────────────────────
-
-  Future<List<ChatLogEntry>> readChatLog() async {
-    final file = await _chatFile();
-    if (!await file.exists()) return [];
-    try {
-      final raw     = await file.readAsString();
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded
-          .map((e) => ChatLogEntry.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return [];
-    }
+  Future<String> buildConversationContext() async {
+    final s = await readConversationSummary();
+    return s.isEmpty ? 'No conversation history available.' : s;
   }
 
-  /// Append a chat message entry. Called AFTER ISAR write succeeds.
-  Future<void> appendChatEntry(ChatLogEntry entry) async {
-    final entries = await readChatLog();
-    entries.add(entry);
-    await _writeChatLog(entries);
-  }
+  // ── Static template builders ─────────────────────────────────────────────────
 
-  Future<void> _writeChatLog(List<ChatLogEntry> entries) async {
-    final file    = await _chatFile();
-    final encoded = jsonEncode(entries.map((e) => e.toJson()).toList());
-    await file.writeAsString(encoded, flush: true);
-  }
-
-  // ── Startup sync check ───────────────────────────────────────────────────────
-
-  /// Compares ISAR entry counts against quick-tracking file entry counts.
-  /// Detects entries lost in a crash between the ISAR write and file write —
-  /// including same-day duplicates that the old date-only check would miss.
+  /// Builds the template block for the mood summary.
   ///
-  /// [lastIsarMoodDate] / [lastIsarSymptomDate] are the most recent dates from ISAR.
-  /// [lastIsarMoodCountForDate] / [lastIsarSymptomCountForDate] are how many entries
-  /// ISAR has on those dates.
-  /// Returns a [SyncCheckResult] indicating what (if anything) needs repair.
-  Future<SyncCheckResult> checkAndRepairSync({
-    required String? lastIsarMoodDate,
-    required int     lastIsarMoodCountForDate,
-    required String? lastIsarSymptomDate,
-    required int     lastIsarSymptomCountForDate,
-  }) async {
-    final moodEntries    = await readMoodLog();
-    final symptomEntries = await readSymptomLog();
+  /// Format:
+  ///   Mood: Calm (1 day). Previously: Stressed (8 days ago to 6 days ago), Sad (2 days ago to 1 day ago).
+  ///   Fitness: up 3 pts over 7 days.
+  ///
+  /// [entries] should be the last 14 days of mood entries, newest first.
+  /// [fitnessScores] should be the last 7 days of daily scores, index 0 = most recent.
+  static String buildMoodTemplate(
+      List<MoodEntry> entries, List<double> fitnessScores) {
+    if (entries.isEmpty) return 'No mood history in the last 14 days.';
 
-    // Count how many quick-track entries exist for the ISAR date.
-    final quickMoodCount    = lastIsarMoodDate == null    ? 0 : moodEntries.where((e)    => e.date == lastIsarMoodDate).length;
-    final quickSymptomCount = lastIsarSymptomDate == null ? 0 : symptomEntries.where((e) => e.date == lastIsarSymptomDate).length;
+    final today = DateTime.now();
 
-    final moodOutOfSync    = lastIsarMoodDate    != null && quickMoodCount    < lastIsarMoodCountForDate;
-    final symptomOutOfSync = lastIsarSymptomDate != null && quickSymptomCount < lastIsarSymptomCountForDate;
+    // Deduplicate: keep most recent entry per date.
+    final Map<String, MoodEntry> byDate = {};
+    for (final e in entries) {
+      if (!byDate.containsKey(e.date)) byDate[e.date] = e;
+    }
+    // Sort newest first.
+    final deduped = byDate.entries.toList()
+      ..sort((a, b) => b.key.compareTo(a.key));
 
-    return SyncCheckResult(
-      moodNeedsRepair:         moodOutOfSync,
-      symptomNeedsRepair:      symptomOutOfSync,
-      missingMoodDate:         moodOutOfSync    ? lastIsarMoodDate    : null,
-      missingMoodCount:        moodOutOfSync    ? lastIsarMoodCountForDate - quickMoodCount       : 0,
-      missingSymptomDate:      symptomOutOfSync ? lastIsarSymptomDate : null,
-      missingSymptomCount:     symptomOutOfSync ? lastIsarSymptomCountForDate - quickSymptomCount : 0,
-      quickMoodCountForDate:    quickMoodCount,
-      quickSymptomCountForDate: quickSymptomCount,
-    );
+    // Group consecutive same-mood runs.
+    // Each group: (mood, startDaysAgo [oldest], endDaysAgo [newest]).
+    final groups = <({String mood, int startDaysAgo, int endDaysAgo})>[];
+    String? currentMood;
+    int groupOldest = 0;
+    int groupNewest = 0;
+
+    for (final kv in deduped) {
+      final daysAgo =
+          today.difference(DateTime.parse(kv.key)).inDays;
+      final mood = kv.value.resolvedMood;
+
+      if (currentMood == null) {
+        currentMood = mood;
+        groupOldest = daysAgo;
+        groupNewest = daysAgo;
+      } else if (mood == currentMood) {
+        // Extend the current group's oldest boundary.
+        if (daysAgo > groupOldest) groupOldest = daysAgo;
+      } else {
+        groups.add((
+          mood:         currentMood,
+          startDaysAgo: groupOldest,
+          endDaysAgo:   groupNewest,
+        ));
+        currentMood = mood;
+        groupOldest = daysAgo;
+        groupNewest = daysAgo;
+      }
+    }
+    if (currentMood != null) {
+      groups.add((
+        mood:         currentMood,
+        startDaysAgo: groupOldest,
+        endDaysAgo:   groupNewest,
+      ));
+    }
+
+    if (groups.isEmpty) return 'No mood history in the last 14 days.';
+
+    final buf = StringBuffer();
+    final current = groups.first;
+    final currentCount = current.startDaysAgo - current.endDaysAgo + 1;
+
+    if (groups.length == 1) {
+      buf.write(
+          'Mood: ${_cap(current.mood)} ($currentCount ${currentCount == 1 ? 'day' : 'days'}).');
+    } else {
+      buf.write(
+          'Mood: ${_cap(current.mood)} ($currentCount ${currentCount == 1 ? 'day' : 'days'}).'
+          ' Previously:');
+
+      for (int i = 1; i < groups.length; i++) {
+        final g = groups[i];
+        if (i > 1) buf.write(',');
+        if (g.startDaysAgo == g.endDaysAgo) {
+          // Single day.
+          buf.write(
+              ' ${_cap(g.mood)} (${g.startDaysAgo} ${g.startDaysAgo == 1 ? 'day' : 'days'} ago)');
+        } else {
+          buf.write(
+              ' ${_cap(g.mood)} (${g.startDaysAgo} days ago to ${g.endDaysAgo} days ago)');
+        }
+      }
+      buf.write('.');
+    }
+
+    // Fitness line.
+    if (fitnessScores.length >= 2) {
+      final delta =
+          (fitnessScores.first - fitnessScores.last).round().abs();
+      final direction = fitnessScores.first >= fitnessScores.last
+          ? (fitnessScores.first - fitnessScores.last).round() == 0
+              ? 'stable'
+              : 'up'
+          : 'down';
+      if (direction == 'stable') {
+        buf.write('\nFitness: stable over ${fitnessScores.length} days.');
+      } else {
+        buf.write(
+            '\nFitness: $direction $delta pts over ${fitnessScores.length} days.');
+      }
+    }
+
+    return buf.toString();
   }
-}
 
-class SyncCheckResult {
-  final bool moodNeedsRepair;
-  final bool symptomNeedsRepair;
-  final String? missingMoodDate;
-  /// How many mood entries ISAR has that the quick-track file is missing.
-  final int missingMoodCount;
-  final String? missingSymptomDate;
-  /// How many symptom entries ISAR has that the quick-track file is missing.
-  final int missingSymptomCount;
-  /// Quick-track count for the latest date (for the repair to skip already-present entries).
-  final int quickMoodCountForDate;
-  final int quickSymptomCountForDate;
+  /// Builds the template block for the symptom summary.
+  ///
+  /// Format:
+  ///   Symptoms: Fever (active, 3 days), Headache (active, 2 days).
+  ///
+  /// [entries] should be the last 14 days of symptom entries.
+  static String buildSymptomTemplate(List<SymptomEntry> entries) {
+    final active = entries
+        .where((e) => e.status == 'active' || e.status == 'monitoring')
+        .toList();
 
-  bool get isClean => !moodNeedsRepair && !symptomNeedsRepair;
+    if (active.isEmpty) return 'Symptoms: None active in the last 14 days.';
 
-  const SyncCheckResult({
-    required this.moodNeedsRepair,
-    required this.symptomNeedsRepair,
-    required this.missingMoodCount,
-    required this.missingSymptomCount,
-    required this.quickMoodCountForDate,
-    required this.quickSymptomCountForDate,
-    this.missingMoodDate,
-    this.missingSymptomDate,
-  });
+    // For each unique symptom, count distinct dates it appears in active entries.
+    final symptomDates  = <String, Set<String>>{};
+    final symptomStatus = <String, String>{};
+
+    for (final entry in active) {
+      for (final symptom in entry.symptomList) {
+        final key = symptom.trim();
+        if (key.isEmpty) continue;
+        symptomDates.putIfAbsent(key, () => {}).add(entry.date);
+        // Keep the most recent status (entries are ordered newest first by caller).
+        symptomStatus.putIfAbsent(key, () => entry.status);
+      }
+    }
+
+    if (symptomDates.isEmpty) return 'Symptoms: None active in the last 14 days.';
+
+    // Sort by day count descending (most persistent first).
+    final sorted = symptomDates.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+
+    final parts = sorted.map((e) {
+      final days   = e.value.length;
+      final status = symptomStatus[e.key] ?? 'active';
+      return '${_cap(e.key)} ($status, $days ${days == 1 ? 'day' : 'days'})';
+    }).join(', ');
+
+    return 'Symptoms: $parts.';
+  }
+
+  /// Builds the template block for the conversation summary.
+  ///
+  /// Format:
+  ///   Sessions (last 7 days): 3 sessions, 12 messages.
+  ///   Last session: 2025-04-07.
+  ///
+  /// [sessions] should be the last 7 days of chat sessions, newest first.
+  static String buildConversationTemplate(List<ChatSession> sessions) {
+    if (sessions.isEmpty) return 'Sessions (last 7 days): None.';
+
+    final totalMessages =
+        sessions.fold(0, (sum, s) => sum + (s.messageCount));
+    final count        = sessions.length;
+    final lastCreated  = sessions.first.createdAt;
+    final y = lastCreated.year;
+    final m = lastCreated.month.toString().padLeft(2, '0');
+    final d = lastCreated.day.toString().padLeft(2, '0');
+    final dateStr = '$y-$m-$d';
+
+    return 'Sessions (last 7 days): $count ${count == 1 ? 'session' : 'sessions'},'
+        ' $totalMessages ${totalMessages == 1 ? 'message' : 'messages'}.'
+        '\nLast session: $dateStr.';
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────────
+
+  static String _cap(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }

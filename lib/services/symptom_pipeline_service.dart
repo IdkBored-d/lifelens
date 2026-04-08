@@ -322,15 +322,11 @@ class SymptomPipelineService {
 
     await IsarService.instance.writeSymptomEntry(symptomEntry);
 
-    // ── 2. WRITE TO QUICK-TRACKING FILE ──────────────────────────────────
-    unawaited(
-      _quickTrack.appendSymptomEntry(SymptomLogEntry(
-        date:             dateStr,
-        symptoms:         symptomList,
-        predictedAilment: topDisease,
-        status:           'active',
-      )).catchError((Object e) => debugPrint('[SymptomPipeline] QuickTrack write failed: $e')),
-    );
+    // ── 2. REGENERATE SYMPTOM QUICK-TRACK SUMMARY ────────────────────────
+    // Unawaited: ISAR is the source of truth (already written above).
+    // Queries ISAR for the last 14 days, builds a template + Gemma insight,
+    // then overwrites symptom_summary.txt.
+    unawaited(_generateAndWriteSymptomSummary());
 
     return SymptomPipelineResult(
       userSymptoms:       userSymptoms,
@@ -342,6 +338,27 @@ class SymptomPipelineService {
       disEmbedPrediction: disEmbedPrediction,
       disEmbedResult:     disEmbedResult,
     );
+  }
+
+  // ── Quick-track summary generation ──────────────────────────────────────────
+
+  Future<void> _generateAndWriteSymptomSummary() async {
+    try {
+      final entries  = await IsarService.instance.getRecentSymptomEntries(days: 14);
+      final template = QuickTrackService.buildSymptomTemplate(entries);
+
+      String summary = template;
+      try {
+        final insight = await _gemma.generateSummaryInsight(template: template);
+        summary = '$template\n\n$insight';
+      } on StateError catch (e) {
+        debugPrint('[SymptomPipeline] Gemma not ready for summary insight: $e');
+      }
+
+      await _quickTrack.writeSymptomSummary(summary);
+    } catch (e) {
+      debugPrint('[SymptomPipeline] Symptom summary write failed: $e');
+    }
   }
 
   List<DiagnosisEntry> _parseGemmaDiagnoses(String rawResponse) {

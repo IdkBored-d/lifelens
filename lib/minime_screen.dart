@@ -37,7 +37,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   @override
   void initState() {
     super.initState();
-    _chatSessionService = ChatSessionService(AppServices.quickTrack);
+    _chatSessionService = ChatSessionService(AppServices.quickTrack, AppServices.gemma);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _loadOpeningSuggestion();
       final moodStore  = context.read<MoodLogStore>();
