@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'restart.dart';
-import 'settings_screen.dart';
 import 'preferences_screen.dart';
-import 'privacy_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
 import 'dev_test_screen.dart';
@@ -74,138 +72,128 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile'), centerTitle: true),
-
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Center(
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 44,
-                    backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Icon(
-                      Icons.person,
-                      size: 48,
-                      color: theme.colorScheme.onPrimaryContainer,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              Center(
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 44,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Icon(
+                        Icons.person,
+                        size: 48,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
                     ),
+
+                    const SizedBox(height: 13),
+                    Text(
+                      user?.email ?? 'No email',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              _ProfileSection(
+                title: 'Account',
+                children: [
+                  _ProfileTile(
+                    icon: Icons.email_outlined,
+                    label: 'Email',
+                    value: user?.email ?? 'Not available',
                   ),
 
-                  const SizedBox(height: 13),
-                  Text(
-                    user?.email ?? 'No email',
-                    style: theme.textTheme.titleMedium,
+                  _ProfileTile(
+                    icon: Icons.lock_outline,
+                    label: 'Password',
+                    value: '••••••••',
+                    onTap: () => _showChangePasswordDialog(context),
                   ),
                 ],
               ),
-            ),
 
-            const SizedBox(height: 32),
+              const SizedBox(height: 24),
 
-            _ProfileSection(
-              title: 'Account',
-              children: [
-                _ProfileTile(
-                  icon: Icons.email_outlined,
-                  label: 'Email',
-                  value: user?.email ?? 'Not available',
-                ),
+              _ProfileSection(
+                title: 'Preferences',
+                children: [
+                  _ProfileTile(
+                    icon: Icons.spa_outlined,
+                    label: 'Calm mode',
+                    value: themeController.isCalmMode ? 'Enabled' : 'Off',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PreferencesScreen(),
+                        ),
+                      );
+                    },
+                  ),
 
-                _ProfileTile(
-                  icon: Icons.lock_outline,
-                  label: 'Password',
-                  value: '••••••••',
-                  onTap: () => _showChangePasswordDialog(context),
-                ),
-              ],
-            ),
+                  _ProfileSwitchTile(
+                    icon: Icons.notifications_none,
+                    label: 'Notifications',
+                    value: _notificationsEnabled,
+                    onChanged: _toggleNotifications,
+                  ),
 
-            const SizedBox(height: 24),
+                  _ProfileTile(
+                    icon: Icons.security_outlined,
+                    label: 'Security',
+                    value: 'Manage',
+                    onTap: () => _showSecurityDialog(context),
+                  ),
+                ],
+              ),
 
-            _ProfileSection(
-              title: 'Preferences',
-              children: [
-                _ProfileTile(
-                  icon: Icons.spa_outlined,
-                  label: 'Calm mode',
-                  value: themeController.isCalmMode ? 'Enabled' : 'Off',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PreferencesScreen(),
+              _ProfileSection(
+                title: 'Actions',
+                children: [
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Log out'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.error,
+                      foregroundColor: theme.colorScheme.onError,
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                    );
-                  },
-                ),
-
-                _ProfileSwitchTile(
-                  icon: Icons.notifications_none,
-                  label: 'Notifications',
-                  value: _notificationsEnabled,
-                  onChanged: _toggleNotifications,
-                ),
-
-                _ProfileTile(
-                  icon: Icons.security_outlined,
-                  label: 'Security',
-                  value: 'Manage',
-                  onTap: () => _showSecurityDialog(context),
-                ),
-              ],
-            ),
-
-            _ProfileSection(
-              title: 'Actions',
-              children: [
-                Container(
-                  color: Colors.red,
-                  child: _ProfileTile(
-                    icon: Icons.bug_report_outlined,
-                    label: 'Dev Tools',
-                    value: '',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const DevTestScreen()),
                     ),
-                  ),
-                ),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Log out'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.error,
-                    foregroundColor: theme.colorScheme.onError,
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+
+                    onPressed: () async {
+                      await FirebaseAuth.instance.signOut();
+                      if (!context.mounted) return;
+                      RestartWidget.restartApp(context);
+                    },
                   ),
 
-                  onPressed: () async {
-                    await FirebaseAuth.instance.signOut();
-                    RestartWidget.restartApp(context);
-                  },
-                ),
+                  const SizedBox(height: 12),
 
-                const SizedBox(height: 12),
-
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Reset preferences'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reset preferences'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                  ),
 
-                  onPressed: () {},
-                ),
-              ],
-            ),
-          ],
+                    onPressed: () {},
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -215,51 +203,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
-    final theme = Theme.of(context);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Change Password'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: currentPasswordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Current Password',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: currentPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Current Password',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.lock_outline),
                 ),
-                prefixIcon: const Icon(Icons.lock_outline),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: newPasswordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'New Password',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 16),
+              TextField(
+                controller: newPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'New Password',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.lock_outline),
                 ),
-                prefixIcon: const Icon(Icons.lock_outline),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: confirmPasswordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Confirm New Password',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 16),
+              TextField(
+                controller: confirmPasswordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Confirm New Password',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.lock_outline),
                 ),
-                prefixIcon: const Icon(Icons.lock_outline),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -375,31 +364,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Security'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Manage your account security',
-              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: Icon(
-                Icons.delete_forever,
-                color: theme.colorScheme.error,
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Manage your account security',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
               ),
-              title: Text(
-                'Delete Account',
-                style: TextStyle(color: theme.colorScheme.error),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: Icon(
+                  Icons.delete_forever,
+                  color: theme.colorScheme.error,
+                ),
+                title: Text(
+                  'Delete Account',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                subtitle: const Text(
+                  'Permanently delete your account and data',
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteAccountConfirmation(context);
+                },
               ),
-              subtitle: const Text('Permanently delete your account and data'),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeleteAccountConfirmation(context);
-              },
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -425,34 +418,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const Text('Delete Account'),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'This action cannot be undone!',
-              style: TextStyle(
-                color: theme.colorScheme.error,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'All your data will be permanently deleted, including:\n• Profile information\n• Mood logs\n• Sphere memberships\n• Messages',
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Confirm with your password',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This action cannot be undone!',
+                style: TextStyle(
+                  color: theme.colorScheme.error,
+                  fontWeight: FontWeight.bold,
                 ),
-                prefixIcon: const Icon(Icons.lock_outline),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              const Text(
+                'All your data will be permanently deleted, including:\n• Profile information\n• Mood logs\n• Sphere memberships\n• Messages',
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Confirm with your password',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  prefixIcon: const Icon(Icons.lock_outline),
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(

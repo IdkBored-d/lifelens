@@ -147,6 +147,97 @@ class MiniMeChatResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
+class MiniMeSuggestionItem(BaseModel):
+    """Single generated Mini-Me suggestion."""
+    action: str = Field(..., min_length=1, max_length=240)
+    reason: str = Field(..., min_length=1, max_length=240)
+
+
+class MiniMeSuggestionsRequest(BaseModel):
+    """Request model for generated Mini-Me suggestions."""
+    latest_mood_label: Optional[str] = Field(None, max_length=80)
+    latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
+    latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    recent_moods: List[str] = Field(default_factory=list, max_items=10)
+    recent_logs: List[str] = Field(default_factory=list, max_items=12)
+    active_symptoms: List[str] = Field(default_factory=list, max_items=20)
+    chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
+    user_id_hash: Optional[str] = Field(None, max_length=128)
+
+    @validator('recent_moods', each_item=True)
+    def validate_suggestion_recent_mood_item(cls, v):
+        return v.strip()
+
+    @validator('recent_logs', each_item=True)
+    def validate_recent_log_item(cls, v):
+        return v.strip()
+
+    @validator('active_symptoms', each_item=True)
+    def validate_suggestion_active_symptom_item(cls, v):
+        return v.strip()
+
+
+class MiniMeSuggestionsResponse(BaseModel):
+    """Response model for generated Mini-Me suggestions."""
+    suggestions: List[MiniMeSuggestionItem] = Field(default_factory=list, min_items=1, max_items=3)
+    source: str = Field(..., description="gemini or fallback")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MiniMeExerciseCandidate(BaseModel):
+    """Exercise candidate available for recommendation."""
+    id: str = Field(..., min_length=1, max_length=200)
+    name: str = Field(..., min_length=1, max_length=120)
+    type: str = Field(..., min_length=1, max_length=80)
+    muscle: str = Field(..., min_length=1, max_length=80)
+    difficulty: str = Field(..., min_length=1, max_length=80)
+    description: Optional[str] = Field(None, max_length=400)
+
+
+class MiniMeExerciseRecommendationRequest(BaseModel):
+    """Request model for Mini-Me exercise recommendations."""
+    latest_mood_label: Optional[str] = Field(None, max_length=80)
+    latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
+    latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    recent_moods: List[str] = Field(default_factory=list, max_items=10)
+    recent_logs: List[str] = Field(default_factory=list, max_items=12)
+    active_symptoms: List[str] = Field(default_factory=list, max_items=20)
+    chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
+    exercises: List[MiniMeExerciseCandidate] = Field(default_factory=list, min_items=1, max_items=100)
+    user_id_hash: Optional[str] = Field(None, max_length=128)
+
+    @validator('recent_moods', each_item=True)
+    def validate_exercise_recent_mood_item(cls, v):
+        return v.strip()
+
+    @validator('recent_logs', each_item=True)
+    def validate_exercise_recent_log_item(cls, v):
+        return v.strip()
+
+    @validator('active_symptoms', each_item=True)
+    def validate_exercise_active_symptom_item(cls, v):
+        return v.strip()
+
+
+class MiniMeExerciseRecommendationItem(BaseModel):
+    """Single recommended exercise item."""
+    exercise_id: str = Field(..., min_length=1, max_length=200)
+    reason: str = Field(..., min_length=1, max_length=240)
+    focus: str = Field(..., min_length=1, max_length=140)
+
+
+class MiniMeExerciseRecommendationResponse(BaseModel):
+    """Response model for Mini-Me exercise recommendations."""
+    headline: str = Field(..., min_length=1, max_length=160)
+    recommendations: List[MiniMeExerciseRecommendationItem] = Field(
+        default_factory=list,
+        min_items=1,
+        max_items=3,
+    )
+    source: str = Field(..., description="gemini or fallback")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
 class HealthDisclaimer(BaseModel):
     """Medical disclaimer"""
     text: str

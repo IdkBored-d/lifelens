@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:lifelens/app_services.dart';
-import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/database/fitness_entry.dart';
-import 'package:lifelens/models/escalation_level.dart';        // ← ADD
-import 'package:lifelens/models/mood_result.dart';             // ← ADD (kMobileBertLabels)
+import 'package:lifelens/models/escalation_level.dart'; // ← ADD
+import 'package:lifelens/models/mood_result.dart'; // ← ADD (kMobileBertLabels)
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
-import 'package:lifelens/services/quick_track_service.dart';   // ← ADD (MoodLogEntry, SymptomLogEntry)
-import 'package:lifelens/database/eod_entry.dart';
-import 'package:lifelens/services/gemma_model_manager.dart';
-
+import 'package:lifelens/services/quick_track_service.dart'; // ← ADD (MoodLogEntry, SymptomLogEntry)
 
 /// ─────────────────────────────────────────────────────────────────────────────
 /// DEV TEST SCREEN
@@ -45,12 +41,18 @@ class _DevTestScreenState extends State<DevTestScreen> {
       final output = await test();
       setState(() {
         _results[0] = _TestResult(
-            label: label, status: _Status.pass, output: output);
+          label: label,
+          status: _Status.pass,
+          output: output,
+        );
       });
     } catch (e) {
       setState(() {
         _results[0] = _TestResult(
-            label: label, status: _Status.fail, output: e.toString());
+          label: label,
+          status: _Status.fail,
+          output: e.toString(),
+        );
       });
     } finally {
       setState(() => _running = false);
@@ -71,7 +73,10 @@ class _DevTestScreenState extends State<DevTestScreen> {
     // MobileBERT — ambiguous (joy vs sadness too close)
     final mb2 = cm.evaluateMobileBert([0.40, 0.45, 0.05, 0.04, 0.03, 0.03]);
     assert(!mb2.confidenceOk, 'Expected escalation on ambiguous');
-    assert(mb2.escalation == EscalationLevel.gemma, 'Expected gemma escalation');
+    assert(
+      mb2.escalation == EscalationLevel.gemma,
+      'Expected gemma escalation',
+    );
 
     // MobileBERT — low confidence surprise
     final mb3 = cm.evaluateMobileBert([0.20, 0.15, 0.10, 0.15, 0.15, 0.25]);
@@ -110,17 +115,17 @@ class _DevTestScreenState extends State<DevTestScreen> {
 
   Future<String> _testIsarWrite() async {
     final entry = MoodEntry()
-      ..date                = '2026-03-21'
-      ..rawLog              = 'Dev test entry — feeling good today!'
-      ..condensedLog        = 'Feeling good today'
-      ..resolvedMood        = 'joy'
-      ..resolvedBy          = 'base'
+      ..date = '2026-03-21'
+      ..rawLog = 'Dev test entry — feeling good today!'
+      ..condensedLog = 'Feeling good today'
+      ..resolvedMood = 'joy'
+      ..resolvedBy = 'base'
       ..mobileBertPrediction = 'joy'
-      ..mobileBertTopProb   = 0.91
-      ..userConfirmed       = true
-      ..responseText        = 'Great to hear you are feeling joyful!'
+      ..mobileBertTopProb = 0.91
+      ..userConfirmed = true
+      ..responseText = 'Great to hear you are feeling joyful!'
       ..fitnessScoreSnapshot = 72.0
-      ..timestamp           = DateTime.now();
+      ..timestamp = DateTime.now();
 
     await AppServices.isar.writeMoodEntry(entry);
     return '✓ MoodEntry written to ISAR';
@@ -139,18 +144,19 @@ class _DevTestScreenState extends State<DevTestScreen> {
 
   Future<String> _testIsarSymptomWrite() async {
     final entry = SymptomEntry()
-      ..date             = '2026-03-21'
-      ..rawSymptoms      = 'Persistent cough, night sweats, fatigue'
-      ..symptomList      = ['persistent cough', 'night sweats', 'fatigue']
+      ..date = '2026-03-21'
+      ..rawSymptoms = 'Persistent cough, night sweats, fatigue'
+      ..symptomList = ['persistent cough', 'night sweats', 'fatigue']
       ..predictedAilment = 'Possible TB (dev test)'
-      ..disEmbedScore    = 0.43
-      ..diagnosesJson    = '{"diagnoses": [{"disease": "Test Disease", "reasoning": "test", "next_steps": "see a doctor", "is_urgent": false}]}'
-      ..resolvedBy       = 'gemma2b'
-      ..ragUsed          = false
-      ..wasOffline       = true
-      ..status           = 'active'
-      ..timestamp        = DateTime.now()
-      ..updatedAt        = DateTime.now();
+      ..disEmbedScore = 0.43
+      ..diagnosesJson =
+          '{"diagnoses": [{"disease": "Test Disease", "reasoning": "test", "next_steps": "see a doctor", "is_urgent": false}]}'
+      ..resolvedBy = 'gemma2b'
+      ..ragUsed = false
+      ..wasOffline = true
+      ..status = 'active'
+      ..timestamp = DateTime.now()
+      ..updatedAt = DateTime.now();
 
     await AppServices.isar.writeSymptomEntry(entry);
     return '✓ SymptomEntry written to ISAR';
@@ -158,22 +164,22 @@ class _DevTestScreenState extends State<DevTestScreen> {
 
   Future<String> _testIsarFitnessWrite() async {
     final entry = FitnessEntry()
-      ..date                  = '2026-03-21'
-      ..fitnessScore          = 72.4
-      ..fitProbability        = 0.724
-      ..isFit                 = true
-      ..confidenceOk          = true
-      ..dataFreshnessFlagged  = false
-      ..age                   = 24
-      ..bmi                   = 22.5
-      ..heartRate             = 68
-      ..sleepHours            = 7.5
-      ..smokes                = false
-      ..nutritionQuality      = 7.2
-      ..activityIndex         = 6.8
-      ..isMale                = true
-      ..healthDataTimestamp   = DateTime.now()
-      ..inferenceTimestamp    = DateTime.now();
+      ..date = '2026-03-21'
+      ..fitnessScore = 72.4
+      ..fitProbability = 0.724
+      ..isFit = true
+      ..confidenceOk = true
+      ..dataFreshnessFlagged = false
+      ..age = 24
+      ..bmi = 22.5
+      ..heartRate = 68
+      ..sleepHours = 7.5
+      ..smokes = false
+      ..nutritionQuality = 7.2
+      ..activityIndex = 6.8
+      ..isMale = true
+      ..healthDataTimestamp = DateTime.now()
+      ..inferenceTimestamp = DateTime.now();
 
     await AppServices.isar.writeFitnessEntry(entry);
     return '✓ FitnessEntry written to ISAR\n'
@@ -192,14 +198,14 @@ class _DevTestScreenState extends State<DevTestScreen> {
   Future<String> _testQuickTrackMood() async {
     await AppServices.quickTrack.appendMoodEntry(
       MoodLogEntry(
-        date:          '2026-03-21',
-        log:           'Dev test: feeling good today',
+        date: '2026-03-21',
+        log: 'Dev test: feeling good today',
         predictedMood: 'joy',
-        fitnessScore:  72.0,
+        fitnessScore: 72.0,
       ),
     );
     final entries = await AppServices.quickTrack.readMoodLog();
-    final found   = entries.any((e) => e.date == '2026-03-21');
+    final found = entries.any((e) => e.date == '2026-03-21');
     return '✓ QuickTrack mood append succeeded\n'
         'Total entries in file: ${entries.length}\n'
         'Found 2026-03-21: $found';
@@ -208,10 +214,10 @@ class _DevTestScreenState extends State<DevTestScreen> {
   Future<String> _testQuickTrackSymptom() async {
     await AppServices.quickTrack.appendSymptomEntry(
       SymptomLogEntry(
-        date:             '2026-03-21',
-        symptoms:         ['cough', 'fatigue'],
+        date: '2026-03-21',
+        symptoms: ['cough', 'fatigue'],
         predictedAilment: 'Test Ailment',
-        status:           'active',
+        status: 'active',
       ),
     );
     final entries = await AppServices.quickTrack.readSymptomLog();
@@ -220,7 +226,7 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testQuickTrackContext() async {
-    final moodCtx    = await AppServices.quickTrack.buildMoodContext();
+    final moodCtx = await AppServices.quickTrack.buildMoodContext();
     final symptomCtx = await AppServices.quickTrack.buildSymptomContext();
     return '✓ Context strings built\n'
         'Mood context length: ${moodCtx.length} chars\n'
@@ -237,11 +243,13 @@ class _DevTestScreenState extends State<DevTestScreen> {
       AppServices.mobileBertTokenize,
     );
     assert(probs.length == 6, 'Expected 6 class probabilities');
-    final topIdx   = probs.indexWhere((p) => p == probs.reduce((a, b) => a > b ? a : b));
+    final topIdx = probs.indexWhere(
+      (p) => p == probs.reduce((a, b) => a > b ? a : b),
+    );
     final topLabel = kMobileBertLabels[topIdx];
-    final topProb  = probs[topIdx];
+    final topProb = probs[topIdx];
 
-    final cm     = ConfidenceManager();
+    final cm = ConfidenceManager();
     final result = cm.evaluateMobileBert(probs);
 
     return '✓ MobileBERT inference succeeded\n'
@@ -257,18 +265,28 @@ class _DevTestScreenState extends State<DevTestScreen> {
       return '✗ DisEmbed not loaded — check asset path in app_services.dart';
     }
 
-    const sentA = 'Persistent cough with blood-streaked sputum and night sweats.';
+    const sentA =
+        'Persistent cough with blood-streaked sputum and night sweats.';
     const sentB = 'Fever, weight loss, and prolonged coughing.';
     const sentC = 'Runny nose and itchy eyes after going outside.';
 
-    final embA = await AppServices.disEmbed.embed(sentA, AppServices.disEmbedTokenize);
-    final embB = await AppServices.disEmbed.embed(sentB, AppServices.disEmbedTokenize);
-    final embC = await AppServices.disEmbed.embed(sentC, AppServices.disEmbedTokenize);
+    final embA = await AppServices.disEmbed.embed(
+      sentA,
+      AppServices.disEmbedTokenize,
+    );
+    final embB = await AppServices.disEmbed.embed(
+      sentB,
+      AppServices.disEmbedTokenize,
+    );
+    final embC = await AppServices.disEmbed.embed(
+      sentC,
+      AppServices.disEmbedTokenize,
+    );
 
     final simAB = AppServices.disEmbed.cosineSimilarity(embA, embB);
     final simAC = AppServices.disEmbed.cosineSimilarity(embA, embC);
 
-    final cm      = ConfidenceManager();
+    final cm = ConfidenceManager();
     final resultAB = cm.evaluateDisEmbed(simAB);
     final resultAC = cm.evaluateDisEmbed(simAC);
 
@@ -285,18 +303,18 @@ class _DevTestScreenState extends State<DevTestScreen> {
     }
 
     final features = FitnessFeatures(
-      age:              24,
-      bmi:              22.5,
-      heartRate:        68,
-      sleepHours:       7.5,
-      smokes:           0.0,
+      age: 24,
+      bmi: 22.5,
+      heartRate: 68,
+      sleepHours: 7.5,
+      smokes: 0.0,
       nutritionQuality: 7.2,
-      activityIndex:    6.8,
-      genderM:          1.0,
+      activityIndex: 6.8,
+      genderM: 1.0,
     );
 
-    final proba  = await AppServices.fitnessMlp.predict(features);
-    final cm     = ConfidenceManager();
+    final proba = await AppServices.fitnessMlp.predict(features);
+    final cm = ConfidenceManager();
     final result = cm.evaluateFitness(proba);
 
     return '✓ Fitness MLP inference succeeded\n'
@@ -307,10 +325,10 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testSyncCheck() async {
-    final lastMood    = await AppServices.isar.lastMoodDate();
+    final lastMood = await AppServices.isar.lastMoodDate();
     final lastSymptom = await AppServices.isar.lastSymptomDate();
-    final sync        = await AppServices.quickTrack.checkAndRepairSync(
-      lastIsarMoodDate:    lastMood,
+    final sync = await AppServices.quickTrack.checkAndRepairSync(
+      lastIsarMoodDate: lastMood,
       lastIsarSymptomDate: lastSymptom,
     );
     return '✓ Sync check completed\n'
@@ -321,72 +339,11 @@ class _DevTestScreenState extends State<DevTestScreen> {
         'Is clean: ${sync.isClean}';
   }
 
-  Future<String> _testIsarEodWrite() async {
-    final todayStr = DateTime.now().toIso8601String().split('T').first;
-    final entry = EodEntry()
-      ..date               = todayStr
-      ..summaryText        = 'Dev test EOD summary: Fitness trend is up, mood was joyful.'
-      ..correlationSummary = '{"flag": false, "summary": "Great day overall!"}'
-      ..flagged            = false
-      ..fitnessScore       = 72.4
-      ..moodEntryCount     = 3
-      ..generatedOnline    = false
-      ..timestamp          = DateTime.now();
-
-    // Calls the IsarService to write to the database
-    await AppServices.isar.writeEodEntry(entry); 
-    
-    return '✓ EodEntry written to ISAR';
-  }
-
-  Future<String> _testIsarEodRead() async {
-    final todayStr = DateTime.now().toIso8601String().split('T').first;
-    final entry = await AppServices.isar.getEodEntry(todayStr);
-    if (entry == null) {
-      return '✗ No EOD entry found for $todayStr — run Write EOD Entry first';
-    }
-    return '✓ EOD entry found for $todayStr\n'
-        'flagged=${entry.flagged}, fitnessScore=${entry.fitnessScore}\n'
-        'moodEntryCount=${entry.moodEntryCount}, generatedOnline=${entry.generatedOnline}\n'
-        'summary preview: ${entry.summaryText.substring(0, entry.summaryText.length.clamp(0, 80))}...';
-  }
-
-  Future<String> _testEodPipeline() async {
-    final result = await AppServices.eodPipeline.runEndOfDay(isOnline: false);
-    return '✓ EOD pipeline completed (offline/Gemma path)\n'
-        'date=${result.date}\n'
-        'flagged=${result.flagged}\n'
-        'flagReason=${result.flagReason ?? "none"}\n'
-        'fitnessScore=${result.fitnessScore}\n'
-        'correlation=${result.correlation?.summary ?? "none"}\n'
-        'summary preview: ${result.summary.substring(0, result.summary.length.clamp(0, 120))}...';
-  }
-
-  Future<String> _testGemmaStatus() async {
-    final loaded    = AppServices.isGemmaLoaded;
-    final savedPath = await GemmaModelManager.getSavedPath();
-    final skipped   = await GemmaModelManager.wasSkipped();
-    return 'Gemma loaded: $loaded\n'
-        'Saved path: ${savedPath.isEmpty ? "(none)" : savedPath}\n'
-        'Setup skipped: $skipped';
-  }
-
-  Future<String> _testGemmaInference() async {
-    if (!AppServices.isGemmaLoaded) {
-      return '✗ Gemma not loaded — complete setup or use Dev mode in GemmaSetupScreen';
-    }
-    const prompt =
-        'Reply with exactly one sentence confirming you are Gemma 2 2B IT '
-        'and are running on-device.';
-    final response = await AppServices.gemma.generate(prompt);
-    return '✓ Gemma inference succeeded\n'
-        'Prompt: "$prompt"\n'
-        'Response: $response';
-  }
-
   Future<String> _testClearAll() async {
     await AppServices.isar.clearAll();
-    final moodEntries    = await AppServices.isar.getMoodEntriesForDate('2026-03-21');
+    final moodEntries = await AppServices.isar.getMoodEntriesForDate(
+      '2026-03-21',
+    );
     final symptomEntries = await AppServices.isar.getAllSymptomEntries();
     return '✓ ISAR cleared\n'
         'Mood entries remaining: ${moodEntries.length}\n'
@@ -434,8 +391,11 @@ class _DevTestScreenState extends State<DevTestScreen> {
                   _testBtn('Write EOD Entry', _testIsarEodWrite),
                   _testBtn('Read EOD Entry', _testIsarEodRead),
                   _testBtn('Sync Check', _testSyncCheck),
-                  _testBtn('⚠ Clear All ISAR', _testClearAll,
-                      color: Colors.red.shade800),
+                  _testBtn(
+                    '⚠ Clear All ISAR',
+                    _testClearAll,
+                    color: Colors.red.shade800,
+                  ),
 
                   _sectionHeader('QUICK-TRACK'),
                   _testBtn('Append Mood Log', _testQuickTrackMood),
@@ -479,20 +439,19 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Widget _sectionHeader(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.grey,
-            fontSize: 10,
-            letterSpacing: 1.5,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+    child: Text(
+      label,
+      style: const TextStyle(
+        color: Colors.grey,
+        fontSize: 10,
+        letterSpacing: 1.5,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 
-  Widget _testBtn(String label, Future<String> Function() fn,
-      {Color? color}) =>
+  Widget _testBtn(String label, Future<String> Function() fn, {Color? color}) =>
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         child: ElevatedButton(
@@ -504,7 +463,8 @@ class _DevTestScreenState extends State<DevTestScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             textStyle: const TextStyle(fontSize: 12),
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6)),
+              borderRadius: BorderRadius.circular(6),
+            ),
           ),
           child: Text(label),
         ),
@@ -520,9 +480,13 @@ class _ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, bg, border) = switch (result.status) {
-      _Status.pass    => ('✓', const Color(0xFF0D2B1A), const Color(0xFF1DB954)),
-      _Status.fail    => ('✗', const Color(0xFF2B0D0D), const Color(0xFFE53935)),
-      _Status.running => ('⟳', const Color(0xFF1A1A0D), const Color(0xFFFFB300)),
+      _Status.pass => ('✓', const Color(0xFF0D2B1A), const Color(0xFF1DB954)),
+      _Status.fail => ('✗', const Color(0xFF2B0D0D), const Color(0xFFE53935)),
+      _Status.running => (
+        '⟳',
+        const Color(0xFF1A1A0D),
+        const Color(0xFFFFB300),
+      ),
     };
 
     return Container(
@@ -537,20 +501,22 @@ class _ResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              Text(icon, style: TextStyle(color: border, fontSize: 14)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  result.label,
-                  style: TextStyle(
-                    color: border,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+            Row(
+              children: [
+                Text(icon, style: TextStyle(color: border, fontSize: 14)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    result.label,
+                    style: TextStyle(
+                      color: border,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
-              ),
-            ]),
+              ],
+            ),
             if (result.output != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -575,7 +541,7 @@ class _ResultCard extends StatelessWidget {
 enum _Status { pass, fail, running }
 
 class _TestResult {
-  final String  label;
+  final String label;
   final _Status status;
   final String? output;
   const _TestResult({required this.label, required this.status, this.output});

@@ -13,5 +13,4 @@ Future<void> initializeApp() async {
   await BackgroundEodService.register();
 
   await FirebaseAuth.instance.authStateChanges().first;
-  await Future.delayed(const Duration(milliseconds: 1300));
 }
