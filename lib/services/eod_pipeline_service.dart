@@ -98,8 +98,9 @@ class EodPipelineService {
         .join('\n');
 
     // ── STEP 5: Correlation analysis ──────────────────────────────────────
-    String summaryText;
+    String summaryText = 'End-of-day summary unavailable.';
     EodCorrelation? correlation;
+    var useGemma = !isOnline; // flipped to true if Gemini fails
 
     if (isOnline) {
       // Build a real query vector from active symptoms, not a zero vector.

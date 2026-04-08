@@ -388,6 +388,8 @@ class _DevTestScreenState extends State<DevTestScreen> {
                   _testBtn('Write Symptom Entry', _testIsarSymptomWrite),
                   _testBtn('Write Fitness Entry', _testIsarFitnessWrite),
                   _testBtn('Day Snapshot', _testIsarDaySnapshot),
+                  _testBtn('Write EOD Entry', _testIsarEodWrite),
+                  _testBtn('Read EOD Entry', _testIsarEodRead),
                   _testBtn('Sync Check', _testSyncCheck),
                   _testBtn(
                     '⚠ Clear All ISAR',
@@ -404,6 +406,13 @@ class _DevTestScreenState extends State<DevTestScreen> {
                   _testBtn('MobileBERT Inference', _testMobileBert),
                   _testBtn('DisEmbed Inference', _testDisEmbed),
                   _testBtn('Fitness MLP Inference', _testFitnessMlp),
+
+                  _sectionHeader('PIPELINES'),
+                  _testBtn('EOD Pipeline (offline)', _testEodPipeline),
+
+                  _sectionHeader('GEMMA'),
+                  _testBtn('Gemma Status', _testGemmaStatus),
+                  _testBtn('Gemma Inference', _testGemmaInference),
                 ],
               ),
             ),

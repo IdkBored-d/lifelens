@@ -26,6 +26,12 @@ android {
             isMinifyEnabled = false
             // Keep resource shrinking off while code shrinking is disabled
             isShrinkResources = false
+
+            // Play Store devices are ARM-based. Exclude x86/x86_64 native libs
+            // from release artifacts to avoid 16 KB page-size compatibility flags.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
         }
         debug {
             // Disable resource shrinking for debug builds as well

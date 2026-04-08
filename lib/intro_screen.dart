@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:lifelens/app_services.dart';
+import 'package:lifelens/database/fitness_entry.dart';
 
 class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key});
@@ -18,10 +20,12 @@ class _IntroScreenState extends State<IntroScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _weightController = TextEditingController();
+  final _heightController = TextEditingController();
   final _heartRateController = TextEditingController();
   final _sleepController = TextEditingController();
 
   String _weightUnit = 'kg';
+  String _heightUnit = 'cm';
   String _heartRateUnit = 'bpm';
   String? _selectedWorkoutFrequency;
 
@@ -37,6 +41,7 @@ class _IntroScreenState extends State<IntroScreen> {
   void dispose() {
     _pageController.dispose();
     _weightController.dispose();
+    _heightController.dispose();
     _heartRateController.dispose();
     _sleepController.dispose();
     super.dispose();
@@ -74,11 +79,13 @@ class _IntroScreenState extends State<IntroScreen> {
     if (user == null) return;
 
     final weight = double.tryParse(_weightController.text.trim());
+    final height = double.tryParse(_heightController.text.trim());
     final heartRate = double.tryParse(_heartRateController.text.trim());
     final sleepHours = double.tryParse(_sleepController.text.trim());
     final workoutInfo = _selectedWorkoutFrequency;
 
     if (weight == null ||
+        height == null ||
         heartRate == null ||
         sleepHours == null ||
         workoutInfo == null ||
@@ -97,22 +104,44 @@ class _IntroScreenState extends State<IntroScreen> {
     setState(() => _saving = true);
 
     try {
+      // Mark onboarding complete in Firestore — AppRoot navigation depends on this.
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'onboardingComplete': true,
-        'healthSnapshot': {
-          'source': 'manual_onboarding',
-          'capturedAt': DateTime.now().toIso8601String(),
-          'weight': weight,
-          'weightUnit': _weightUnit,
-          'heartRate': heartRate,
-          'heartRateUnit': _heartRateUnit,
-          'sleepHours': sleepHours,
-          'sleepUnit': 'hours',
-          'workoutFrequency': workoutInfo,
-          'workoutSummary': workoutInfo,
-        },
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      // Write health snapshot to ISAR (source of truth for health data).
+      const activityMap = {
+        'Rarely or never':    0.0,
+        '1-2 times per week': 0.25,
+        '3-4 times per week': 0.5,
+        '5-6 times per week': 0.75,
+        'Daily':              1.0,
+      };
+      final weightKg      = (_weightUnit == 'lb') ? weight * 0.453592 : weight;
+      final heightM       = (_heightUnit == 'in') ? height * 0.0254 : height / 100.0;
+      final bmi           = weightKg / (heightM * heightM);
+      final activityIndex = activityMap[workoutInfo] ?? 0.25;
+      final now           = DateTime.now();
+      final snapshot      = FitnessEntry()
+        ..date                 = now.toIso8601String().split('T').first
+        ..fitnessScore         = 0.0
+        ..fitProbability       = 0.0
+        ..isFit                = false
+        ..confidenceOk         = false
+        ..dataFreshnessFlagged = true
+        ..isOnboardingSnapshot = true
+        ..age                  = 0.0
+        ..bmi                  = bmi
+        ..heartRate            = heartRate
+        ..sleepHours           = sleepHours
+        ..smokes               = false
+        ..nutritionQuality     = 0.5
+        ..activityIndex        = activityIndex
+        ..isMale               = false
+        ..healthDataTimestamp  = now
+        ..inferenceTimestamp   = now;
+      await AppServices.isar.writeFitnessEntry(snapshot);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -236,6 +265,7 @@ class _IntroScreenState extends State<IntroScreen> {
                         _HealthFormStep(
                           formKey: _formKey,
                           weightController: _weightController,
+                          heightController: _heightController,
                           heartRateController: _heartRateController,
                           sleepController: _sleepController,
                           workoutFrequencyOptions: _workoutFrequencyOptions,
@@ -244,15 +274,20 @@ class _IntroScreenState extends State<IntroScreen> {
                             setState(() => _selectedWorkoutFrequency = value);
                           },
                           weightUnit: _weightUnit,
+                          heightUnit: _heightUnit,
                           heartRateUnit: _heartRateUnit,
                           onWeightUnitChanged: (value) =>
                               setState(() => _weightUnit = value),
+                          onHeightUnitChanged: (value) =>
+                              setState(() => _heightUnit = value),
                           onHeartRateUnitChanged: (value) =>
                               setState(() => _heartRateUnit = value),
                         ),
                         _ReviewStep(
                           weight: _safeText(_weightController.text, '-'),
                           weightUnit: _weightUnit,
+                          height: _safeText(_heightController.text, '-'),
+                          heightUnit: _heightUnit,
                           heartRate: _safeText(_heartRateController.text, '-'),
                           heartRateUnit: _heartRateUnit,
                           sleepHours: _safeText(_sleepController.text, '-'),
@@ -372,27 +407,33 @@ class _HealthFormStep extends StatelessWidget {
   const _HealthFormStep({
     required this.formKey,
     required this.weightController,
+    required this.heightController,
     required this.heartRateController,
     required this.sleepController,
     required this.workoutFrequencyOptions,
     required this.selectedWorkoutFrequency,
     required this.onWorkoutFrequencyChanged,
     required this.weightUnit,
+    required this.heightUnit,
     required this.heartRateUnit,
     required this.onWeightUnitChanged,
+    required this.onHeightUnitChanged,
     required this.onHeartRateUnitChanged,
   });
 
   final GlobalKey<FormState> formKey;
   final TextEditingController weightController;
+  final TextEditingController heightController;
   final TextEditingController heartRateController;
   final TextEditingController sleepController;
   final List<String> workoutFrequencyOptions;
   final String? selectedWorkoutFrequency;
   final ValueChanged<String?> onWorkoutFrequencyChanged;
   final String weightUnit;
+  final String heightUnit;
   final String heartRateUnit;
   final ValueChanged<String> onWeightUnitChanged;
+  final ValueChanged<String> onHeightUnitChanged;
   final ValueChanged<String> onHeartRateUnitChanged;
 
   @override
@@ -411,6 +452,44 @@ class _HealthFormStep extends StatelessWidget {
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: heightController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Height',
+                        hintText: '170',
+                        prefixIcon: Icon(Icons.height_rounded),
+                      ),
+                      validator: (value) {
+                        final v = value?.trim() ?? '';
+                        if (v.isEmpty) return 'Required';
+                        final parsed = double.tryParse(v);
+                        if (parsed == null) return 'Invalid number';
+                        if (parsed <= 0 || parsed > 300) return 'Check value';
+                        return null;
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  DropdownButton<String>(
+                    value: heightUnit,
+                    underline: const SizedBox.shrink(),
+                    items: const [
+                      DropdownMenuItem(value: 'cm', child: Text('cm')),
+                      DropdownMenuItem(value: 'in', child: Text('in')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) onHeightUnitChanged(value);
+                    },
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Row(
@@ -536,6 +615,8 @@ class _ReviewStep extends StatelessWidget {
   const _ReviewStep({
     required this.weight,
     required this.weightUnit,
+    required this.height,
+    required this.heightUnit,
     required this.heartRate,
     required this.heartRateUnit,
     required this.sleepHours,
@@ -544,6 +625,8 @@ class _ReviewStep extends StatelessWidget {
 
   final String weight;
   final String weightUnit;
+  final String height;
+  final String heightUnit;
   final String heartRate;
   final String heartRateUnit;
   final String sleepHours;
@@ -604,6 +687,7 @@ class _ReviewStep extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             row('Weight', '$weight $weightUnit'),
+            row('Height', '$height $heightUnit'),
             row('Heart rate', '$heartRate $heartRateUnit'),
             row('Sleep', '$sleepHours hours'),
             row('Workout', workoutInfo),

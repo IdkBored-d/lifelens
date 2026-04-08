@@ -25,6 +25,9 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
+# Local config — contains API keys, never commit
+config.json
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id

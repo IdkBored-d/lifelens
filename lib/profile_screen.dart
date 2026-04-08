@@ -5,6 +5,7 @@ import 'restart.dart';
 import 'preferences_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
+import 'dev_test_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});

@@ -56,17 +56,29 @@ class SymptomPipelineService {
     // ── STEP 1: DisEmbed fast embedding ───────────────────────────────────
     final embedding = await _disEmbed.embed(userSymptoms, _tokenize);
 
-    // ── STEP 2: Placeholder disease lookup ────────────────────────────────
-    // TODO: Replace with a real on-device disease embedding index lookup.
-    // For MVP, DisEmbed score is 0.3846 so it always escalates to Gemma2b,
-    // which handles the full diagnosis using Weaviate RAG (online) or
-    // parametric knowledge (offline).
-    const placeholderDiseaseName = 'Unknown';
-    const placeholderScore       = 0.3846; // Forces uncertain zone escalation
+    // ── STEP 2: Disease index lookup ───────────────────────────────────────
+    // TODO(index): Replace with a real on-device disease embedding index once
+    // built. Until then _disEmbedIndexReady = false routes all queries to
+    // Gemma2b via the escalation path (same quality, no wasted embedding compare).
+    const _disEmbedIndexReady = false;
 
-    final deConfidence = _confidence.evaluateDisEmbed(placeholderScore);
+    if (!_disEmbedIndexReady) {
+      return _handleEscalation(
+        userSymptoms:   userSymptoms,
+        embedding:      embedding,
+        isOnline:       isOnline,
+        disEmbedResult: null,
+      );
+    }
+
+    // Dead path until index is ready — kept for structure.
+    // ignore: dead_code
+    const placeholderDiseaseName = 'Unknown';
+    // ignore: dead_code
+    final deConfidence = _confidence.evaluateDisEmbed(0.0);
 
     // ── STEP 3: Confidence check ───────────────────────────────────────────
+    // ignore: dead_code
     if (_confidence.shouldEscalate(deConfidence)) {
       return _handleEscalation(
         userSymptoms:   userSymptoms,
@@ -76,7 +88,7 @@ class SymptomPipelineService {
       );
     }
 
-    // ── STEP 4: Gemma2b expands prediction ────────────────────────────────
+    // ignore: dead_code
     return _expandWithGemma(
       userSymptoms:       userSymptoms,
       embedding:          embedding,
@@ -156,17 +168,19 @@ class SymptomPipelineService {
   }
 
   Future<SymptomPipelineResult> _handleEscalation({
-    required String         userSymptoms,
-    required List<double>   embedding,
-    required bool           isOnline,
-    required DisEmbedResult disEmbedResult,
+    required String          userSymptoms,
+    required List<double>    embedding,
+    required bool            isOnline,
+    required DisEmbedResult? disEmbedResult,
   }) async {
     List<WeaviateDisease> ragResults = [];
     if (isOnline) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
-    final ragContext = ragResults.isNotEmpty
-        ? _weaviate.buildRagContext(ragResults) : null;
+    // Fix 4: Gate on isOnline, not ragResults.isNotEmpty — same fix as
+    // _expandWithGemma. An online user with zero Weaviate results should NOT
+    // trigger Gemma's offline warning; only a genuinely offline device should.
+    final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
     final context   = await _quickTrack.buildSymptomContext();
 
     final gemmaRaw = await _gemma.analyzeSymptomDirectly(

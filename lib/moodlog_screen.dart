@@ -4,6 +4,7 @@ import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:provider/provider.dart';
 import 'moodlog_store.dart';
 import 'package:lifelens/database/isar_service.dart';
+// TODO: remove — unused after pipeline wiring
 import 'package:lifelens/database/mood_entry.dart';
 
 enum LogSource { quickAction, tab }
@@ -19,6 +20,7 @@ class MoodLogScreen extends StatefulWidget {
 class _MoodLogScreenState extends State<MoodLogScreen> {
   int selectedMood = -1;
   double intensity = 3;
+  bool _isSaving = false;
   final notesCtrl = TextEditingController();
   final Set<String> tags = {};
   bool _restoringDraft = true;
@@ -403,73 +405,24 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                 ),
                 const SizedBox(height: 18),
 
-                if (widget.source == LogSource.tab) ...[
-                  _SectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const _SectionHeader(title: "Recent check-ins"),
-                        const SizedBox(height: 10),
-
-                        Consumer<MoodLogStore>(
-                          builder: (context, store, _) {
-                            if (store.items.isEmpty) {
-                              return Text(
-                                "No check-ins yet. Log one above to get started.",
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              );
-                            }
-                            final recent = store.items.take(5).toList();
-
-                            return Column(
-                              children: recent.map((it) {
-                                final tagText = it.tags.isEmpty
-                                    ? "No tags"
-                                    : it.tags.take(2).join(" · ");
-
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _RecentCheckInRow(
-                                    emoji: it.emoji,
-                                    title: it.moodLabel,
-                                    subtitle: "${it.intensity}/5 · $tagText",
-                                    notes: it.notes,
-                                  ),
-                                );
-                              }).toList(),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                ],
-
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: selectedMood == -1
-                        ? null
-                        : () async {
+                    onPressed: (selectedMood == -1 || _isSaving) ? null : () async {
                             HapticFeedback.mediumImpact();
+                            setState(() => _isSaving = true);
 
-                            final store = context.read<MoodLogStore>();
                             final m = moods[selectedMood];
-                            final now = DateTime.now();
-                            final moodCheckIn = MoodCheckIn(
-                              moodLabel: m.label,
-                              emoji: m.emoji,
-                              intensity: intensity.toInt(),
-                              tags: tags.toList(),
-                              notes: notesCtrl.text.trim(),
-                              createdAt: now,
-                            );
-                            store.add(moodCheckIn);
+                            final notes = notesCtrl.text.trim();
 
-                            // Also persist to Isar as MoodEntry
+                            // Compose log text: notes are primary, tags + intensity appended for ML context.
+                            final tagPart = tags.isNotEmpty ? ' [context: ${tags.join(', ')}]' : '';
+                            final userLog = '${notes.isNotEmpty ? notes : m.label}$tagPart [intensity: ${intensity.toInt()}/5]';
+
+                            // Capture context-dependent objects before the async gap.
+                            final messenger = ScaffoldMessenger.of(context);
+                            final nav       = Navigator.of(context);
+
                             try {
                               final noteText = moodCheckIn.notes.trim();
                               final persistedSummary = noteText.isEmpty
@@ -519,11 +472,17 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               });
                             }
                           },
-                    child: Text(
-                      widget.source == LogSource.tab
-                          ? "Save and log another time"
-                          : "Save check-in",
-                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            widget.source == LogSource.tab
+                                ? "Save and log another time"
+                                : "Save check-in",
+                          ),
                   ),
                 ),
               ],

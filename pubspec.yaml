@@ -35,11 +35,18 @@ dependencies:
 
   # ── BERT Tokenizer (shared by MobileBERT + DisEmbed) ──────────────────────
   dart_wordpiece: ^1.0.0
+
+  # ── Background task scheduling (EOD pipeline) ──────────────────────────────
+  background_fetch: ^1.2.3
+
+  # ── Connectivity (real isOnline checks in pipelines) ────────────────────────
+  connectivity_plus: ^6.0.5
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   model_viewer_plus: ^1.7.0
   shared_preferences: ^2.2.3
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
@@ -56,7 +63,8 @@ flutter:
   assets:
     - lib/assets/minime/             # existing
     - assets/models/mobile_bert_emotion.onnx
-    - assets/models/disembed_fp16.onnx
+  #  - assets/models/disembed_fp16.onnx  # TODO(ship): re-enable FP16 when shipping
+    - assets/models/for MVP/disembed_fp32.onnx
   #  - assets/models/fitness_model.onnx
     - assets/models/for MVP/fitness_model_v9.onnx
     - assets/models/vocab.txt

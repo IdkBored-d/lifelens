@@ -35,7 +35,7 @@ class MobileBertService {
     String text,
     Map<String, List<int>> Function(String text, int maxLen) tokenize,
   ) async {
-    assert(_isLoaded, 'MobileBertService not loaded. Call load() first.');
+    if (!_isLoaded) throw StateError('MobileBertService not loaded. Call load() first.');
 
     final tokens = tokenize(text, _seqLen);
     final ids    = tokens['input_ids']!;
