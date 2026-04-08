@@ -36,7 +36,8 @@ class _GemmaSetupScreenState extends State<GemmaSetupScreen> {
   String? _errorMessage;
   bool _devExpanded = false;
 
-  final _devPathController = TextEditingController(text: '/sdcard/Download/gemma2-2b-it-int8-web.task.bin');
+  // TODO(MVP): switch to gemma2-2b-it-gpu-int8.task before release
+  final _devPathController = TextEditingController(text: '/sdcard/Download/gemma2-2b-it-cpu-int8.task');
   CancellationToken? _cancelToken;
 
   // ── Download ──────────────────────────────────────────────────────────────
@@ -358,10 +359,10 @@ class _DevModePanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Paste the absolute path to a .bin model file '
+                    'Paste the absolute path to a .task model file '
                     'already on this device.\n\n'
                     'Example (after adb push):\n'
-                    '  /sdcard/Download/gemma-2-2b-it-gpu-int8.bin',
+                    '  /sdcard/Download/gemma2-2b-it-cpu-int8.task',
                     style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.onSurfaceVariant),
                   ),
@@ -373,7 +374,7 @@ class _DevModePanel extends StatelessWidget {
                       border: OutlineInputBorder(),
                       labelText: 'Model file path',
                       hintText:
-                          '/sdcard/Download/gemma-2-2b-it-gpu-int8.bin',
+                          '/sdcard/Download/gemma2-2b-it-cpu-int8.task',
                     ),
                     style:
                         const TextStyle(fontFamily: 'monospace', fontSize: 13),

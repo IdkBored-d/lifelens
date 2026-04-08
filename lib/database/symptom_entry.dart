@@ -34,7 +34,7 @@ class SymptomEntry {
   ///   {"disease": "...", "reasoning": "...", "next_steps": "...", "is_urgent": false}
   late String diagnosesJson;
 
-  /// Which model resolved the final diagnosis.
+  /// Which model resolved the final triage decision.
   /// Values: "base" (DisEmbed→Gemma2b), "gemma2b", "gemini"
   late String resolvedBy;
 

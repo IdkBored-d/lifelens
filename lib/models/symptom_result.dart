@@ -47,7 +47,7 @@ class SymptomPipelineResult {
   /// May be null if DisEmbed was skipped due to low confidence.
   final String? disEmbedPrediction;
 
-  /// Top 5 diagnoses from Gemma2b / Gemini.
+  /// Top 5 triage decisions from Gemma2b / Gemini.
   /// Index 0 = most likely, index 4 = least likely.
   final List<DiagnosisEntry> diagnoses;
 
@@ -57,7 +57,7 @@ class SymptomPipelineResult {
   /// Whether the response was generated offline (no RAG grounding).
   final bool isOffline;
 
-  /// Which model ultimately resolved the diagnosis.
+  /// Which model ultimately resolved the triage decision.
   final EscalationLevel resolvedBy;
 
   /// Raw DisEmbed result, null if skipped.
@@ -76,7 +76,7 @@ class SymptomPipelineResult {
     this.disEmbedResult,
   });
 
-  /// Convenience getter for the top diagnosis.
+  /// Convenience getter for the top triage decision.
   DiagnosisEntry? get topDiagnosis =>
       diagnoses.isNotEmpty ? diagnoses.first : null;
 }

@@ -24,6 +24,9 @@ const Map<String, double> kMobileBertClassThresholds = {
 /// If top-class prob is below this, skip per-class check entirely.
 const double kMobileBertGlobalFloor = 0.50;
 
+/// Fallback threshold used when a mood label isn't in the per-class map.
+const double kMobileBertFallbackThreshold = 0.65;
+
 /// If top-2 class margin is below this, prediction is ambiguous.
 const double kMobileBertAmbiguityMargin = 0.15;
 
@@ -102,7 +105,7 @@ class ConfidenceManager {
     }
 
     // 2. Per-class threshold
-    final classThreshold = mbThresholds[topLabel] ?? 0.65;
+    final classThreshold = mbThresholds[topLabel] ?? kMobileBertFallbackThreshold;
     if (topProb < classThreshold) {
       return MobileBertResult(
         topLabel: topLabel, topLabelId: topId,

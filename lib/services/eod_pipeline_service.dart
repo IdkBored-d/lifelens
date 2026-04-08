@@ -54,10 +54,15 @@ class EodPipelineService {
     // Wired up to your actual IsarService methods
     final lastIsarMood    = await IsarService.instance.lastMoodDate();
     final lastIsarSymptom = await IsarService.instance.lastSymptomDate();
-    
+
+    final moodCountForDate    = lastIsarMood    != null ? await IsarService.instance.getMoodCountForDate(lastIsarMood)       : 0;
+    final symptomCountForDate = lastIsarSymptom != null ? await IsarService.instance.getSymptomCountForDate(lastIsarSymptom) : 0;
+
     final syncResult = await _quickTrack.checkAndRepairSync(
-      lastIsarMoodDate:    lastIsarMood,
-      lastIsarSymptomDate: lastIsarSymptom,
+      lastIsarMoodDate:            lastIsarMood,
+      lastIsarMoodCountForDate:    moodCountForDate,
+      lastIsarSymptomDate:         lastIsarSymptom,
+      lastIsarSymptomCountForDate: symptomCountForDate,
     );
     
     if (!syncResult.isClean) {
@@ -103,61 +108,60 @@ class EodPipelineService {
         .join('\n');
 
     // ── STEP 5: Correlation analysis ──────────────────────────────────────
+    // Gemma-first: always attempt on-device inference.
+    // Falls back to Gemini (with RAG) if Gemma is not loaded or fails.
+    // Background EOD naturally uses this fallback since Gemma is never
+    // loaded in headless isolates (throws StateError → caught here).
     String summaryText = 'End-of-day summary unavailable.';
     EodCorrelation? correlation;
-    var useGemma = !isOnline; // flipped to true if Gemini fails
 
-    if (isOnline) {
-      // Build a real query vector from active symptoms, not a zero vector.
-      // If there are no active symptoms, skip the RAG call entirely —
-      // a zero vector returns arbitrary results which misleads the model.
-      String ragContext = '';
-      if (activeSymptoms.isNotEmpty) {
-        try {
-          final symptomQueryText = activeSymptoms
-              .map((e) => '${e.predictedAilment}: ${e.symptoms.join(", ")}')
-              .join('. ');
-          final queryVector = await _disEmbed.embed(symptomQueryText, _tokenize);
-          final ragResults  = await _weaviate.queryByVector(queryVector, topK: 3);
-          ragContext = _weaviate.buildRagContext(ragResults);
-        } catch (e) {
-          debugPrint('[EodPipeline] RAG query failed (non-fatal): $e');
+    try {
+      final gemmaRaw = await _gemma.generateEodSummary(
+        todayMoodEntry:       todayMoodStr,
+        activeSymptomEntries: activeSymptomsStr,
+        todayFitnessScore:    todayFitnessScore,
+        weekAvgFitnessScore:  weekAvg,
+        fitnessTrend:         trend,
+        last7MoodEntries:     last7MoodStr,
+      );
+      summaryText = _extractUserFacingSummary(gemmaRaw);
+      correlation = _extractCorrelation(gemmaRaw);
+    } catch (e) {
+      debugPrint('[EodPipeline] Gemma failed, falling back to Gemini: $e');
+
+      if (isOnline) {
+        // Build a real query vector from active symptoms, not a zero vector.
+        // If there are no active symptoms, skip the RAG call entirely —
+        // a zero vector returns arbitrary results which misleads the model.
+        String ragContext = '';
+        if (activeSymptoms.isNotEmpty) {
+          try {
+            final symptomQueryText = activeSymptoms
+                .map((e) => '${e.predictedAilment}: ${e.symptoms.join(", ")}')
+                .join('. ');
+            final queryVector = await _disEmbed.embed(symptomQueryText, _tokenize);
+            final ragResults  = await _weaviate.queryByVector(queryVector, topK: 3);
+            ragContext = _weaviate.buildRagContext(ragResults);
+          } catch (e) {
+            debugPrint('[EodPipeline] RAG query failed (non-fatal): $e');
+          }
         }
-      }
 
-      try {
-        final geminiRaw = await _gemini.generateDeepEodAnalysis(
-          todayMoodEntry:       todayMoodStr,
-          activeSymptomEntries: activeSymptomsStr,
-          todayFitnessScore:    todayFitnessScore,
-          weekAvgFitnessScore:  weekAvg,
-          fitnessTrend:         trend,
-          last7MoodEntries:     last7MoodStr,
-          ragContext:           ragContext,
-        );
-        summaryText = _extractUserFacingSummary(geminiRaw);
-        correlation = _extractCorrelation(geminiRaw);
-      } catch (e) {
-        debugPrint('[EodPipeline] Gemini failed, falling back to Gemma: $e');
-        useGemma = true;
-      }
-    }
-
-    if (useGemma) {
-      try {
-        final gemmaRaw = await _gemma.generateEodSummary(
-          todayMoodEntry:       todayMoodStr,
-          activeSymptomEntries: activeSymptomsStr,
-          todayFitnessScore:    todayFitnessScore,
-          weekAvgFitnessScore:  weekAvg,
-          fitnessTrend:         trend,
-          last7MoodEntries:     last7MoodStr,
-        );
-        summaryText = _extractUserFacingSummary(gemmaRaw);
-        correlation = _extractCorrelation(gemmaRaw);
-      } catch (e) {
-        debugPrint('[EodPipeline] Gemma failed, using stub summary: $e');
-        summaryText = 'End-of-day summary unavailable.';
+        try {
+          final geminiRaw = await _gemini.generateDeepEodAnalysis(
+            todayMoodEntry:       todayMoodStr,
+            activeSymptomEntries: activeSymptomsStr,
+            todayFitnessScore:    todayFitnessScore,
+            weekAvgFitnessScore:  weekAvg,
+            fitnessTrend:         trend,
+            last7MoodEntries:     last7MoodStr,
+            ragContext:           ragContext,
+          );
+          summaryText = _extractUserFacingSummary(geminiRaw);
+          correlation = _extractCorrelation(geminiRaw);
+        } catch (e) {
+          debugPrint('[EodPipeline] Gemini failed, using stub summary: $e');
+        }
       }
     }
 

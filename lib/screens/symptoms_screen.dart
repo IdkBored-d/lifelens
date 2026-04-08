@@ -70,7 +70,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
       final topDiagnosis = result.diagnoses.isNotEmpty
           ? result.diagnoses.first.diseaseName
-          : 'No diagnosis';
+          : 'No triage decision';
       final urgentCount = result.diagnoses.where((d) => d.isUrgent).length;
       final urgentNote  = urgentCount > 0 ? ' · $urgentCount urgent' : '';
 

@@ -5,6 +5,7 @@ import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
 import 'quick_track_service.dart';
 import 'mobilebert_service.dart';
+import 'model_lifecycle_service.dart';
 import 'gemma_service.dart';
 import 'gemini_service.dart';
 import '../database/isar_service.dart';
@@ -64,6 +65,7 @@ class MoodPipelineService {
     String? rejectionContext,
   }) async {
     // ── STEP 1: MobileBERT fast classification ─────────────────────────────
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.mobileBert]);
     final probs   = await _mobileBert.classify(userLog, _tokenize);
     final mbResult = _confidence.evaluateMobileBert(probs);
 

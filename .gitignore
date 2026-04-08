@@ -51,3 +51,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .venv/
+# Local editor/workspace settings (do not commit)
+settings.json
+settings.local.json

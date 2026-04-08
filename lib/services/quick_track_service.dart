@@ -75,6 +75,36 @@ class SymptomLogEntry {
       );
 }
 
+/// One entry in conversations.json
+/// Appended after every MiniMe message (user or assistant).
+class ChatLogEntry {
+  final String sessionId;    // UUID linking to ISAR ChatSession
+  final String role;         // 'user' or 'assistant'
+  final String text;
+  final String timestamp;    // ISO 8601 full timestamp
+
+  const ChatLogEntry({
+    required this.sessionId,
+    required this.role,
+    required this.text,
+    required this.timestamp,
+  });
+
+  factory ChatLogEntry.fromJson(Map<String, dynamic> j) => ChatLogEntry(
+        sessionId: j['session_id'] as String,
+        role:      j['role'] as String,
+        text:      j['text'] as String,
+        timestamp: j['timestamp'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'session_id': sessionId,
+        'role':       role,
+        'text':       text,
+        'timestamp':  timestamp,
+      };
+}
+
 // ─────────────────────────────────────────────
 // SERVICE
 // ─────────────────────────────────────────────
@@ -90,6 +120,7 @@ class SymptomLogEntry {
 class QuickTrackService {
   static const _moodFileName    = 'mood_log.json';
   static const _symptomFileName = 'symptom_log.json';
+  static const _chatFileName    = 'conversations.json';
 
   // ── File helpers ────────────────────────────────────────────────────────────
 
@@ -101,6 +132,11 @@ class QuickTrackService {
   Future<File> _symptomFile() async {
     final dir = await getApplicationDocumentsDirectory();
     return File('${dir.path}/$_symptomFileName');
+  }
+
+  Future<File> _chatFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_chatFileName');
   }
 
   // ── Mood log ─────────────────────────────────────────────────────────────────
@@ -226,32 +262,70 @@ class QuickTrackService {
     return buffer.toString();
   }
 
+  // ── Chat log ─────────────────────────────────────────────────────────────────
+
+  Future<List<ChatLogEntry>> readChatLog() async {
+    final file = await _chatFile();
+    if (!await file.exists()) return [];
+    try {
+      final raw     = await file.readAsString();
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map((e) => ChatLogEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Append a chat message entry. Called AFTER ISAR write succeeds.
+  Future<void> appendChatEntry(ChatLogEntry entry) async {
+    final entries = await readChatLog();
+    entries.add(entry);
+    await _writeChatLog(entries);
+  }
+
+  Future<void> _writeChatLog(List<ChatLogEntry> entries) async {
+    final file    = await _chatFile();
+    final encoded = jsonEncode(entries.map((e) => e.toJson()).toList());
+    await file.writeAsString(encoded, flush: true);
+  }
+
   // ── Startup sync check ───────────────────────────────────────────────────────
 
-  /// Compares the last ISAR entry date against the last quick-tracking entry date.
-  /// If ISAR is ahead (e.g. crash between ISAR write and file write),
-  /// returns the date that needs to be re-condensed.
+  /// Compares ISAR entry counts against quick-tracking file entry counts.
+  /// Detects entries lost in a crash between the ISAR write and file write —
+  /// including same-day duplicates that the old date-only check would miss.
   ///
-  /// [lastIsarMoodDate] and [lastIsarSymptomDate] come from ISAR queries.
+  /// [lastIsarMoodDate] / [lastIsarSymptomDate] are the most recent dates from ISAR.
+  /// [lastIsarMoodCountForDate] / [lastIsarSymptomCountForDate] are how many entries
+  /// ISAR has on those dates.
   /// Returns a [SyncCheckResult] indicating what (if anything) needs repair.
   Future<SyncCheckResult> checkAndRepairSync({
     required String? lastIsarMoodDate,
+    required int     lastIsarMoodCountForDate,
     required String? lastIsarSymptomDate,
+    required int     lastIsarSymptomCountForDate,
   }) async {
     final moodEntries    = await readMoodLog();
     final symptomEntries = await readSymptomLog();
 
-    final lastQuickMood    = moodEntries.isNotEmpty    ? moodEntries.last.date    : null;
-    final lastQuickSymptom = symptomEntries.isNotEmpty ? symptomEntries.last.date : null;
+    // Count how many quick-track entries exist for the ISAR date.
+    final quickMoodCount    = lastIsarMoodDate == null    ? 0 : moodEntries.where((e)    => e.date == lastIsarMoodDate).length;
+    final quickSymptomCount = lastIsarSymptomDate == null ? 0 : symptomEntries.where((e) => e.date == lastIsarSymptomDate).length;
 
-    final moodOutOfSync    = lastIsarMoodDate    != null && lastIsarMoodDate    != lastQuickMood;
-    final symptomOutOfSync = lastIsarSymptomDate != null && lastIsarSymptomDate != lastQuickSymptom;
+    final moodOutOfSync    = lastIsarMoodDate    != null && quickMoodCount    < lastIsarMoodCountForDate;
+    final symptomOutOfSync = lastIsarSymptomDate != null && quickSymptomCount < lastIsarSymptomCountForDate;
 
     return SyncCheckResult(
-      moodNeedsRepair:    moodOutOfSync,
-      symptomNeedsRepair: symptomOutOfSync,
-      missingMoodDate:    moodOutOfSync    ? lastIsarMoodDate    : null,
-      missingSymptomDate: symptomOutOfSync ? lastIsarSymptomDate : null,
+      moodNeedsRepair:         moodOutOfSync,
+      symptomNeedsRepair:      symptomOutOfSync,
+      missingMoodDate:         moodOutOfSync    ? lastIsarMoodDate    : null,
+      missingMoodCount:        moodOutOfSync    ? lastIsarMoodCountForDate - quickMoodCount       : 0,
+      missingSymptomDate:      symptomOutOfSync ? lastIsarSymptomDate : null,
+      missingSymptomCount:     symptomOutOfSync ? lastIsarSymptomCountForDate - quickSymptomCount : 0,
+      quickMoodCountForDate:    quickMoodCount,
+      quickSymptomCountForDate: quickSymptomCount,
     );
   }
 }
@@ -260,13 +334,24 @@ class SyncCheckResult {
   final bool moodNeedsRepair;
   final bool symptomNeedsRepair;
   final String? missingMoodDate;
+  /// How many mood entries ISAR has that the quick-track file is missing.
+  final int missingMoodCount;
   final String? missingSymptomDate;
+  /// How many symptom entries ISAR has that the quick-track file is missing.
+  final int missingSymptomCount;
+  /// Quick-track count for the latest date (for the repair to skip already-present entries).
+  final int quickMoodCountForDate;
+  final int quickSymptomCountForDate;
 
   bool get isClean => !moodNeedsRepair && !symptomNeedsRepair;
 
   const SyncCheckResult({
     required this.moodNeedsRepair,
     required this.symptomNeedsRepair,
+    required this.missingMoodCount,
+    required this.missingSymptomCount,
+    required this.quickMoodCountForDate,
+    required this.quickSymptomCountForDate,
     this.missingMoodDate,
     this.missingSymptomDate,
   });

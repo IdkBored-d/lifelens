@@ -2,6 +2,7 @@ import '../models/fitness_result.dart';
 import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
 import 'fitness_mlp_service.dart';
+import 'model_lifecycle_service.dart';
 import '../database/isar_service.dart';
 import '../database/fitness_entry.dart';
 
@@ -66,6 +67,7 @@ class FitnessPipelineService {
     final features = _buildFeatures(rawData);
 
     // ── STEP 4: Run MLP ───────────────────────────────────────────────────
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.fitnessMlp]);
     final proba     = await _mlp.predict(features);
     final mlpResult = _confidence.evaluateFitness(proba);
 

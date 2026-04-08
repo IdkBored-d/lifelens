@@ -19,6 +19,8 @@ import 'services/mood_pipeline_service.dart';
 import 'services/symptom_pipeline_service.dart';
 import 'services/fitness_pipeline_service.dart';
 import 'services/eod_pipeline_service.dart';
+import 'services/chat_session_service.dart';
+import 'services/model_lifecycle_service.dart';
 
 /// Central service locator for LifeLens.
 /// Initialised once at app startup — all pipelines accessible as singletons.
@@ -46,6 +48,7 @@ class AppServices {
   static late final FitnessMlpService      fitnessMlp;
   static late final GemmaService           gemma;
   static late final GeminiService          gemini;
+  static ModelLifecycleService get models  => ModelLifecycleService.instance;
   static late final MoodPipelineService    moodPipeline;
   static late final SymptomPipelineService symptomPipeline;
   static late final FitnessPipelineService fitnessPipeline;
@@ -179,6 +182,15 @@ class AppServices {
       debugPrint('[AppServices] init: Gemma skipped (no path provided)');
     }
 
+    // ── 6b. Model lifecycle service ─────────────────────────────────────────
+    ModelLifecycleService.instance.init(
+      mobileBert: mobileBert,
+      disEmbed:   disEmbed,
+      fitnessMlp: fitnessMlp,
+      gemma:      gemma,
+    );
+    WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
+
     // ── 7. Startup sync check ───────────────────────────────────────────────
     final syncStart = sw.elapsedMilliseconds;
     try {
@@ -186,6 +198,14 @@ class AppServices {
       debugPrint('[AppServices] init: Startup sync check in ${sw.elapsedMilliseconds - syncStart}ms');
     } catch (e) {
       debugPrint('[AppServices] startup sync check failed (non-fatal): $e');
+    }
+
+    // ── 7b. Chat session repair ─────────────────────────────────────────────
+    // Mark any sessions that had no endTime (app killed mid-chat) as interrupted.
+    try {
+      await ChatSessionService(quickTrack).repairIncompleteSessions();
+    } catch (e) {
+      debugPrint('[AppServices] chat session repair failed (non-fatal): $e');
     }
 
     // ── 8. Pipeline services ─────────────────────────────────────────────────
@@ -265,28 +285,32 @@ class AppServices {
     final lastIsarMood    = await isar.lastMoodDate();
     final lastIsarSymptom = await isar.lastSymptomDate();
 
+    // Fetch per-date counts so the check can catch same-day duplicate entries
+    // that would be invisible to the old date-string-only comparison.
+    final moodCountForDate    = lastIsarMood    != null ? await isar.getMoodCountForDate(lastIsarMood)       : 0;
+    final symptomCountForDate = lastIsarSymptom != null ? await isar.getSymptomCountForDate(lastIsarSymptom) : 0;
+
     final syncResult = await quickTrack.checkAndRepairSync(
-      lastIsarMoodDate:    lastIsarMood,
-      lastIsarSymptomDate: lastIsarSymptom,
+      lastIsarMoodDate:            lastIsarMood,
+      lastIsarMoodCountForDate:    moodCountForDate,
+      lastIsarSymptomDate:         lastIsarSymptom,
+      lastIsarSymptomCountForDate: symptomCountForDate,
     );
 
     if (syncResult.moodNeedsRepair && syncResult.missingMoodDate != null) {
-      final entries =
-          await isar.getMoodEntriesForDate(syncResult.missingMoodDate!);
-      if (entries.isNotEmpty) {
-        await quickTrack
-            .appendMoodEntry(MoodLogEntryAdapter.fromIsarEntry(entries.last));
+      // Fetch all ISAR entries for the date, skip the ones already in quick-track.
+      final entries = await isar.getMoodEntriesForDate(syncResult.missingMoodDate!);
+      final toAppend = entries.skip(syncResult.quickMoodCountForDate).toList();
+      for (final entry in toAppend) {
+        await quickTrack.appendMoodEntry(MoodLogEntryAdapter.fromIsarEntry(entry));
       }
     }
 
     if (syncResult.symptomNeedsRepair && syncResult.missingSymptomDate != null) {
-      final allSymptoms = await isar.getAllSymptomEntries();
-      final missing = allSymptoms
-          .where((e) => e.date == syncResult.missingSymptomDate)
-          .toList();
-      for (final entry in missing) {
-        await quickTrack
-            .appendSymptomEntry(SymptomLogEntryAdapter.fromIsarEntry(entry));
+      final allForDate = await isar.getSymptomEntriesForDate(syncResult.missingSymptomDate!);
+      final toAppend = allForDate.skip(syncResult.quickSymptomCountForDate).toList();
+      for (final entry in toAppend) {
+        await quickTrack.appendSymptomEntry(SymptomLogEntryAdapter.fromIsarEntry(entry));
       }
     }
   }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_gemma/flutter_gemma.dart';
 
 /// Wraps flutter_gemma for on-device Gemma 2 2B IT inference.
@@ -11,11 +13,23 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 /// LOADING NOTE:
 ///   The model file is ~1.4 GB. Store on device after OTA download.
 ///   Pass the on-device path to load().
+///
+/// CONCURRENCY:
+///   MediaPipe's LLM engine only supports one active prompt at a time.
+///   A [Completer]-based mutex serialises all inference calls so that
+///   concurrent callers (Mini-Me chat, pipelines, background EOD) queue
+///   instead of crashing with "AddQueryChunk before PredictDone".
 class GemmaService {
   InferenceModel? _model;
   bool _isLoaded = false;
 
+  /// Completer acting as a mutex — null when idle, non-null when busy.
+  Completer<void>? _inferenceLock;
+
   bool get isLoaded => _isLoaded;
+
+  /// Whether an inference call is currently in progress.
+  bool get isGenerating => _inferenceLock != null;
 
   // ── Initialisation ──────────────────────────────────────────────────────────
 
@@ -26,9 +40,30 @@ class GemmaService {
       modelType: ModelType.gemmaIt,
     ).fromFile(modelPath).install();
 
-    _model = await FlutterGemma.getActiveModel(maxTokens: 2048);
+    // TODO: Switch to PreferredBackend.gpu before publishing MVP
+    _model = await FlutterGemma.getActiveModel(
+      maxTokens: 2048,
+      preferredBackend: PreferredBackend.cpu,
+    );
     if (_model == null) throw StateError('FlutterGemma.getActiveModel returned null');
     _isLoaded = true;
+  }
+
+  // ── Inference mutex ──────────────────────────────────────────────────────────
+
+  /// Wait until any in-flight inference finishes, then claim the lock.
+  Future<void> _acquireLock() async {
+    while (_inferenceLock != null) {
+      await _inferenceLock!.future;
+    }
+    _inferenceLock = Completer<void>();
+  }
+
+  /// Release the lock so the next queued caller can proceed.
+  void _releaseLock() {
+    final lock = _inferenceLock;
+    _inferenceLock = null;
+    lock?.complete();
   }
 
   // ── Core inference ──────────────────────────────────────────────────────────
@@ -39,6 +74,9 @@ class GemmaService {
   /// The session is always closed in a finally block — if [getResponse]
   /// throws, the MediaPipe session handle is not leaked.
   ///
+  /// Concurrent callers are serialised via an internal mutex — the second
+  /// call waits until the first completes instead of crashing MediaPipe.
+  ///
   /// Token budget notes (Gemma 2 2B IT, 8192-token context window):
   ///   Mood response:    ~300 prompt + ~400 output  =  ~700  tokens
   ///   Symptom expand:   ~700 prompt + ~900 output  = ~1600  tokens
@@ -47,20 +85,24 @@ class GemmaService {
   Future<String> generate(String prompt) async {
     if (!_isLoaded) throw StateError('GemmaService not loaded. Call load() first.');
 
-    final session = await _model!.createSession(
-      temperature: 0.4,   // lower = more predictable, less rambling
-      randomSeed:  42,
-      topK:        20,    // tighter sampling for structured health output
-    );
-
+    await _acquireLock();
     try {
-      await session.addQueryChunk(
-        Message.text(text: prompt, isUser: true),
+      final session = await _model!.createSession(
+        temperature: 0.4,   // lower = more predictable, less rambling
+        randomSeed:  42,
+        topK:        20,    // tighter sampling for structured health output
       );
-      return await session.getResponse();
+
+      try {
+        await session.addQueryChunk(
+          Message.text(text: prompt, isUser: true),
+        );
+        return await session.getResponse();
+      } finally {
+        await session.close();
+      }
     } finally {
-      // Always close, even if getResponse() throws — prevents handle leaks.
-      await session.close();
+      _releaseLock();
     }
   }
 
@@ -70,24 +112,28 @@ class GemmaService {
   /// The caller is responsible for concatenating tokens into the final string.
   ///
   /// The session is closed after the stream completes or if an error occurs.
-  /// Cancellation: cancel the StreamSubscription — the finally block will
-  /// still close the session on the next yield after cancellation.
+  /// The inference lock is held for the entire stream duration.
   Stream<String> generateStreaming(String prompt) async* {
     if (!_isLoaded) throw StateError('GemmaService not loaded. Call load() first.');
 
-    final session = await _model!.createSession(
-      temperature: 0.4,
-      randomSeed:  42,
-      topK:        20,
-    );
-
+    await _acquireLock();
     try {
-      await session.addQueryChunk(
-        Message.text(text: prompt, isUser: true),
+      final session = await _model!.createSession(
+        temperature: 0.4,
+        randomSeed:  42,
+        topK:        20,
       );
-      yield* session.getResponseAsync();
+
+      try {
+        await session.addQueryChunk(
+          Message.text(text: prompt, isUser: true),
+        );
+        yield* session.getResponseAsync();
+      } finally {
+        await session.close();
+      }
     } finally {
-      await session.close();
+      _releaseLock();
     }
   }
 
@@ -274,6 +320,18 @@ class GemmaService {
       'Tone: supportive, concise, non-clinical.';
 
   // ── Teardown ────────────────────────────────────────────────────────────────
+
+  /// Gracefully unload Gemma from memory.
+  /// Waits for any in-progress inference to finish first, then releases the
+  /// model. Called by ModelLifecycleService under memory pressure.
+  Future<void> unload() async {
+    if (_inferenceLock != null) {
+      // Wait for the active inference to complete before unloading.
+      await _inferenceLock!.future;
+    }
+    _model    = null;
+    _isLoaded = false;
+  }
 
   void dispose() {
     _model = null;

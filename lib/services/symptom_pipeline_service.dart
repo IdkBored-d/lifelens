@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/symptom_result.dart';
@@ -5,6 +6,7 @@ import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
 import 'quick_track_service.dart';
 import 'disembed_service.dart';
+import 'model_lifecycle_service.dart';
 import 'weaviate_service.dart';
 import 'gemma_service.dart';
 import 'gemini_service.dart';
@@ -55,6 +57,7 @@ class SymptomPipelineService {
     required bool   isOnline,
   }) async {
     // ── STEP 1: DisEmbed fast embedding ───────────────────────────────────
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
     final embedding = await _disEmbed.embed(userSymptoms, _tokenize);
 
     // ── STEP 2: Disease index lookup ───────────────────────────────────────
@@ -320,12 +323,14 @@ class SymptomPipelineService {
     await IsarService.instance.writeSymptomEntry(symptomEntry);
 
     // ── 2. WRITE TO QUICK-TRACKING FILE ──────────────────────────────────
-    await _quickTrack.appendSymptomEntry(SymptomLogEntry(
-      date:             dateStr,
-      symptoms:         symptomList,
-      predictedAilment: topDisease,
-      status:           'active',
-    ));
+    unawaited(
+      _quickTrack.appendSymptomEntry(SymptomLogEntry(
+        date:             dateStr,
+        symptoms:         symptomList,
+        predictedAilment: topDisease,
+        status:           'active',
+      )).catchError((Object e) => debugPrint('[SymptomPipeline] QuickTrack write failed: $e')),
+    );
 
     return SymptomPipelineResult(
       userSymptoms:       userSymptoms,

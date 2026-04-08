@@ -309,9 +309,13 @@ class _DevTestScreenState extends State<DevTestScreen> {
   Future<String> _testSyncCheck() async {
     final lastMood    = await AppServices.isar.lastMoodDate();
     final lastSymptom = await AppServices.isar.lastSymptomDate();
+    final moodCount    = lastMood    != null ? await AppServices.isar.getMoodCountForDate(lastMood)       : 0;
+    final symptomCount = lastSymptom != null ? await AppServices.isar.getSymptomCountForDate(lastSymptom) : 0;
     final sync        = await AppServices.quickTrack.checkAndRepairSync(
-      lastIsarMoodDate:    lastMood,
-      lastIsarSymptomDate: lastSymptom,
+      lastIsarMoodDate:           lastMood,
+      lastIsarMoodCountForDate:   moodCount,
+      lastIsarSymptomDate:        lastSymptom,
+      lastIsarSymptomCountForDate: symptomCount,
     );
     return '✓ Sync check completed\n'
         'Last ISAR mood date: $lastMood\n'

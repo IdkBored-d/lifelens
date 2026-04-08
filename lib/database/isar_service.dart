@@ -5,6 +5,8 @@ import 'mood_entry.dart';
 import 'symptom_entry.dart';
 import 'fitness_entry.dart';
 import 'eod_entry.dart';
+import 'chat_session.dart';
+import 'chat_message.dart';
 
 /// Singleton ISAR database service.
 ///
@@ -20,6 +22,8 @@ import 'eod_entry.dart';
 ///   SymptomEntry  — symptom/illness entries (never truncated)
 ///   FitnessEntry  — daily fitness scores
 ///   EodEntry      — end-of-day summaries
+///   ChatSession   — MiniMe chat session metadata
+///   ChatMessage   — individual MiniMe chat messages
 class IsarService {
   IsarService._();
   static final IsarService instance = IsarService._();
@@ -41,6 +45,8 @@ class IsarService {
         SymptomEntrySchema,
         FitnessEntrySchema,
         EodEntrySchema,
+        ChatSessionSchema,
+        ChatMessageSchema,
       ],
       directory: dir.path,
       name:      'lifelens',
@@ -86,6 +92,15 @@ class IsarService {
   Future<String?> lastMoodDate() async {
     final entry = await getLastMoodEntry();
     return entry?.date;
+  }
+
+  /// Number of mood entries for a specific date.
+  /// Used by the sync repair to detect same-day duplicates lost in a crash.
+  Future<int> getMoodCountForDate(String date) async {
+    return _db.moodEntrys
+        .filter()
+        .dateEqualTo(date)
+        .count();
   }
 
   /// Mood entries for the last [days] days, ordered newest first.
@@ -143,6 +158,24 @@ class IsarService {
         .sortByTimestampDesc()
         .findFirst();
     return entry?.date;
+  }
+
+  /// All symptom entries for a specific date, ordered by timestamp.
+  Future<List<SymptomEntry>> getSymptomEntriesForDate(String date) async {
+    return _db.symptomEntrys
+        .filter()
+        .dateEqualTo(date)
+        .sortByTimestamp()
+        .findAll();
+  }
+
+  /// Number of symptom entries for a specific date.
+  /// Used by the sync repair to detect same-day duplicates lost in a crash.
+  Future<int> getSymptomCountForDate(String date) async {
+    return _db.symptomEntrys
+        .filter()
+        .dateEqualTo(date)
+        .count();
   }
 
   /// Live stream of the most recent [limit] symptom entries, newest first.
@@ -291,6 +324,91 @@ class IsarService {
   }
 
   // ─────────────────────────────────────────────
+  // CHAT SESSIONS & MESSAGES
+  // ─────────────────────────────────────────────
+
+  /// Write a new [ChatSession]. Called by ChatSessionService at session start.
+  Future<void> writeChatSession(ChatSession session) async {
+    await _db.writeTxn(() async {
+      await _db.chatSessions.put(session);
+    });
+  }
+
+  /// Write a new [ChatMessage]. Called by ChatSessionService on every message.
+  /// Must be called BEFORE the quick-tracking file is updated.
+  Future<void> writeChatMessage(ChatMessage message) async {
+    await _db.writeTxn(() async {
+      await _db.chatMessages.put(message);
+    });
+  }
+
+  /// Update a session's [endTime], [messageCount], and [wasInterrupted] flag.
+  Future<void> endChatSession(String sessionId, DateTime endTime) async {
+    await _db.writeTxn(() async {
+      final session = await _db.chatSessions
+          .filter()
+          .sessionIdEqualTo(sessionId)
+          .findFirst();
+      if (session == null) return;
+      session.endTime       = endTime;
+      session.wasInterrupted = false;
+      final count = await _db.chatMessages
+          .filter()
+          .sessionIdEqualTo(sessionId)
+          .count();
+      session.messageCount = count;
+      await _db.chatSessions.put(session);
+    });
+  }
+
+  /// On startup, find sessions that have no [endTime] (app was killed mid-chat)
+  /// and mark them as interrupted. Sets endTime to the last message timestamp,
+  /// or to startTime if there are no messages.
+  Future<void> markIncompleteChatSessions() async {
+    final incomplete = await _db.chatSessions
+        .filter()
+        .endTimeIsNull()
+        .findAll();
+    if (incomplete.isEmpty) return;
+
+    await _db.writeTxn(() async {
+      for (final session in incomplete) {
+        final lastMsg = await _db.chatMessages
+            .filter()
+            .sessionIdEqualTo(session.sessionId)
+            .sortByTimestampDesc()
+            .findFirst();
+        session.endTime        = lastMsg?.timestamp ?? session.startTime;
+        session.wasInterrupted = true;
+        final count = await _db.chatMessages
+            .filter()
+            .sessionIdEqualTo(session.sessionId)
+            .count();
+        session.messageCount = count;
+        await _db.chatSessions.put(session);
+      }
+    });
+  }
+
+  /// All messages for a session, ordered by sequence number.
+  Future<List<ChatMessage>> getMessagesForSession(String sessionId) async {
+    return _db.chatMessages
+        .filter()
+        .sessionIdEqualTo(sessionId)
+        .sortBySequenceNumber()
+        .findAll();
+  }
+
+  /// Most recent [limit] chat sessions, newest first.
+  Future<List<ChatSession>> getRecentChatSessions({int limit = 20}) async {
+    return _db.chatSessions
+        .where()
+        .sortByCreatedAtDesc()
+        .limit(limit)
+        .findAll();
+  }
+
+  // ─────────────────────────────────────────────
   // DATABASE MANAGEMENT
   // ─────────────────────────────────────────────
 
@@ -306,6 +424,8 @@ class IsarService {
       await _db.symptomEntrys.clear();
       await _db.fitnessEntrys.clear();
       await _db.eodEntrys.clear();
+      await _db.chatSessions.clear();
+      await _db.chatMessages.clear();
     });
   }
 }

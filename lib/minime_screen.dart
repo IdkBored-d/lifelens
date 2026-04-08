@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lifelens/app_services.dart';
+import 'package:lifelens/services/chat_session_service.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
@@ -28,16 +29,30 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   bool _isReplying = false;
   final List<_MiniMeChatMessage> _messages = [];
 
+  // Chat session persistence
+  String? _sessionId;
+  int _messageSequence = 0;
+  late final ChatSessionService _chatSessionService;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _chatSessionService = ChatSessionService(AppServices.quickTrack);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       _loadOpeningSuggestion();
+      final moodStore  = context.read<MoodLogStore>();
+      final moodCtx    = _buildMoodContext(moodStore);
+      _sessionId = await _chatSessionService.startSession(
+        moodLabel:     moodCtx.label,
+        moodIntensity: moodCtx.intensity,
+        moodNotes:     moodCtx.notes,
+      );
     });
   }
 
   @override
   void dispose() {
+    if (_sessionId != null) _chatSessionService.endSession(_sessionId!);
     _chatController.dispose();
     _scrollController.dispose();
     _chatFocusNode.dispose();
@@ -135,6 +150,16 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _chatController.clear();
     _scrollToBottom();
 
+    // Persist user message to ISAR + conversations.json
+    if (_sessionId != null) {
+      await _chatSessionService.addMessage(
+        sessionId:      _sessionId!,
+        role:           'user',
+        text:           text,
+        sequenceNumber: _messageSequence++,
+      );
+    }
+
     String reply;
 
     try {
@@ -156,6 +181,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
 
     if (!mounted) return;
+
+    // Persist assistant reply to ISAR + conversations.json
+    if (_sessionId != null) {
+      await _chatSessionService.addMessage(
+        sessionId:      _sessionId!,
+        role:           'assistant',
+        text:           reply,
+        sequenceNumber: _messageSequence++,
+      );
+    }
+
     setState(() {
       _messages.add(_MiniMeChatMessage(role: _ChatRole.assistant, text: reply));
       _isReplying = false;
