@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/exercise_model.dart';
 
 class ExerciseStore {
   static const String _favoritesKey = 'favorite_exercises';
+  static const String _exerciseHistoryKey = 'exercise_history_v2';
   late SharedPreferences _prefs;
   late final Future<void> _ready;
   List<ExerciseModel> exercises = [];
@@ -94,10 +97,82 @@ class ExerciseStore {
 
   /// Save exercise with associated mood
   Future<void> saveExercise(String exerciseId, String currentMood) async {
+    await logExercise(exerciseId, mood: currentMood);
+  }
+
+  /// Record an exercise completion in the local timeline.
+  Future<void> logExercise(
+    String exerciseId, {
+    String mood = '',
+  }) async {
     await _ready;
-    // Track the exercise with mood association
-    final key = 'exercise_mood_${exerciseId}_$currentMood';
-    final count = _prefs.getInt(key) ?? 0;
-    await _prefs.setInt(key, count + 1);
+    final history = _loadExerciseHistory();
+    history.insert(0, {
+      'exerciseId': exerciseId,
+      'mood': mood,
+      'timestamp': DateTime.now().toIso8601String(),
+    });
+    await _prefs.setStringList(
+      _exerciseHistoryKey,
+      history.map(_encodeHistoryRecord).toList(growable: false),
+    );
+  }
+
+  /// Return recent exercise activity as daily counts for the last [days] days.
+  /// Index 0 is today.
+  List<int> getRecentExerciseActivity({int days = 7}) {
+    final history = _loadExerciseHistory();
+    final buckets = List<int>.filled(days, 0);
+    final now = DateTime.now();
+
+    for (final record in history) {
+      final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
+      if (timestamp == null) continue;
+      final diffDays = now.difference(timestamp).inDays;
+      if (diffDays < 0 || diffDays >= days) continue;
+      buckets[diffDays] += 1;
+    }
+
+    return buckets;
+  }
+
+  /// Expose the latest exercise history for summaries and debugging.
+  List<Map<String, String>> getRecentExerciseHistory({int limit = 30}) {
+    final history = _loadExerciseHistory();
+    return history.take(limit).toList(growable: false);
+  }
+
+  List<Map<String, String>> _loadExerciseHistory() {
+    final raw = _prefs.getStringList(_exerciseHistoryKey) ?? const <String>[];
+    return raw
+        .map(_decodeHistoryRecord)
+        .where((record) => record['exerciseId']?.isNotEmpty ?? false)
+        .where((record) => record['timestamp']?.isNotEmpty ?? false)
+        .toList(growable: false);
+  }
+
+  String _encodeHistoryRecord(Map<String, String> record) {
+    return jsonEncode(record);
+  }
+
+  Map<String, String> _decodeHistoryRecord(String encoded) {
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is Map<String, dynamic>) {
+        return decoded.map(
+          (key, value) => MapEntry(key, value?.toString() ?? ''),
+        );
+      }
+    } catch (_) {
+      // Backward compatibility for older pipe-delimited records.
+      final parts = encoded.split('|');
+      return {
+        'exerciseId': parts.isNotEmpty ? parts[0] : '',
+        'mood': parts.length > 1 ? parts[1] : '',
+        'timestamp': parts.length > 2 ? parts[2] : '',
+      };
+    }
+
+    return const {'exerciseId': '', 'mood': '', 'timestamp': ''};
   }
 }

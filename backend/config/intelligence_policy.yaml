@@ -1,0 +1,74 @@
+{
+  "version": "2.0",
+  "thresholds": {
+    "low_sleep_hours": 6.0,
+    "low_mood_score": 2.0,
+    "inactive_sum_3d": 0,
+    "high_risk_score": 70.0,
+    "medium_risk_score": 40.0,
+    "low_confidence_score": 0.45,
+    "high_confidence_score": 0.70,
+    "volatility_high": 1.0,
+    "missing_window_penalty": 0.15
+  },
+  "weights": {
+    "low_sleep": 20.0,
+    "low_mood": 24.0,
+    "inactive": 16.0,
+    "sleep_slope_decline": 10.0,
+    "mood_slope_decline": 12.0,
+    "sleep_volatility": 6.0,
+    "mood_volatility": 6.0,
+    "recovery_bonus": -8.0,
+    "interaction_sleep_inactive_symptom": 14.0,
+    "interaction_low_sleep_low_mood": 12.0
+  },
+  "action_policies": {
+    "recommend_rest": {
+      "min_risk_score": 35.0,
+      "requires": ["low_sleep", "low_mood"]
+    },
+    "recommend_exercise": {
+      "min_risk_score": 25.0,
+      "requires": ["inactive"]
+    },
+    "recommend_social_support": {
+      "min_risk_score": 45.0,
+      "requires": ["low_mood"]
+    },
+    "recommend_clinician_followup": {
+      "min_risk_score": 75.0,
+      "requires": ["low_sleep", "low_mood"]
+    }
+  },
+  "model_coefficients": {
+    "rest": {
+      "bias": -1.1,
+      "risk_score": 0.03,
+      "sleep_avg_3": -0.14,
+      "mood_avg_3": -0.19,
+      "inactive_ratio_7": 1.0
+    },
+    "exercise": {
+      "bias": -0.9,
+      "risk_score": 0.016,
+      "inactive_ratio_7": 2.1,
+      "exercise_avg_7": -1.2,
+      "mood_volatility_7": 0.35
+    },
+    "social_support": {
+      "bias": -1.4,
+      "risk_score": 0.02,
+      "mood_avg_7": -0.35,
+      "mood_slope_7": -1.1,
+      "mood_volatility_7": 0.55
+    },
+    "clinician_followup": {
+      "bias": -2.2,
+      "risk_score": 0.04,
+      "sleep_avg_3": -0.2,
+      "mood_avg_3": -0.34,
+      "symptom_slope_7": 1.6
+    }
+  }
+}

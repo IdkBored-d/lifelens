@@ -22,6 +22,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   late Future<List<ExerciseModel>> _futureExercises;
   Future<_ExerciseRecommendationsState>? _recommendationsFuture;
   Set<String> _favoriteIds = <String>{};
+  int _loggedToday = 0;
+  int _loggedWeek = 0;
   String _searchQuery = '';
   String _selectedMuscle = 'all';
   String _selectedType = 'all';
@@ -38,9 +40,12 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     final exercises = await _service.fetchExercises();
     _exerciseStore.exercises = exercises;
     _recommendationsFuture = _loadRecommendations(exercises);
+    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
     if (mounted) {
       setState(() {
         _favoriteIds = _exerciseStore.getFavoriteIds().toSet();
+        _loggedToday = activity.isEmpty ? 0 : activity.first;
+        _loggedWeek = activity.fold(0, (sum, value) => sum + value);
       });
     }
     return exercises;
@@ -77,11 +82,18 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<void> _saveExercise(ExerciseModel exercise) async {
-    await _exerciseStore.saveExercise(exercise.id, 'calm');
+    await _exerciseStore.logExercise(exercise.id);
+    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
+    final loggedToday = activity.isEmpty ? 0 : activity.first;
+    final loggedWeek = activity.fold(0, (sum, value) => sum + value);
     if (!mounted) return;
+    setState(() {
+      _loggedToday = loggedToday;
+      _loggedWeek = loggedWeek;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${exercise.name} saved to your exercise history'),
+        content: Text('Logged ${exercise.name} • Today: $loggedToday'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -183,7 +195,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       if (items.isNotEmpty) {
         return _ExerciseRecommendationsState(
           headline: reply.headline.isEmpty
-              ? 'Mini-Me picked a few exercises based on how you have been feeling.'
+              ? 'A few exercises that fit your current state.'
               : reply.headline,
           items: items,
         );
@@ -228,15 +240,13 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           return _RecommendedExercise(
             exercise: exercise,
             focus: 'Good next step',
-            reason:
-                'This is a simple fit for how you have been feeling lately.',
+            reason: 'Simple fit for your current state.',
           );
         })
         .toList(growable: false);
 
     return _ExerciseRecommendationsState(
-      headline:
-          'Mini-Me picked a few exercises that should feel realistic right now.',
+      headline: 'A few exercises that should feel realistic right now.',
       items: items,
     );
   }
@@ -309,6 +319,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                   _ExerciseHeroCard(
                     totalCount: exercises.length,
                     favoriteCount: _favoriteIds.length,
+                    loggedToday: _loggedToday,
+                    loggedWeek: _loggedWeek,
                   ),
                   const SizedBox(height: 16),
                   if (_recommendationsFuture != null)
@@ -342,7 +354,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                     controller: _searchController,
                     onChanged: (value) => setState(() => _searchQuery = value),
                     decoration: InputDecoration(
-                      hintText: 'Search exercises, muscles, or types',
+                      hintText: 'Search exercises',
                       prefixIcon: const Icon(Icons.search_rounded),
                       suffixIcon: _searchQuery.isEmpty
                           ? null
@@ -557,10 +569,14 @@ class _ExerciseHeroCard extends StatelessWidget {
   const _ExerciseHeroCard({
     required this.totalCount,
     required this.favoriteCount,
+    required this.loggedToday,
+    required this.loggedWeek,
   });
 
   final int totalCount;
   final int favoriteCount;
+  final int loggedToday;
+  final int loggedWeek;
 
   @override
   Widget build(BuildContext context) {
@@ -603,7 +619,7 @@ class _ExerciseHeroCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Exercise Library',
+                      'Exercises',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
                         color: cs.onPrimaryContainer,
@@ -611,7 +627,7 @@ class _ExerciseHeroCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Simple filters, cleaner cards, and better exercise details.',
+                      'Browse, log, and save exercises.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: cs.onPrimaryContainer.withValues(alpha: 0.82),
                       ),
@@ -624,10 +640,18 @@ class _ExerciseHeroCard extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              _HeroStat(label: 'Exercises', value: '$totalCount'),
+              _HeroStat(label: 'Total', value: '$totalCount'),
               const SizedBox(width: 10),
-              _HeroStat(label: 'Favorites', value: '$favoriteCount'),
+              _HeroStat(label: 'Saved', value: '$favoriteCount'),
             ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Logged today: $loggedToday • Last 7 days: $loggedWeek',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onPrimaryContainer.withValues(alpha: 0.88),
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -701,7 +725,7 @@ class _CompactFilterBar extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Filters',
+          'Filter',
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w800,
           ),
@@ -816,7 +840,7 @@ class _ResultSummary extends StatelessWidget {
         if (hasFilters)
           TextButton(
             onPressed: onClear,
-            child: Text('Clear filters', style: TextStyle(color: cs.primary)),
+            child: Text('Reset', style: TextStyle(color: cs.primary)),
           ),
       ],
     );
@@ -846,7 +870,7 @@ class _RecommendationLoadingCard extends StatelessWidget {
           SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Mini-Me is choosing exercises for your current mood...',
+              'Picking exercises...',
             ),
           ),
         ],
@@ -896,7 +920,7 @@ class _RecommendationPanel extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Recommended By Mini-Me',
+                  'Suggested',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
@@ -1126,7 +1150,7 @@ class _ExerciseCard extends StatelessWidget {
                 Expanded(
                   child: FilledButton(
                     onPressed: onSave,
-                    child: const Text('Save'),
+                    child: const Text('Log'),
                   ),
                 ),
               ],
@@ -1197,7 +1221,7 @@ class _EmptyExerciseState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Try clearing one filter or searching with a simpler word.',
+            'Try a simpler search or reset filters.',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,

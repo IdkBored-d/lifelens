@@ -30,6 +30,7 @@ ThemeData lifeLensDarkTheme() {
       secondaryContainer: const Color(0xFF273049),
       surface: appBg,
       surfaceContainerHighest: cardBg,
+      outline: const Color(0xFF3E4255),
       outlineVariant: const Color(0xFF2F3242),
       onSurfaceVariant: const Color(0xFFB8C0D4),
     ),
@@ -116,8 +117,8 @@ ThemeData lifeLensDarkTheme() {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(
-          color: cs.primary.withValues(alpha: 0.8),
-          width: 1.4,
+          color: cs.outline,
+          width: 1.2,
         ),
       ),
       hintStyle: TextStyle(
@@ -178,6 +179,7 @@ ThemeData lifeLensCalmTheme() {
       surface: appBg,
       // Material 3 container tones (used a LOT by your UI)
       surfaceContainerHighest: cardBg,
+      outline: const Color(0xFFC1BADB),
       outlineVariant: const Color(0xFFD2C9F0),
       onSurfaceVariant: const Color(0xFF5F5A70),
     ),
@@ -268,8 +270,8 @@ ThemeData lifeLensCalmTheme() {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: BorderSide(
-          color: cs.primary.withValues(alpha: 0.8),
-          width: 1.4,
+          color: cs.outline,
+          width: 1.2,
         ),
       ),
       hintStyle: TextStyle(

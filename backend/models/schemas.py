@@ -238,6 +238,40 @@ class MiniMeExerciseRecommendationResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
+class IntelligenceAnalyzeRequest(BaseModel):
+    """Request model for intelligence analysis endpoint."""
+    sleep: List[int] = Field(..., min_items=1, max_items=60)
+    mood: List[int] = Field(..., min_items=1, max_items=60)
+    exercise: List[int] = Field(..., min_items=1, max_items=60)
+    symptom_count: List[int] = Field(default_factory=list, max_items=60)
+    include_gemini_message: bool = True
+
+
+class IntelligenceAnalyzeResponse(BaseModel):
+    """Versioned intelligence contract with deterministic decision outputs."""
+    contract_version: str = Field(default="2.0")
+    state: Dict[str, bool]
+    features: Dict[str, float] = Field(default_factory=dict)
+    risk_score: float = Field(..., ge=0.0, le=100.0)
+    confidence_score: float = Field(..., ge=0.0, le=1.0)
+    intervention_tier: str = Field(..., description="low, medium, or high")
+    user_phase: str = Field(..., description="stable, declining, recovering, or acute-risk")
+    selected_actions: List[str] = Field(default_factory=list)
+    reasons: List[str] = Field(default_factory=list)
+    evidence: List[str] = Field(default_factory=list)
+    constraints: List[str] = Field(default_factory=list)
+    explanation_trace: List[str] = Field(default_factory=list)
+    action_probabilities: Dict[str, float] = Field(default_factory=dict)
+
+    # Backward compatibility with current frontend wiring.
+    insights: List[str]
+    actions: List[str]
+
+    message: str
+    alert: Optional[str] = None
+    prompt_preview: Optional[str] = None
+
+
 class HealthDisclaimer(BaseModel):
     """Medical disclaimer"""
     text: str

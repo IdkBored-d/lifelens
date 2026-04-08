@@ -1,16 +1,18 @@
-# lifelens
+# LifeLens
 
-A new Flutter project.
+## Run Locally
 
-## Getting Started
+One command from the repo root:
 
-This project is a starting point for a Flutter application.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-dev.ps1
+```
 
-A few resources to get you started if this is your first Flutter project:
+Optional:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- `-Device windows` to target a specific Flutter device.
+- `-SkipBackend` to keep the API closed and only run Flutter.
+- `-SkipFlutter` to start only the backend.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The backend runs at `http://127.0.0.1:8000`.
+

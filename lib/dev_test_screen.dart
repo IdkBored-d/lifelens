@@ -3,11 +3,13 @@ import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/database/fitness_entry.dart';
+import 'package:lifelens/database/eod_entry.dart';
 import 'package:lifelens/models/escalation_level.dart'; // ← ADD
 import 'package:lifelens/models/mood_result.dart'; // ← ADD (kMobileBertLabels)
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
 import 'package:lifelens/services/quick_track_service.dart'; // ← ADD (MoodLogEntry, SymptomLogEntry)
+import 'package:lifelens/services/symptom_auto_detector_service.dart';
 
 /// ─────────────────────────────────────────────────────────────────────────────
 /// DEV TEST SCREEN
@@ -234,6 +236,28 @@ class _DevTestScreenState extends State<DevTestScreen> {
         'Mood preview: ${moodCtx.substring(0, moodCtx.length.clamp(0, 80))}...';
   }
 
+  // ignore: unused_element
+  Future<String> _testSymptomAutoDetection() async {
+    // Test auto-detection from text
+    final testText = 'I have a bad headache and feeling quite fatigued today. Also experiencing some nausea.';
+    final detected = SymptomAutoDetectorService.detectSymptomsFromText(testText);
+    
+    // Test registration
+    final registered = await SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
+      testText,
+      'test',
+    );
+    
+    // Get all frequencies
+    final frequencies = await SymptomAutoDetectorService.getSymptomFrequencies();
+    
+    return '✓ Symptom auto-detection test\n'
+        'Detected from text: ${detected.join(", ")}\n'
+        'Registered: $registered\n'
+        'Total symptoms in DB: ${frequencies.length}\n'
+        'Top symptoms: ${frequencies.take(3).map((f) => "${f.symptom} (${f.count})").join(", ")}';
+  }
+
   Future<String> _testMobileBert() async {
     if (!AppServices.mobileBert.isLoaded) {
       return '✗ MobileBERT not loaded — check asset path in app_services.dart';
@@ -348,6 +372,62 @@ class _DevTestScreenState extends State<DevTestScreen> {
     return '✓ ISAR cleared\n'
         'Mood entries remaining: ${moodEntries.length}\n'
         'Symptom entries remaining: ${symptomEntries.length}';
+  }
+
+  Future<String> _testIsarEodWrite() async {
+    final entry = EodEntry()
+      ..date = '2026-03-21'
+      ..summaryText = 'Dev EOD: mood stable, light activity, continue routine.'
+      ..correlationSummary = 'Sleep and mood looked mildly correlated today.'
+      ..flagged = false
+      ..flagReason = null
+      ..ragMatch = null
+      ..fitnessScore = 72.4
+      ..moodEntryCount = 2
+      ..generatedOnline = false
+      ..timestamp = DateTime.now();
+
+    await AppServices.isar.writeEodEntry(entry);
+    return '✓ EOD entry written to ISAR';
+  }
+
+  Future<String> _testIsarEodRead() async {
+    final entry = await AppServices.isar.getEodEntry('2026-03-21');
+    if (entry == null) {
+      return '✗ No EOD entry found — run Write EOD Entry first';
+    }
+
+    return '✓ EOD entry read\n'
+        'date=${entry.date}\n'
+        'flagged=${entry.flagged}\n'
+        'fitnessScore=${entry.fitnessScore.toStringAsFixed(1)}\n'
+        'summary=${entry.summaryText}';
+  }
+
+  Future<String> _testEodPipeline() async {
+    final result = await AppServices.eodPipeline.runEndOfDay(isOnline: false);
+    return '✓ EOD pipeline completed (offline)\n'
+        'date=${result.date}\n'
+        'flagged=${result.flagged}\n'
+        'summary=${result.summary}';
+  }
+
+  Future<String> _testGemmaStatus() async {
+    return AppServices.isGemmaLoaded
+        ? '✓ Gemma model is loaded and ready'
+        : '✗ Gemma model is not loaded';
+  }
+
+  Future<String> _testGemmaInference() async {
+    if (!AppServices.isGemmaLoaded) {
+      return '✗ Gemma model is not loaded';
+    }
+
+    final reply = await AppServices.gemma.generateMiniMeReply(
+      userMessage: 'I feel overwhelmed and tired today.',
+      moodLabel: 'Anxious',
+    );
+    return '✓ Gemma inference succeeded\nReply: $reply';
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────────

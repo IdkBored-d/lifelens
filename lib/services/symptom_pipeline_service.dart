@@ -53,48 +53,35 @@ class SymptomPipelineService {
     required String userSymptoms,
     required bool   isOnline,
   }) async {
+    // Ensure ISAR is initialized before proceeding
+    try {
+      if (!IsarService.instance.isOpen) {
+        await IsarService.instance.init();
+      }
+    } catch (e) {
+      print('[SymptomPipeline] ISAR init failed: $e');
+      rethrow;
+    }
+
     // ── STEP 1: DisEmbed fast embedding ───────────────────────────────────
-    final embedding = await _disEmbed.embed(userSymptoms, _tokenize);
+    // Skip if DisEmbed not yet loaded (loads in background during AppServices.init)
+    // The escalation path will use Gemma2b/Gemini instead
+    List<double> embedding = [];
+    if (_disEmbed.isLoaded) {
+      embedding = await _disEmbed.embed(userSymptoms, _tokenize);
+    }
 
     // ── STEP 2: Disease index lookup ───────────────────────────────────────
     // TODO(index): Replace with a real on-device disease embedding index once
-    // built. Until then _disEmbedIndexReady = false routes all queries to
-    // Gemma2b via the escalation path (same quality, no wasted embedding compare).
-    const _disEmbedIndexReady = false;
-
-    if (!_disEmbedIndexReady) {
-      return _handleEscalation(
-        userSymptoms:   userSymptoms,
-        embedding:      embedding,
-        isOnline:       isOnline,
-        disEmbedResult: null,
-      );
-    }
-
-    // Dead path until index is ready — kept for structure.
-    // ignore: dead_code
-    const placeholderDiseaseName = 'Unknown';
-    // ignore: dead_code
-    final deConfidence = _confidence.evaluateDisEmbed(0.0);
-
-    // ── STEP 3: Confidence check ───────────────────────────────────────────
-    // ignore: dead_code
-    if (_confidence.shouldEscalate(deConfidence)) {
-      return _handleEscalation(
-        userSymptoms:   userSymptoms,
-        embedding:      embedding,
-        isOnline:       isOnline,
-        disEmbedResult: deConfidence,
-      );
-    }
-
-    // ignore: dead_code
-    return _expandWithGemma(
-      userSymptoms:       userSymptoms,
-      embedding:          embedding,
-      isOnline:           isOnline,
-      disEmbedPrediction: placeholderDiseaseName,
-      disEmbedResult:     deConfidence,
+    // built. Until then this path routes all queries to Gemma2b via escalation
+    // (same quality, no wasted embedding compare).
+    
+    // Always escalate for now (DisEmbed index not ready, model loads in background)
+    return _handleEscalation(
+      userSymptoms:   userSymptoms,
+      embedding:      embedding,
+      isOnline:       isOnline,
+      disEmbedResult: null,
     );
   }
 
@@ -142,7 +129,7 @@ class SymptomPipelineService {
     required DisEmbedResult disEmbedResult,
   }) async {
     List<WeaviateDisease> ragResults = [];
-    if (isOnline) {
+    if (isOnline && embedding.isNotEmpty) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
     // isOnline determines offline warning. If online but empty, passes an empty string.
@@ -174,7 +161,7 @@ class SymptomPipelineService {
     required DisEmbedResult? disEmbedResult,
   }) async {
     List<WeaviateDisease> ragResults = [];
-    if (isOnline) {
+    if (isOnline && embedding.isNotEmpty) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
     // Fix 4: Gate on isOnline, not ragResults.isNotEmpty — same fix as

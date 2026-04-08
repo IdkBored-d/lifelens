@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/services/symptom_summary_service.dart';
+import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:share_plus/share_plus.dart';
 
 class SymptomsScreen extends StatefulWidget {
@@ -85,10 +86,14 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       _symptomsController.clear();
     } catch (error) {
       if (!mounted) return;
+      print('[SymptomsScreen] Save failed: $error');
+      final errorMsg = error.toString();
+      final truncated = errorMsg.length > 70 ? '${errorMsg.substring(0, 70)}...' : errorMsg;
       messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Could not save right now. Please try again.'),
+        SnackBar(
+          content: Text('Error: $truncated'),
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 6),
         ),
       );
     } finally {
@@ -157,6 +162,10 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       totalPreviousMentions: totalPreviousMentions,
       uniqueSymptomsThisWeek: recentCounts.length,
     );
+  }
+
+  Future<List<SymptomFrequency>> _buildSymptomFrequencies() async {
+    return SymptomAutoDetectorService.getSymptomFrequencies();
   }
 
   int _countSymptomInWindow(
@@ -777,6 +786,107 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                                 ),
                               ],
                             ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionHeader(title: 'Symptom Counter'),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Total occurrences of each symptom',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      FutureBuilder<List<SymptomFrequency>>(
+                        future: _buildSymptomFrequencies(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: LinearProgressIndicator(minHeight: 3),
+                            );
+                          }
+
+                          final frequencies = snapshot.data ?? [];
+                          if (frequencies.isEmpty) {
+                            return Text(
+                              'No symptoms tracked yet.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            );
+                          }
+
+                          return Column(
+                            children: frequencies.map((freq) {
+                              final maxCount = frequencies.isNotEmpty
+                                  ? frequencies.first.count
+                                  : 1;
+                              final fraction = maxCount == 0
+                                  ? 0.0
+                                  : freq.count / maxCount;
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 100,
+                                      child: Text(
+                                        _titleCase(freq.symptom),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                            child: LinearProgressIndicator(
+                                              value: fraction,
+                                              minHeight: 24,
+                                              backgroundColor: cs.outlineVariant
+                                                  .withOpacity(0.35),
+                                            ),
+                                          ),
+                                          Positioned.fill(
+                                            child: Align(
+                                              alignment: Alignment.centerRight,
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(
+                                                    right: 8),
+                                                child: Text(
+                                                  '${freq.count}',
+                                                  style: theme.textTheme
+                                                      .labelSmall
+                                                      ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: cs.onPrimary,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
                           );
                         },
                       ),

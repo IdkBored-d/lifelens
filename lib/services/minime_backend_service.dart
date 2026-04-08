@@ -156,10 +156,105 @@ class MiniMeExerciseRecommendationsReply {
   }
 }
 
+class MiniMeIntelligenceReply {
+  const MiniMeIntelligenceReply({
+    required this.state,
+    required this.features,
+    required this.riskScore,
+    required this.confidenceScore,
+    required this.interventionTier,
+    required this.userPhase,
+    required this.selectedActions,
+    required this.reasons,
+    required this.evidence,
+    required this.constraints,
+    required this.explanationTrace,
+    required this.actionProbabilities,
+    required this.insights,
+    required this.actions,
+    required this.message,
+    this.alert,
+  });
+
+  final Map<String, dynamic> state;
+  final Map<String, double> features;
+  final double riskScore;
+  final double confidenceScore;
+  final String interventionTier;
+  final String userPhase;
+  final List<String> selectedActions;
+  final List<String> reasons;
+  final List<String> evidence;
+  final List<String> constraints;
+  final List<String> explanationTrace;
+  final Map<String, double> actionProbabilities;
+  final List<String> insights;
+  final List<String> actions;
+  final String message;
+  final String? alert;
+
+  bool get lowSleep => state['low_sleep'] == true;
+  bool get lowMood => state['low_mood'] == true;
+  bool get inactive => state['inactive'] == true;
+
+  static List<String> _toStringList(Object? raw) {
+    if (raw is! List) return const <String>[];
+    return raw
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static Map<String, double> _toDoubleMap(Object? raw) {
+    if (raw is Map<String, dynamic>) {
+      return raw.map(
+        (key, value) => MapEntry(key, (value as num?)?.toDouble() ?? 0.0),
+      );
+    }
+    if (raw is Map) {
+      return raw.map(
+        (key, value) =>
+            MapEntry(key.toString(), (value as num?)?.toDouble() ?? 0.0),
+      );
+    }
+    return const <String, double>{};
+  }
+
+  factory MiniMeIntelligenceReply.fromJson(Map<String, dynamic> json) {
+    final rawState = json['state'];
+    final rawActions = json['actions'];
+
+    final selectedActions = _toStringList(json['selected_actions']);
+    final parsedActions = _toStringList(rawActions);
+
+    return MiniMeIntelligenceReply(
+      state: rawState is Map<String, dynamic>
+          ? rawState
+          : (rawState is Map ? Map<String, dynamic>.from(rawState) : const {}),
+      features: _toDoubleMap(json['features']),
+      riskScore: (json['risk_score'] as num?)?.toDouble() ?? 0.0,
+      confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 0.0,
+      interventionTier: (json['intervention_tier'] as String? ?? 'low').trim(),
+      userPhase: (json['user_phase'] as String? ?? 'stable').trim(),
+      selectedActions: selectedActions,
+      reasons: _toStringList(json['reasons']),
+      evidence: _toStringList(json['evidence']),
+      constraints: _toStringList(json['constraints']),
+      explanationTrace: _toStringList(json['explanation_trace']),
+      actionProbabilities: _toDoubleMap(json['action_probabilities']),
+      insights: _toStringList(json['insights']),
+      actions: parsedActions.isNotEmpty ? parsedActions : selectedActions,
+      message: (json['message'] as String? ?? '').trim(),
+      alert: (json['alert'] as String?)?.trim(),
+    );
+  }
+}
+
 class MiniMeBackendService {
   MiniMeBackendService._();
 
   static final MiniMeBackendService instance = MiniMeBackendService._();
+  String? _lastKnownGoodBaseUrl;
 
   static const String _configuredBaseUrl = String.fromEnvironment(
     'LIFELENS_API_BASE_URL',
@@ -184,6 +279,18 @@ class MiniMeBackendService {
     return urls.where((u) => seen.add(u)).toList();
   }
 
+  List<String> _prioritizedBaseUrls() {
+    final urls = _candidateBaseUrls();
+    final lastGood = _lastKnownGoodBaseUrl;
+    if (lastGood == null || lastGood.isEmpty) {
+      return urls;
+    }
+
+    final ordered = <String>[lastGood, ...urls.where((u) => u != lastGood)];
+    final seen = <String>{};
+    return ordered.where((u) => seen.add(u)).toList(growable: false);
+  }
+
   Future<MiniMeBackendReply> chat({
     required String userMessage,
     required String moodLabel,
@@ -204,7 +311,7 @@ class MiniMeBackendService {
     };
 
     Object? lastError;
-    for (final baseUrl in _candidateBaseUrls()) {
+    for (final baseUrl in _prioritizedBaseUrls()) {
       final uri = Uri.parse('$baseUrl/api/v1/minime/chat');
       try {
         final response = await http
@@ -213,7 +320,7 @@ class MiniMeBackendService {
               headers: const {'Content-Type': 'application/json'},
               body: jsonEncode(payload),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(const Duration(seconds: 6));
 
         if (response.statusCode != 200) {
           lastError = Exception(
@@ -223,6 +330,7 @@ class MiniMeBackendService {
         }
 
         final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        _lastKnownGoodBaseUrl = baseUrl;
         return MiniMeBackendReply.fromJson(decoded);
       } catch (e) {
         lastError = e;
@@ -252,7 +360,7 @@ class MiniMeBackendService {
     };
 
     Object? lastError;
-    for (final baseUrl in _candidateBaseUrls()) {
+    for (final baseUrl in _prioritizedBaseUrls()) {
       final uri = Uri.parse('$baseUrl/api/v1/minime/suggestions');
       try {
         final response = await http
@@ -261,7 +369,7 @@ class MiniMeBackendService {
               headers: const {'Content-Type': 'application/json'},
               body: jsonEncode(payload),
             )
-            .timeout(const Duration(seconds: 12));
+            .timeout(const Duration(seconds: 7));
 
         if (response.statusCode != 200) {
           lastError = Exception(
@@ -271,6 +379,7 @@ class MiniMeBackendService {
         }
 
         final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        _lastKnownGoodBaseUrl = baseUrl;
         return MiniMeSuggestionsReply.fromJson(decoded);
       } catch (e) {
         lastError = e;
@@ -302,7 +411,7 @@ class MiniMeBackendService {
     };
 
     Object? lastError;
-    for (final baseUrl in _candidateBaseUrls()) {
+    for (final baseUrl in _prioritizedBaseUrls()) {
       final uri = Uri.parse('$baseUrl/api/v1/minime/exercise-recommendations');
       try {
         final response = await http
@@ -311,7 +420,7 @@ class MiniMeBackendService {
               headers: const {'Content-Type': 'application/json'},
               body: jsonEncode(payload),
             )
-            .timeout(const Duration(seconds: 12));
+            .timeout(const Duration(seconds: 7));
 
         if (response.statusCode != 200) {
           lastError = Exception(
@@ -321,7 +430,53 @@ class MiniMeBackendService {
         }
 
         final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        _lastKnownGoodBaseUrl = baseUrl;
         return MiniMeExerciseRecommendationsReply.fromJson(decoded);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw Exception('Unable to reach Mini-Me backend: $lastError');
+  }
+
+  Future<MiniMeIntelligenceReply> analyzeIntelligence({
+    required List<int> sleep,
+    required List<int> mood,
+    required List<int> exercise,
+    List<int> symptomCount = const [],
+    bool includeGeminiMessage = true,
+  }) async {
+    final payload = {
+      'sleep': sleep,
+      'mood': mood,
+      'exercise': exercise,
+      'symptom_count': symptomCount,
+      'include_gemini_message': includeGeminiMessage,
+    };
+
+    Object? lastError;
+    for (final baseUrl in _prioritizedBaseUrls()) {
+      final uri = Uri.parse('$baseUrl/api/v1/intelligence/analyze');
+      try {
+        final response = await http
+            .post(
+              uri,
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 7));
+
+        if (response.statusCode != 200) {
+          lastError = Exception(
+            'Mini-Me backend error ${response.statusCode}: ${response.body}',
+          );
+          continue;
+        }
+
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        _lastKnownGoodBaseUrl = baseUrl;
+        return MiniMeIntelligenceReply.fromJson(decoded);
       } catch (e) {
         lastError = e;
       }

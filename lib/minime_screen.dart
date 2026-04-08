@@ -10,8 +10,9 @@ import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/minime_shop_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/minime_chat_storage_service.dart';
+import 'package:lifelens/services/exercise_store.dart';
+import 'package:lifelens/services/mini_me_suggestion_aggregator.dart';
 import 'package:lifelens/database/isar_service.dart';
-import 'package:lifelens/database/mood_entry.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
 
@@ -32,13 +33,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   bool _didLoadOpeningSuggestion = false;
   bool _isCoachExpanded = false;
   bool _isReplying = false;
+  bool _isIntelligenceLoading = false;
   final List<_MiniMeChatMessage> _messages = [];
+  MiniMeIntelligenceReply? _intelligence;
+  final ExerciseStore _exerciseStore = ExerciseStore();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _bootstrapMiniMe();
+      _refreshIntelligence();
     });
   }
 
@@ -50,26 +55,32 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     super.dispose();
   }
 
+  // ignore: unused_element
   Future<void> _runDaySummary() async {
     if (_isReplying) return;
 
     setState(() {
       _isCoachExpanded = true;
       _isReplying = true;
-      _messages.add(const _MiniMeChatMessage(
-        role: _ChatRole.user,
-        text: 'Generate my day summary',
-      ));
+      _messages.add(
+        const _MiniMeChatMessage(
+          role: _ChatRole.user,
+          text: 'Generate my day summary',
+        ),
+      );
     });
     _scrollToBottom();
 
     try {
       // TODO: replace `true` with a real connectivity check (connectivity_plus).
-      final result = await AppServices.eodPipeline.runEndOfDay(isOnline: await AppServices.isOnline());
+      final result = await AppServices.eodPipeline.runEndOfDay(
+        isOnline: await AppServices.isOnline(),
+      );
 
       if (!mounted) return;
 
-      final flagNote = result.flagged && (result.flagReason?.isNotEmpty ?? false)
+      final flagNote =
+          result.flagged && (result.flagReason?.isNotEmpty ?? false)
           ? '\n\n⚠ ${result.flagReason}'
           : '';
       final replyText = result.summary.isNotEmpty
@@ -77,16 +88,21 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           : 'Day summary complete. No significant patterns detected today.';
 
       setState(() {
-        _messages.add(_MiniMeChatMessage(role: _ChatRole.assistant, text: replyText));
+        _messages.add(
+          _MiniMeChatMessage(role: _ChatRole.assistant, text: replyText),
+        );
         _isReplying = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _messages.add(const _MiniMeChatMessage(
-          role: _ChatRole.assistant,
-          text: 'Could not generate day summary right now. Please try again later.',
-        ));
+        _messages.add(
+          const _MiniMeChatMessage(
+            role: _ChatRole.assistant,
+            text:
+                'Could not generate day summary right now. Please try again later.',
+          ),
+        );
         _isReplying = false;
       });
     }
@@ -124,6 +140,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         );
       });
       await _persistMessages();
+      await _refreshIntelligence();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -131,12 +148,87 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           _MiniMeChatMessage(
             role: _ChatRole.assistant,
             text:
-                'Mini-Me backend is unavailable right now. Start your backend server and try again.',
+                'Mini-Me backend is currently offline. I can still help in local mode and will retry when you send a message.',
           ),
         );
       });
       await _persistMessages();
     }
+  }
+
+  Future<void> _refreshIntelligence() async {
+    if (_isIntelligenceLoading || !mounted) return;
+
+    setState(() {
+      _isIntelligenceLoading = true;
+    });
+
+    try {
+      final moodStore = context.read<MoodLogStore>();
+      final recentMoods = moodStore.items.take(7).toList().reversed.toList();
+
+      final mood = recentMoods
+          .map((item) => item.intensity.clamp(1, 5))
+          .toList(growable: false);
+
+      final sleep = recentMoods
+          .map((item) => _estimatedSleepHoursFromMood(item.moodLabel))
+          .toList(growable: false);
+
+      await _exerciseStore.ensureReady();
+      final exercise = _exerciseStore
+          .getRecentExerciseActivity(days: 7)
+          .reversed
+          .toList(growable: false);
+
+      final payloadMood = mood.isEmpty ? const [3, 3, 3] : mood;
+      final payloadSleep = sleep.isEmpty ? const [7, 7, 7] : sleep;
+      final payloadExercise = exercise.isEmpty ? const [0, 0, 0] : exercise;
+
+      final response = await MiniMeBackendService.instance.analyzeIntelligence(
+        sleep: payloadSleep,
+        mood: payloadMood,
+        exercise: payloadExercise,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _intelligence = response;
+      });
+    } catch (_) {
+      // Keep UI functional even if backend is unavailable.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isIntelligenceLoading = false;
+        });
+      }
+    }
+  }
+
+  int _estimatedSleepHoursFromMood(String moodLabel) {
+    final mood = moodLabel.trim().toLowerCase();
+    if (mood == 'tired' || mood == 'sad' || mood == 'anxious') {
+      return 5;
+    }
+    if (mood == 'neutral') {
+      return 6;
+    }
+    return 7;
+  }
+
+  String? _avatarMoodFromIntelligence(String? baseMoodLabel) {
+    final state = _intelligence?.state;
+    if (state == null) {
+      return baseMoodLabel;
+    }
+    if (state['low_sleep'] == true) {
+      return 'tired';
+    }
+    if (state['low_mood'] == true) {
+      return 'sad';
+    }
+    return baseMoodLabel;
   }
 
   Future<void> _bootstrapMiniMe() async {
@@ -185,79 +277,265 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     String reply;
 
     try {
-      // Tier 1: Gemma (on-device, no network required)
-      if (AppServices.isGemmaLoaded) {
-        try {
-          reply = await AppServices.gemma.generateMiniMeReply(
-            userMessage: text,
-            moodLabel: moodLabel,
-          );
-        } catch (_) {
-          reply = await _geminiOrOffline(text, moodLabel);
-        }
-      } else {
-        reply = await _geminiOrOffline(text, moodLabel);
-      }
+      reply = await _geminiOrOffline(userText: text, moodContext: moodContext);
     } catch (_) {
       reply = _buildOfflineReply(userText: text, moodLabel: moodLabel);
     }
 
-      if (!mounted) return;
-      setState(() {
-        _messages.add(
-          _MiniMeChatMessage(role: _ChatRole.assistant, text: response.reply),
+    if (!mounted) return;
+    await _appendAssistantReplyInChunks(reply);
+    await _refreshIntelligence();
+  }
+
+  Future<void> _requestDailySuggestions() async {
+    if (_isReplying) return;
+
+    const userPrompt = 'Give me today\'s daily suggestions.';
+
+    setState(() {
+      _isCoachExpanded = true;
+      _messages.add(
+        const _MiniMeChatMessage(role: _ChatRole.user, text: userPrompt),
+      );
+      _isReplying = true;
+    });
+    await _persistMessages();
+    _scrollToBottom();
+
+    try {
+      final suggestions = await MiniMeSuggestionAggregator.generateDailySuggestions(
+        days: 7,
+      );
+
+      final nonEmpty = suggestions
+          .where(
+            (item) =>
+                item.action.trim().isNotEmpty || item.reason.trim().isNotEmpty,
+          )
+          .toList(growable: false);
+
+      if (nonEmpty.isEmpty) {
+        await _appendAssistantReplyInChunks(
+          'I could not build suggestions yet. Add one quick check-in and ask again.',
         );
-        _isReplying = false;
-      });
-      await _persistMessages();
-      _scrollToBottom();
-
-  /// Tier 2: Gemini if online, else Tier 3: offline template.
-  Future<String> _geminiOrOffline(String text, String moodLabel) async {
-    if (await _isOnline()) {
-      try {
-        final now = DateTime.now();
-        final dateStr = now.toIso8601String().split('T').first;
-        // Use reply if non-empty, else openingSuggestion
-        final suggestion = (response.reply.trim().isNotEmpty)
-            ? response.reply.trim()
-            : response.openingSuggestion.trim();
-        final moodEntry = MoodEntry()
-          ..date = dateStr
-          ..rawLog = text
-          ..condensedLog = text.length > 60
-              ? '${text.substring(0, 60)}...'
-              : text
-          ..resolvedMood = moodContext.label
-          ..resolvedBy = 'minime'
-          ..mobileBertPrediction = null
-          ..mobileBertTopProb = null
-          ..userConfirmed = null
-          ..responseText = suggestion
-          ..fitnessScoreSnapshot = 0.0
-          ..timestamp = now;
-        await IsarService.instance.writeMoodEntry(moodEntry);
-
-        if (!mounted) return;
-        await context.read<MoodLogStore>().refreshFromPersistence();
-      } catch (e) {
-        // Optionally log error
+        await _refreshIntelligence();
+        return;
       }
+
+      final buffer = StringBuffer(
+        'I reviewed your recent logs, symptoms, and chat history. Here are your daily suggestions.',
+      );
+
+      for (var i = 0; i < nonEmpty.length && i < 3; i++) {
+        final action = nonEmpty[i].action.trim();
+        final reason = nonEmpty[i].reason.trim();
+        buffer.write(' Suggestion ${i + 1}: ');
+        if (action.isNotEmpty) {
+          buffer.write('$action ');
+        }
+        if (reason.isNotEmpty) {
+          buffer.write('($reason) ');
+        }
+      }
+
+      await _appendAssistantReplyInChunks(buffer.toString().trim());
     } catch (_) {
+      await _appendAssistantReplyInChunks(
+        'I could not fetch your daily suggestions right now, but I can still help if you tell me your focus for today.',
+      );
+    }
+
+    await _refreshIntelligence();
+  }
+
+  List<String> _splitAssistantReply(String reply) {
+    final normalized = reply.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) {
+      return const <String>[];
+    }
+
+    final chunks = normalized
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+
+    if (chunks.isEmpty) {
+      return <String>[normalized];
+    }
+
+    final result = <String>[];
+    for (final chunk in chunks) {
+      if (chunk.length <= 85) {
+        result.add(chunk);
+        continue;
+      }
+
+      final subParts = chunk
+          .split(RegExp(r'(?<=[,;:])\s+'))
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList(growable: false);
+      if (subParts.isEmpty || subParts.length == 1) {
+        result.add(chunk);
+      } else {
+        result.addAll(subParts);
+      }
+    }
+
+    final condensed = <String>[];
+    for (final part in result) {
+      if (part.length <= 72) {
+        condensed.add(part);
+        continue;
+      }
+
+      final words = part.split(RegExp(r'\s+'));
+      final buffer = StringBuffer();
+      for (final word in words) {
+        final candidate = buffer.isEmpty ? word : '${buffer.toString()} $word';
+        if (candidate.length > 72 && buffer.isNotEmpty) {
+          condensed.add(buffer.toString());
+          buffer
+            ..clear()
+            ..write(word);
+        } else {
+          if (buffer.isNotEmpty) {
+            buffer.write(' ');
+          }
+          buffer.write(word);
+        }
+      }
+      if (buffer.isNotEmpty) {
+        condensed.add(buffer.toString());
+      }
+    }
+
+    return condensed;
+  }
+
+  int _assistantChunkDelayMs(String chunk, int index, int total) {
+    final base = 420 + (chunk.length * 9).clamp(0, 420);
+    final gap = index == 0 ? 280 : 0;
+    final tail = index == total - 1 ? 220 : 0;
+    return (base + gap + tail).clamp(520, 1700).toInt();
+  }
+
+  Future<void> _appendAssistantReplyInChunks(String reply) async {
+    final chunks = _splitAssistantReply(reply);
+    final safeChunks = chunks.isEmpty ? <String>[reply.trim()] : chunks;
+
+    if (safeChunks.isEmpty || (safeChunks.length == 1 && safeChunks.first.isEmpty)) {
+      if (mounted) {
+        setState(() => _isReplying = false);
+      }
+      return;
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+
+    for (var i = 0; i < safeChunks.length; i++) {
       if (!mounted) return;
       setState(() {
         _messages.add(
-          _MiniMeChatMessage(
-            role: _ChatRole.assistant,
-            text:
-                'I could not reach your Mini-Me backend, so I cannot generate a response yet. Please verify the backend is running on port 8000 and send again.',
+          _MiniMeChatMessage(role: _ChatRole.assistant, text: safeChunks[i]),
+        );
+      });
+      _scrollToBottom();
+      await _persistMessages();
+
+      if (i < safeChunks.length - 1) {
+        await Future<void>.delayed(
+          Duration(
+            milliseconds: _assistantChunkDelayMs(
+              safeChunks[i],
+              i,
+              safeChunks.length,
+            ),
           ),
         );
-        _isReplying = false;
-      });
-      await _persistMessages();
-      _scrollToBottom();
+      }
     }
+
+    if (mounted) {
+      setState(() => _isReplying = false);
+    }
+  }
+
+  void _openFullChatSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MiniMeFullChatSheet(
+        miniMeName: context.read<AvatarStore>().miniMeName,
+        messages: _messages,
+        isReplying: _isReplying,
+      ),
+    );
+  }
+
+  Future<String> _geminiOrOffline({
+    required String userText,
+    required _MiniMeMoodContext moodContext,
+  }) async {
+    if (await _isOnline()) {
+      try {
+        final symptomContext = await _buildSymptomContext();
+        final history = _messages
+            .take(20)
+            .map(
+              (m) => MiniMeChatTurn(
+                role: m.role == _ChatRole.user ? 'user' : 'assistant',
+                text: m.text,
+              ),
+            )
+            .toList(growable: false);
+
+        final response = await MiniMeBackendService.instance.chat(
+          userMessage: userText,
+          moodLabel: moodContext.label,
+          moodIntensity: moodContext.intensity,
+          moodNotes: moodContext.notes,
+          recentMoods: moodContext.recentMoodSummary,
+          activeSymptoms: symptomContext,
+          history: history,
+        );
+
+        final reply = response.reply.trim().isNotEmpty
+            ? response.reply.trim()
+            : response.openingSuggestion.trim();
+        if (reply.isNotEmpty) {
+          return reply;
+        }
+      } catch (_) {
+        // fall through to local model/offline fallback
+      }
+    }
+
+    if (AppServices.isGemmaLoaded) {
+      try {
+        return await AppServices.gemma.generateMiniMeReply(
+          userMessage: userText,
+          moodLabel: moodContext.label,
+        );
+      } catch (_) {
+        // fall through to template fallback
+      }
+    }
+
+    return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
+  }
+
+  Future<bool> _isOnline() async {
+    return AppServices.isOnline();
+  }
+
+  String _buildOfflineReply({
+    required String userText,
+    required String moodLabel,
+  }) {
+    final q = userText.toLowerCase();
 
     if (q.contains('sleep') || q.contains('tired')) {
       return 'Tonight\'s sleep plan:\n1) Set a 20-minute wind-down reminder.\n2) Reduce light and screens.\n3) Write one thought to clear your mind before bed.';
@@ -324,11 +602,37 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 80,
+        0,
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
     });
+  }
+
+  void _expandCoachAndFocus() {
+    if (!_isCoachExpanded) {
+      setState(() => _isCoachExpanded = true);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_chatFocusNode.canRequestFocus) return;
+      FocusScope.of(context).requestFocus(_chatFocusNode);
+    });
+  }
+
+  void _toggleCoachExpanded() {
+    final next = !_isCoachExpanded;
+    setState(() => _isCoachExpanded = next);
+    if (next) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (!_chatFocusNode.canRequestFocus) return;
+        FocusScope.of(context).requestFocus(_chatFocusNode);
+      });
+      _scrollToBottom();
+    } else {
+      _chatFocusNode.unfocus();
+    }
   }
 
   Future<void> _openShop({
@@ -360,6 +664,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final canPop = Navigator.canPop(context);
 
     return Scaffold(
+      backgroundColor: cs.surface,
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
         title: Consumer<AvatarStore>(
@@ -435,17 +740,14 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           final intensity = latest?.intensity ?? 0;
           final glow = glowForIntensity(theme.colorScheme, intensity);
           final latestSuggestion = _latestSuggestionText();
+          final avatarMoodLabel = _avatarMoodFromIntelligence(
+            latest?.moodLabel,
+          );
 
           return Container(
             width: double.infinity,
             height: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [cs.surface, cs.surfaceContainerHighest],
-              ),
-            ),
+            color: cs.surface,
             child: SafeArea(
               child: Column(
                 children: [
@@ -459,9 +761,15 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       userName: widget.userName,
                       avatarStore: avatarStore,
                       glow: glow,
-                      moodLabel: latest?.moodLabel,
+                      moodLabel: avatarMoodLabel,
                       moodEmoji: latest?.emoji,
                       suggestionText: latestSuggestion,
+                      intelligenceState: _intelligence?.state,
+                      intelligenceInsights:
+                          _intelligence?.insights ?? const <String>[],
+                      intelligenceAlert: _intelligence?.alert,
+                      intelligenceMessage: _intelligence?.message,
+                      isIntelligenceLoading: _isIntelligenceLoading,
                       chatController: _chatController,
                       chatFocusNode: _chatFocusNode,
                       isReplying: _isReplying,
@@ -469,18 +777,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       messages: _messages,
                       scrollController: _scrollController,
                       onToggleCoachExpanded: () {
-                        setState(() {
-                          _isCoachExpanded = !_isCoachExpanded;
-                        });
-                        if (_isCoachExpanded) {
-                          _scrollToBottom();
-                        }
+                        _toggleCoachExpanded();
                       },
-                      onExpandCoach: () {
-                        if (!_isCoachExpanded) {
-                          setState(() => _isCoachExpanded = true);
-                        }
-                      },
+                      onExpandCoach: _expandCoachAndFocus,
+                      onOpenFullChat: _openFullChatSheet,
+                      onRequestDailySuggestions: _requestDailySuggestions,
                       onSend: _sendMessage,
                     ),
                   ),
@@ -503,6 +804,11 @@ class _AvatarPanel extends StatelessWidget {
     required this.moodLabel,
     required this.moodEmoji,
     required this.suggestionText,
+    required this.intelligenceState,
+    required this.intelligenceInsights,
+    required this.intelligenceAlert,
+    required this.intelligenceMessage,
+    required this.isIntelligenceLoading,
     required this.chatController,
     required this.chatFocusNode,
     required this.isReplying,
@@ -511,6 +817,8 @@ class _AvatarPanel extends StatelessWidget {
     required this.scrollController,
     required this.onToggleCoachExpanded,
     required this.onExpandCoach,
+    required this.onOpenFullChat,
+    required this.onRequestDailySuggestions,
     required this.onSend,
   });
 
@@ -521,6 +829,11 @@ class _AvatarPanel extends StatelessWidget {
   final String? moodLabel;
   final String? moodEmoji;
   final String suggestionText;
+  final Map<String, dynamic>? intelligenceState;
+  final List<String> intelligenceInsights;
+  final String? intelligenceAlert;
+  final String? intelligenceMessage;
+  final bool isIntelligenceLoading;
   final TextEditingController chatController;
   final FocusNode chatFocusNode;
   final bool isReplying;
@@ -529,18 +842,34 @@ class _AvatarPanel extends StatelessWidget {
   final ScrollController scrollController;
   final VoidCallback onToggleCoachExpanded;
   final VoidCallback onExpandCoach;
+  final VoidCallback onOpenFullChat;
+  final VoidCallback onRequestDailySuggestions;
   final VoidCallback onSend;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const collapsedComposerHeight = 96.0;
-        const collapsedBottomInset = 20.0;
-        const suggestionBubbleReserve = 72.0;
+        const chatDockHeight = 132.0;
+        const collapsedBottomInset = 16.0;
+        String? latestAssistantText;
+        for (final message in messages.reversed) {
+          if (message.role == _ChatRole.assistant &&
+              message.text.trim().isNotEmpty) {
+            latestAssistantText = message.text.trim();
+            break;
+          }
+        }
+        final showPromptBubble =
+          messages.isEmpty || (latestAssistantText?.isNotEmpty ?? false);
+        final promptBubbleText = messages.isEmpty
+          ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
+            : (latestAssistantText ??
+                  'What do you want to work on today, ${_displayFirstName(userName)}?');
+        final suggestionBubbleReserve = showPromptBubble ? 72.0 : 16.0;
         final availableAvatarHeight =
             constraints.maxHeight -
-            collapsedComposerHeight -
+            chatDockHeight -
             collapsedBottomInset -
             suggestionBubbleReserve;
         final avatarSize = math.min(
@@ -550,109 +879,110 @@ class _AvatarPanel extends StatelessWidget {
 
         return Stack(
           children: [
-            IgnorePointer(
-              ignoring: isCoachExpanded,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOut,
-                opacity: isCoachExpanded ? 0 : 1,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: 10,
-                      left: 18,
-                      right: 18,
-                      child: _AvatarSuggestionBubble(
-                        text: 'Hi, ${_displayFirstName(userName)}',
+            Stack(
+              children: [
+                if (showPromptBubble)
+                  Positioned(
+                    top: 10,
+                    left: 18,
+                    right: 18,
+                    child: _AvatarSuggestionBubble(
+                      text: promptBubbleText,
+                    ),
+                  ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      4,
+                      suggestionBubbleReserve - 8,
+                      4,
+                      chatDockHeight + collapsedBottomInset - 18,
+                    ),
+                    child: Align(
+                      alignment: const Alignment(0, -0.06),
+                      child: MiniMeAvatar(
+                        bodyModel: avatarStore.bodyModel,
+                        hairModel: avatarStore.hairModel,
+                        shirtModel: avatarStore.shirtModel,
+                        bodyWidthScale: avatarStore.bodyWidthScale,
+                        moodLabel: moodLabel,
+                        moodEmoji: moodEmoji,
+                        glow: glow,
+                        size: avatarSize,
                       ),
                     ),
-                    Positioned.fill(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          4,
-                          suggestionBubbleReserve - 8,
-                          4,
-                          collapsedComposerHeight + collapsedBottomInset - 10,
-                        ),
-                        child: Align(
-                          alignment: const Alignment(0, -0.06),
-                          child: MiniMeAvatar(
-                            bodyModel: avatarStore.bodyModel,
-                            hairModel: avatarStore.hairModel,
-                            shirtModel: avatarStore.shirtModel,
-                            bodyWidthScale: avatarStore.bodyWidthScale,
-                            moodLabel: moodLabel,
-                            moodEmoji: moodEmoji,
-                            glow: glow,
-                            size: avatarSize,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              left: 16,
-              right: 16,
-              top: isCoachExpanded ? 8 : constraints.maxHeight - 120,
-              bottom: 12,
-              child: IgnorePointer(
-                ignoring: !isCoachExpanded,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: isCoachExpanded ? 1 : 0,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: _InlineCoachPanel(
-                          miniMeName: miniMeName,
-                          messages: messages,
-                          isReplying: isReplying,
-                          scrollController: scrollController,
-                          moodLabel: moodLabel ?? 'Neutral',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _CoachComposerCard(
-                        miniMeName: miniMeName,
-                        chatController: chatController,
-                        chatFocusNode: chatFocusNode,
-                        isCoachExpanded: isCoachExpanded,
-                        isReplying: isReplying,
-                        messageCount: messages.length,
-                        onExpandCoach: onExpandCoach,
-                        onSend: onSend,
-                        onToggleCoachExpanded: onToggleCoachExpanded,
-                      ),
-                    ],
                   ),
                 ),
+              ],
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 12,
+              child: _CoachComposerCard(
+                miniMeName: miniMeName,
+                chatController: chatController,
+                chatFocusNode: chatFocusNode,
+                isReplying: isReplying,
+                onExpandCoach: onExpandCoach,
+                onOpenFullChat: onOpenFullChat,
+                onRequestDailySuggestions: onRequestDailySuggestions,
+                onSend: onSend,
               ),
             ),
-            if (!isCoachExpanded)
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 12,
-                child: _CoachComposerCard(
-                  miniMeName: miniMeName,
-                  chatController: chatController,
-                  chatFocusNode: chatFocusNode,
-                  isCoachExpanded: isCoachExpanded,
-                  isReplying: isReplying,
-                  messageCount: messages.length,
-                  onExpandCoach: onExpandCoach,
-                  onSend: onSend,
-                  onToggleCoachExpanded: onToggleCoachExpanded,
-                ),
-              ),
           ],
         );
       },
+    );
+  }
+}
+
+class _MainTypingBubble extends StatelessWidget {
+  const _MainTypingBubble({required this.miniMeName});
+
+  final String miniMeName;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 290),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: cs.surface.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: cs.shadow.withValues(alpha: 0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _TypingDots(),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  '$miniMeName is typing...',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -671,7 +1001,7 @@ class _AvatarSuggestionBubble extends StatelessWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 260),
+        constraints: const BoxConstraints(maxWidth: 330),
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.96, end: 1),
           duration: const Duration(milliseconds: 280),
@@ -700,8 +1030,8 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                 child: Text(
                   text,
                   textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: 4,
+                  overflow: TextOverflow.fade,
                   style: theme.textTheme.titleSmall?.copyWith(
                     color: cs.onSurface,
                     fontWeight: FontWeight.w800,
@@ -790,6 +1120,7 @@ String _displayFirstName(String userName) {
   return trimmed.split(RegExp(r'\s+')).first;
 }
 
+// ignore: unused_element
 class _InlineCoachPanel extends StatelessWidget {
   const _InlineCoachPanel({
     required this.miniMeName,
@@ -797,6 +1128,12 @@ class _InlineCoachPanel extends StatelessWidget {
     required this.isReplying,
     required this.messages,
     required this.scrollController,
+    required this.intelligenceState,
+    required this.intelligenceInsights,
+    required this.intelligenceAlert,
+    required this.intelligenceMessage,
+    required this.isIntelligenceLoading,
+    required this.onOpenFullChat,
   });
 
   final String miniMeName;
@@ -804,32 +1141,26 @@ class _InlineCoachPanel extends StatelessWidget {
   final bool isReplying;
   final List<_MiniMeChatMessage> messages;
   final ScrollController scrollController;
+  final Map<String, dynamic>? intelligenceState;
+  final List<String> intelligenceInsights;
+  final String? intelligenceAlert;
+  final String? intelligenceMessage;
+  final bool isIntelligenceLoading;
+  final VoidCallback onOpenFullChat;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final previewMessages = messages.length <= 3
+        ? messages
+        : messages.sublist(messages.length - 3);
 
     return Container(
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            cs.surface.withValues(alpha: 0.98),
-            cs.surfaceContainerHighest.withValues(alpha: 0.98),
-          ],
-        ),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withValues(alpha: 0.16),
-            blurRadius: 24,
-            offset: const Offset(0, 14),
-          ),
-        ],
       ),
       child: SingleChildScrollView(
         physics: const NeverScrollableScrollPhysics(),
@@ -837,117 +1168,254 @@ class _InlineCoachPanel extends StatelessWidget {
           height: 220,
           child: Column(
             children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: cs.primaryContainer,
-                    border: Border.all(
-                      color: cs.primary.withValues(alpha: 0.16),
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.psychology_alt_rounded,
-                    size: 20,
-                    color: cs.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        miniMeName,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w900,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: cs.primaryContainer,
+                        border: Border.all(
+                          color: cs.primary.withValues(alpha: 0.16),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                      child: Icon(
+                        Icons.psychology_alt_rounded,
+                        size: 20,
+                        color: cs.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _CoachStatusPill(
-                            icon: Icons.favorite_rounded,
-                            label: 'Mood $moodLabel',
-                            background: cs.secondaryContainer,
-                            foreground: cs.onSecondaryContainer,
+                          Text(
+                            miniMeName,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                          _CoachStatusPill(
-                            icon: Icons.forum_rounded,
-                            label: '${messages.length} messages',
-                            background: cs.surface,
-                            foreground: cs.onSurfaceVariant,
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _CoachStatusPill(
+                                icon: Icons.favorite_rounded,
+                                label: 'Mood $moodLabel',
+                                background: cs.secondaryContainer,
+                                foreground: cs.onSecondaryContainer,
+                              ),
+                              _CoachStatusPill(
+                                icon: Icons.forum_rounded,
+                                label: '${messages.length} messages',
+                                background: cs.surface,
+                                foreground: cs.onSurfaceVariant,
+                              ),
+                              if (intelligenceState != null)
+                                _CoachStatusPill(
+                                  icon: Icons.bedtime_rounded,
+                                  label: intelligenceState!['low_sleep'] == true
+                                      ? 'Low sleep'
+                                      : 'Sleep OK',
+                                  background: cs.surface,
+                                  foreground: cs.onSurfaceVariant,
+                                ),
+                              if (intelligenceState != null)
+                                _CoachStatusPill(
+                                  icon: Icons.directions_run_rounded,
+                                  label: intelligenceState!['inactive'] == true
+                                      ? 'Inactive'
+                                      : 'Active',
+                                  background: cs.surface,
+                                  foreground: cs.onSurfaceVariant,
+                                ),
+                            ],
                           ),
                         ],
                       ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (isReplying)
+                          Container(
+                            margin: const EdgeInsets.only(top: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: cs.primaryContainer,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              'Thinking',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: cs.onPrimaryContainer,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        FilledButton.tonalIcon(
+                          onPressed: onOpenFullChat,
+                          icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                          label: const Text('Full chat'),
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (isIntelligenceLoading ||
+                  intelligenceInsights.isNotEmpty ||
+                  (intelligenceAlert?.isNotEmpty ?? false) ||
+                  (intelligenceMessage?.isNotEmpty ?? false))
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.insights_rounded,
+                            size: 16,
+                            color: cs.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Signals',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (isIntelligenceLoading)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Updating...',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      if ((intelligenceAlert?.isNotEmpty ?? false))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Alert: ${intelligenceAlert!}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.error,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      if ((intelligenceMessage?.isNotEmpty ?? false))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            intelligenceMessage!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurface,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                      if (intelligenceInsights.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: intelligenceInsights
+                                .take(2)
+                                .map(
+                                  (insight) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 4),
+                                    child: Text(
+                                      '• $insight',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                if (isReplying)
-                  Container(
-                    margin: const EdgeInsets.only(top: 2),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      'Thinking',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: cs.onPrimaryContainer,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.6)),
-          Expanded(
-            child: messages.isEmpty && !isReplying
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'Start the conversation below and $miniMeName will build on your latest check-ins.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          height: 1.35,
+              Divider(
+                height: 1,
+                color: cs.outlineVariant.withValues(alpha: 0.6),
+              ),
+              Expanded(
+                child: messages.isEmpty && !isReplying
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'Start the conversation below and $miniMeName will build on your latest check-ins.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              height: 1.35,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-                    itemCount: messages.length + (isReplying ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (isReplying && index == messages.length) {
-                        return _TypingBubble(miniMeName: miniMeName);
-                      }
+                      )
+                    : ListView.builder(
+                        reverse: true,
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                        itemCount: previewMessages.length + (isReplying ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (isReplying && index == 0) {
+                            return _TypingBubble(miniMeName: miniMeName);
+                          }
 
-                      final message = messages[index];
-                      return _ChatBubbleCard(
-                        miniMeName: miniMeName,
-                        message: message,
-                        isUser: message.role == _ChatRole.user,
-                      );
-                    },
-                  ),
-          ),
-          ],
+                          final messageIndex = isReplying ? index - 1 : index;
+                          final message =
+                              previewMessages[previewMessages.length - 1 - messageIndex];
+                          return _ChatBubbleCard(
+                            miniMeName: miniMeName,
+                            message: message,
+                            isUser: message.role == _ChatRole.user,
+                            maxBodyLines: 3,
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
         ),
       ),
@@ -960,23 +1428,21 @@ class _CoachComposerCard extends StatelessWidget {
     required this.miniMeName,
     required this.chatController,
     required this.chatFocusNode,
-    required this.isCoachExpanded,
     required this.isReplying,
-    required this.messageCount,
     required this.onExpandCoach,
+    required this.onOpenFullChat,
+    required this.onRequestDailySuggestions,
     required this.onSend,
-    required this.onToggleCoachExpanded,
   });
 
   final String miniMeName;
   final TextEditingController chatController;
   final FocusNode chatFocusNode;
-  final bool isCoachExpanded;
   final bool isReplying;
-  final int messageCount;
   final VoidCallback onExpandCoach;
+  final VoidCallback onOpenFullChat;
+  final VoidCallback onRequestDailySuggestions;
   final VoidCallback onSend;
-  final VoidCallback onToggleCoachExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -984,69 +1450,38 @@ class _CoachComposerCard extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: cs.surface.withValues(alpha: 0.98),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
-        boxShadow: [
-          BoxShadow(
-            color: cs.shadow.withValues(alpha: 0.14),
-            blurRadius: 22,
-            offset: const Offset(0, 12),
-          ),
-        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      miniMeName,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      messageCount == 0
-                          ? 'Ask for support, reflection, or your next step.'
-                          : 'Continue the thread with $miniMeName.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
+          if (isReplying) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: IgnorePointer(
+                ignoring: true,
+                child: _MainTypingBubble(miniMeName: miniMeName),
               ),
-              const SizedBox(width: 12),
-              _CoachStatusPill(
-                icon: Icons.forum_rounded,
-                label: '$messageCount',
-                background: cs.primaryContainer,
-                foreground: cs.onPrimaryContainer,
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: onToggleCoachExpanded,
-                tooltip: isCoachExpanded ? 'Hide guidance' : 'Show guidance',
-                icon: Icon(
-                  isCoachExpanded
-                      ? Icons.keyboard_arrow_down_rounded
-                      : Icons.keyboard_arrow_up_rounded,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+            ),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              IconButton.filledTonal(
+                onPressed: onOpenFullChat,
+                tooltip: 'Open full chat',
+                icon: const Icon(Icons.open_in_full_rounded),
+              ),
+              const SizedBox(width: 6),
+              IconButton.filledTonal(
+                onPressed: isReplying ? null : onRequestDailySuggestions,
+                tooltip: 'Daily suggestions',
+                icon: const Icon(Icons.tips_and_updates_rounded),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: TextField(
                   controller: chatController,
@@ -1058,9 +1493,13 @@ class _CoachComposerCard extends StatelessWidget {
                   onTap: onExpandCoach,
                   decoration: InputDecoration(
                     hintText: 'Message $miniMeName...',
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
                     isDense: true,
                     filled: true,
-                    fillColor: cs.surface.withValues(alpha: 0.72),
+                    fillColor: cs.surfaceContainerHighest,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 13,
@@ -1079,18 +1518,29 @@ class _CoachComposerCard extends StatelessWidget {
                     ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide(
-                        color: cs.outlineVariant.withValues(alpha: 0.7),
-                      ),
+                      borderSide: BorderSide.none,
                     ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                    height: 1.3,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               FilledButton(
                 onPressed: isReplying ? null : onSend,
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size(54, 54),
+                  minimumSize: const Size(50, 50),
                   padding: EdgeInsets.zero,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18),
@@ -1155,11 +1605,13 @@ class _ChatBubbleCard extends StatelessWidget {
     required this.miniMeName,
     required this.message,
     required this.isUser,
+    this.maxBodyLines,
   });
 
   final String miniMeName;
   final _MiniMeChatMessage message;
   final bool isUser;
+  final int? maxBodyLines;
 
   @override
   Widget build(BuildContext context) {
@@ -1168,9 +1620,6 @@ class _ChatBubbleCard extends StatelessWidget {
     final bubbleColor = isUser
         ? cs.primaryContainer.withValues(alpha: 0.96)
         : cs.surface.withValues(alpha: 0.92);
-    final borderColor = isUser
-        ? cs.primary.withValues(alpha: 0.24)
-        : cs.outlineVariant.withValues(alpha: 0.5);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -1187,12 +1636,11 @@ class _ChatBubbleCard extends StatelessWidget {
               bottomLeft: Radius.circular(isUser ? 20 : 8),
               bottomRight: Radius.circular(isUser ? 8 : 20),
             ),
-            border: Border.all(color: borderColor),
             boxShadow: [
               BoxShadow(
-                color: cs.shadow.withValues(alpha: 0.08),
-                blurRadius: 10,
-                offset: const Offset(0, 6),
+                color: cs.shadow.withValues(alpha: 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -1238,9 +1686,15 @@ class _ChatBubbleCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 message.text,
+                maxLines: maxBodyLines,
+                overflow: maxBodyLines == null
+                    ? TextOverflow.visible
+                    : TextOverflow.ellipsis,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: isUser ? cs.onPrimaryContainer : cs.onSurface,
-                  height: 1.35,
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w500,
+                  height: 1.42,
                 ),
               ),
             ],
@@ -1276,7 +1730,6 @@ class _TypingBubble extends StatelessWidget {
               bottomLeft: Radius.circular(8),
               bottomRight: Radius.circular(20),
             ),
-            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1348,6 +1801,79 @@ class _TypingDotsState extends State<_TypingDots>
           }),
         );
       },
+    );
+  }
+}
+
+class _MiniMeFullChatSheet extends StatelessWidget {
+  const _MiniMeFullChatSheet({
+    required this.miniMeName,
+    required this.messages,
+    required this.isReplying,
+  });
+
+  final String miniMeName;
+  final List<_MiniMeChatMessage> messages;
+  final bool isReplying;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Full chat',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                reverse: true,
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                itemCount: messages.length + (isReplying ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (isReplying && index == 0) {
+                    return _TypingBubble(miniMeName: miniMeName);
+                  }
+
+                  final messageIndex = isReplying ? index - 1 : index;
+                  final message = messages[messages.length - 1 - messageIndex];
+                  return _ChatBubbleCard(
+                    miniMeName: miniMeName,
+                    message: message,
+                    isUser: message.role == _ChatRole.user,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

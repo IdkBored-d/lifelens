@@ -1,0 +1,217 @@
+import 'package:lifelens/database/symptom_entry.dart';
+import 'package:lifelens/app_services.dart';
+import 'package:lifelens/services/quick_track_service.dart';
+
+/// Symptoms auto-detector and keyword matcher.
+/// Automatically detects symptom keywords from text and tracks frequency.
+class SymptomAutoDetectorService {
+  /// Common symptom keywords and their variations.
+  static const Map<String, List<String>> symptomKeywords = {
+    'headache': ['headache', 'head ache', 'head pain', 'migraines', 'migraine'],
+    'nausea': ['nausea', 'nauseous', 'queasy'],
+    'fatigue': ['fatigue', 'tired', 'exhausted', 'exhaustion', 'energy loss'],
+    'fever': ['fever', 'feverish', 'high temperature'],
+    'cough': ['cough', 'coughing', 'persistent cough'],
+    'sore throat': ['sore throat', 'throat pain', 'throat ache', 'pharyngitis'],
+    'congestion': ['congestion', 'congested', 'stuffy nose', 'nasal congestion'],
+    'runny nose': ['runny nose', 'runny', 'rhinitis'],
+    'sneezing': ['sneezing', 'sneeze', 'sneezes'],
+    'shivers': ['shivers', 'shivering', 'chills'],
+    'body ache': ['body ache', 'muscle ache', 'muscle pain', 'aches', 'myalgia'],
+    'dizziness': ['dizziness', 'dizzy', 'vertigo'],
+    'back pain': ['back pain', 'backache', 'lower back pain'],
+    'neck pain': ['neck pain', 'neck ache', 'stiff neck'],
+    'joint pain': ['joint pain', 'arthralgia'],
+    'stomach pain': ['stomach pain', 'stomach ache', 'abdominal pain', 'belly pain'],
+    'diarrhea': ['diarrhea', 'diarrhoea', 'loose stool', 'loose stools'],
+    'constipation': ['constipation', 'constipated'],
+    'rash': ['rash', 'skin rash', 'hives'],
+    'anxiety': ['anxiety', 'anxious', 'worried', 'nervous'],
+    'depression': ['depression', 'depressed', 'sad', 'sadness'],
+    'insomnia': ['insomnia', 'cannot sleep', 'can\'t sleep', 'trouble sleeping'],
+    'sleep issues': ['sleep issues', 'sleeping badly', 'poor sleep'],
+    'brain fog': ['brain fog', 'foggy', 'confusion', 'confused', 'mental fog'],
+    'memory issues': ['memory issues', 'forgetfulness', 'forgetting'],
+    'swelling': ['swelling', 'swollen', 'edema'],
+    'shortness of breath': ['shortness of breath', 'short of breath', 'breathless', 'difficulty breathing'],
+    'chest pain': ['chest pain', 'chest ache'],
+    'palpitations': ['palpitations', 'heart pounding', 'irregular heartbeat'],
+    'weakiness': ['weakness', 'weak', 'feeling weak'],
+  };
+
+  /// Canonical symptom names (used as primary keys).
+  static final List<String> canonicalSymptoms = [
+    'headache',
+    'nausea',
+    'fatigue',
+    'fever',
+    'cough',
+    'sore throat',
+    'congestion',
+    'runny nose',
+    'sneezing',
+    'shivers',
+    'body ache',
+    'dizziness',
+    'back pain',
+    'neck pain',
+    'joint pain',
+    'stomach pain',
+    'diarrhea',
+    'constipation',
+    'rash',
+    'anxiety',
+    'depression',
+    'insomnia',
+    'sleep issues',
+    'brain fog',
+    'memory issues',
+    'swelling',
+    'shortness of breath',
+    'chest pain',
+    'palpitations',
+    'weakness',
+  ];
+
+  /// Detects symptoms from free-form text and returns list of matched symptoms.
+  static List<String> detectSymptomsFromText(String text) {
+    final lowerText = text.toLowerCase().trim();
+    if (lowerText.isEmpty) return [];
+
+    final detected = <String>{};
+
+    // Match keywords
+    for (final entry in symptomKeywords.entries) {
+      final canonical = entry.key;
+      final keywords = entry.value;
+
+      for (final keyword in keywords) {
+        // Use word boundaries to avoid partial matches
+        // e.g., 'tired' shouldn't match in 'tiredx'
+        final pattern = RegExp(r'\b' + RegExp.escape(keyword) + r'\b',
+            caseSensitive: false);
+        if (pattern.hasMatch(lowerText)) {
+          detected.add(canonical);
+          break;
+        }
+      }
+    }
+
+    return detected.toList();
+  }
+
+  /// Auto-registers detected symptoms as a new SymptomEntry.
+  /// Returns true if symptoms were detected and registered.
+  static Future<bool> autoRegisterDetectedSymptoms(
+    String sourceText,
+    String source, // e.g., 'mood_log', 'chat_history'
+  ) async {
+    final detected = detectSymptomsFromText(sourceText);
+    if (detected.isEmpty) {
+      return false;
+    }
+
+    final now = DateTime.now();
+    final today = now.toIso8601String().split('T')[0]; // YYYY-MM-DD
+
+    try {
+      final entry = SymptomEntry()
+        ..date = today
+        ..rawSymptoms = detected.join(', ')
+        ..symptomList = detected
+        ..predictedAilment = 'auto-detected'
+        ..disEmbedScore = null
+        ..diagnosesJson = '[]'
+        ..resolvedBy = 'auto_detector'
+        ..ragUsed = false
+        ..wasOffline = false
+        ..status = 'active'
+        ..timestamp = now
+        ..updatedAt = now;
+
+      await AppServices.isar.writeSymptomEntry(entry);
+
+      // Update quick-track file
+      await AppServices.quickTrack.appendSymptomEntry(
+        entry.toQuickTrackEntry(),
+      );
+
+      return true;
+    } catch (e) {
+      print('Error auto-registering symptoms: $e');
+      return false;
+    }
+  }
+
+  /// Gets all symptoms with their frequency counts (sorted by frequency descending).
+  static Future<List<SymptomFrequency>> getSymptomFrequencies() async {
+    try {
+      final entries = await AppServices.isar.getAllSymptomEntries();
+
+      final counts = <String, int>{};
+
+      for (final entry in entries) {
+        for (final symptom in entry.symptomList) {
+          final normalized = symptom.trim().toLowerCase();
+          if (normalized.isNotEmpty) {
+            counts[normalized] = (counts[normalized] ?? 0) + 1;
+          }
+        }
+      }
+
+      final items = counts.entries
+          .map((e) => SymptomFrequency(symptom: e.key, count: e.value))
+          .toList()
+        ..sort((a, b) => b.count.compareTo(a.count));
+
+      return items;
+    } catch (e) {
+      print('Error getting symptom frequencies: $e');
+      return [];
+    }
+  }
+
+  /// Gets frequency count for a specific symptom.
+  static Future<int> getSymptomCount(String symptom) async {
+    try {
+      final entries = await AppServices.isar.getAllSymptomEntries();
+
+      final normalized = symptom.trim().toLowerCase();
+      int count = 0;
+
+      for (final entry in entries) {
+        for (final s in entry.symptomList) {
+          if (s.trim().toLowerCase() == normalized) {
+            count += 1;
+            break; // Count each entry only once per symptom
+          }
+        }
+      }
+
+      return count;
+    } catch (e) {
+      print('Error getting symptom count: $e');
+      return 0;
+    }
+  }
+}
+
+/// Single symptom frequency record.
+class SymptomFrequency {
+  const SymptomFrequency({required this.symptom, required this.count});
+
+  final String symptom;
+  final int count;
+}
+
+/// Extension to convert SymptomEntry to SymptomLogEntry format for quick-track.
+extension SymptomEntryToQuickTrack on SymptomEntry {
+  SymptomLogEntry toQuickTrackEntry() {
+    return SymptomLogEntry(
+      date: date,
+      symptoms: symptomList,
+      predictedAilment: predictedAilment,
+      status: status,
+    );
+  }
+}

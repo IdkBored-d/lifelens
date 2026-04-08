@@ -1,11 +1,10 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lifelens/services/mood_log_draft_storage_service.dart';
-import 'package:provider/provider.dart';
-import 'moodlog_store.dart';
 import 'package:lifelens/database/isar_service.dart';
-// TODO: remove — unused after pipeline wiring
 import 'package:lifelens/database/mood_entry.dart';
+import 'package:lifelens/services/symptom_auto_detector_service.dart';
 
 enum LogSource { quickAction, tab }
 
@@ -408,7 +407,9 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: (selectedMood == -1 || _isSaving) ? null : () async {
+                    onPressed: (selectedMood == -1 || _isSaving)
+                        ? null
+                        : () async {
                             HapticFeedback.mediumImpact();
                             setState(() => _isSaving = true);
 
@@ -416,25 +417,22 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             final notes = notesCtrl.text.trim();
 
                             // Compose log text: notes are primary, tags + intensity appended for ML context.
-                            final tagPart = tags.isNotEmpty ? ' [context: ${tags.join(', ')}]' : '';
-                            final userLog = '${notes.isNotEmpty ? notes : m.label}$tagPart [intensity: ${intensity.toInt()}/5]';
-
-                            // Capture context-dependent objects before the async gap.
-                            final messenger = ScaffoldMessenger.of(context);
-                            final nav       = Navigator.of(context);
+                            final tagPart = tags.isNotEmpty
+                                ? ' [context: ${tags.join(', ')}]'
+                                : '';
+                            final userLog =
+                                '${notes.isNotEmpty ? notes : m.label}$tagPart [intensity: ${intensity.toInt()}/5]';
 
                             try {
-                              final noteText = moodCheckIn.notes.trim();
-                              final persistedSummary = noteText.isEmpty
-                                  ? 'Intensity ${moodCheckIn.intensity}/5'
-                                  : 'Intensity ${moodCheckIn.intensity}/5 · $noteText';
+                              final now = DateTime.now();
+                              final persistedSummary = notes.isEmpty
+                                  ? 'Intensity ${intensity.toInt()}/5'
+                                  : 'Intensity ${intensity.toInt()}/5 · $notes';
                               final moodEntry = MoodEntry()
                                 ..date = now.toIso8601String().substring(0, 10)
-                                ..rawLog = noteText.isEmpty
-                                    ? moodCheckIn.moodLabel
-                                    : noteText
+                                ..rawLog = userLog
                                 ..condensedLog = persistedSummary
-                                ..resolvedMood = moodCheckIn.moodLabel
+                                ..resolvedMood = m.label
                                 ..resolvedBy = "user"
                                 ..mobileBertPrediction = null
                                 ..mobileBertTopProb = null
@@ -445,6 +443,14 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               await IsarService.instance.init();
                               await IsarService.instance.writeMoodEntry(
                                 moodEntry,
+                              );
+                              
+                              // Auto-detect and register symptoms from user notes
+                              unawaited(
+                                SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
+                                  userLog,
+                                  'mood_log',
+                                ),
                               );
                             } catch (e) {
                               // Optionally handle error (e.g., show a snackbar)

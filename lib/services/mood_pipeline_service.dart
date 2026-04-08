@@ -9,6 +9,7 @@ import 'gemma_service.dart';
 import 'gemini_service.dart';
 import '../database/isar_service.dart';
 import '../database/mood_entry.dart';
+import 'symptom_auto_detector_service.dart';
 
 /// Orchestrates USE CASE 1: Mood logging pipeline.
 ///
@@ -246,7 +247,23 @@ class MoodPipelineService {
         log:           condensed,
         predictedMood: resolvedMood,
         fitnessScore:  currentFitnessScore,
-      )).catchError((Object e) => debugPrint('[MoodPipeline] QuickTrack write failed: $e')),
+      )).catchError((Object e) {
+        debugPrint('[MoodPipeline] QuickTrack write failed: $e');
+        return null;
+      }),
+    );
+
+    // ── 3. AUTO-DETECT SYMPTOMS FROM USER LOG ────────────────────────────────
+    // Unawaited: runs in background without blocking the main result.
+    // Failed detection doesn't affect mood pipeline success.
+    unawaited(
+      SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
+        userLog,
+        'mood_log',
+      ).catchError((Object e) {
+        debugPrint('[MoodPipeline] Symptom auto-detection failed: $e');
+        return false;
+      }),
     );
 
     return MoodPipelineResult(

@@ -10,6 +10,7 @@ import logging
 from typing import List, Any
 import time
 import json
+import asyncio
 
 from models.schemas import (
     SymptomInput,
@@ -26,8 +27,12 @@ from models.schemas import (
     MiniMeExerciseRecommendationRequest,
     MiniMeExerciseRecommendationResponse,
     MiniMeExerciseRecommendationItem,
+    IntelligenceAnalyzeRequest,
+    IntelligenceAnalyzeResponse,
 )
 from services.gemini_service import get_analysis_service, GeminiAnalysisService
+from services.intelligence import analyze_logs
+from services.intelligence_policy import get_intelligence_policy
 from config.settings import get_settings
 from google.genai import types
 
@@ -61,30 +66,26 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Lifelens API...")
     logger.info(f"Gemini API configured: {bool(settings.gemini_api_key)}")
     logger.info(f"Weaviate URL: {settings.weaviate_url}")
-    
-    # Initialize services
-    analysis_service = None
-    rag_service = None
-    try:
-        analysis_service = get_analysis_service()
-    except Exception as e:
-        logger.error(f"Gemini analysis service initialization failed: {e}")
 
+    # Keep startup fast: heavy services initialize lazily on first request.
     try:
-        from services.rag_service import get_rag_service
-        rag_service = get_rag_service()
+        policy = get_intelligence_policy()
+        logger.info(f"Intelligence policy loaded: version={policy.get('version', 'unknown')}")
     except Exception as e:
-        logger.error(f"RAG service initialization failed: {e}")
+        logger.error(f"Intelligence policy initialization failed: {e}")
 
-    if analysis_service or rag_service:
-        logger.info("Core services initialized with graceful fallbacks")
+    logger.info("Core services set to lazy initialization with graceful fallbacks")
     
     yield
     
     # Shutdown
     logger.info("Shutting down Lifelens API...")
-    if rag_service is not None:
-        rag_service.close()
+    try:
+        from services.rag_service import _rag_service
+        if _rag_service is not None:
+            _rag_service.close()
+    except Exception:
+        pass
 
 
 # Create FastAPI app
@@ -109,12 +110,13 @@ app.add_middleware(
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Handle HTTP exceptions"""
+    payload = ErrorResponse(
+        error=exc.detail,
+        detail=str(exc)
+    )
     return JSONResponse(
         status_code=exc.status_code,
-        content=ErrorResponse(
-            error=exc.detail,
-            detail=str(exc)
-        ).dict()
+        content=payload.model_dump(mode="json")
     )
 
 
@@ -122,12 +124,13 @@ async def http_exception_handler(request, exc):
 async def general_exception_handler(request, exc):
     """Handle general exceptions"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    payload = ErrorResponse(
+        error="Internal server error",
+        detail=str(exc)
+    )
     return JSONResponse(
         status_code=500,
-        content=ErrorResponse(
-            error="Internal server error",
-            detail=str(exc)
-        ).dict()
+        content=payload.model_dump(mode="json")
     )
 
 
@@ -141,8 +144,13 @@ async def health_check():
 
     try:
         from services.rag_service import get_rag_service
-        rag_service = get_rag_service()
-        doc_count = await rag_service.get_document_count()
+        rag_service = await asyncio.wait_for(
+            asyncio.to_thread(get_rag_service), timeout=1.5
+        )
+        doc_count = await asyncio.wait_for(rag_service.get_document_count(), timeout=1.5)
+    except TimeoutError:
+        rag_error = "RAG health check timed out"
+        weaviate_status = "degraded"
     except Exception as e:
         rag_error = str(e)
         weaviate_status = "degraded"
@@ -172,6 +180,7 @@ async def root():
             "health": "/health",
             "analyze": "/api/v1/symptoms/analyze",
             "batch_analyze": "/api/v1/symptoms/batch-analyze",
+            "intelligence_analyze": "/api/v1/intelligence/analyze",
             "minime_chat": "/api/v1/minime/chat",
             "minime_suggestions": "/api/v1/minime/suggestions",
             "disclaimer": "/api/v1/disclaimer",
@@ -552,6 +561,30 @@ def _build_exercise_recommendations_fallback(
         recommendations=recommendations,
         source='fallback',
     )
+
+
+@app.post(
+    "/api/v1/intelligence/analyze",
+    response_model=IntelligenceAnalyzeResponse,
+    tags=["Intelligence"],
+    summary="Analyze behavior logs into state, insights, and actions"
+)
+async def intelligence_analyze(payload: IntelligenceAnalyzeRequest):
+    """Compute state locally and optionally let Gemini write a supportive message."""
+    logs = {
+        "sleep": payload.sleep,
+        "mood": payload.mood,
+        "exercise": payload.exercise,
+        "symptom_count": payload.symptom_count,
+    }
+    try:
+        return analyze_logs(logs, include_gemini_message=payload.include_gemini_message)
+    except Exception as e:
+        logger.error(f"Intelligence analyze failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Intelligence analysis failed: {str(e)}"
+        )
 
 
 @app.post(
