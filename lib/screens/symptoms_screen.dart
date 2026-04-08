@@ -42,8 +42,13 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   }
 
   Future<void> _saveSymptoms() async {
+    final rawInput = _symptomsController.text.trim();
     final parsedSymptoms = _parseSymptoms();
-    if (parsedSymptoms.isEmpty) {
+    final detectedSymptoms = SymptomAutoDetectorService.detectSymptomsFromText(rawInput);
+    final symptomsForPipeline =
+        detectedSymptoms.isNotEmpty ? detectedSymptoms : parsedSymptoms;
+
+    if (symptomsForPipeline.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter at least one symptom.'),
@@ -61,7 +66,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     try {
       final online = await AppServices.isOnline();
       final result = await AppServices.symptomPipeline.analyze(
-        userSymptoms: parsedSymptoms.join(', '),
+        userSymptoms: symptomsForPipeline.join(', '),
         isOnline:     online,
       );
 

@@ -36,7 +36,7 @@ class SymptomAutoDetectorService {
     'shortness of breath': ['shortness of breath', 'short of breath', 'breathless', 'difficulty breathing'],
     'chest pain': ['chest pain', 'chest ache'],
     'palpitations': ['palpitations', 'heart pounding', 'irregular heartbeat'],
-    'weakiness': ['weakness', 'weak', 'feeling weak'],
+    'weakness': ['weakness', 'weak', 'feeling weak'],
   };
 
   /// Canonical symptom names (used as primary keys).

@@ -92,7 +92,9 @@ class SymptomPipelineService {
     required List<double>         embedding,
     required SymptomPipelineResult previousResult,
   }) async {
-    final ragResults  = await _weaviate.queryByVector(embedding, topK: 5);
+    final ragResults  = embedding.isNotEmpty
+        ? await _weaviate.queryByVector(embedding, topK: 5)
+        : <WeaviateDisease>[];
     final ragContext  = _weaviate.buildRagContext(ragResults);
     final context     = await _quickTrack.buildSymptomContext();
     final prevDiseases = previousResult.diagnoses
@@ -162,7 +164,11 @@ class SymptomPipelineService {
   }) async {
     List<WeaviateDisease> ragResults = [];
     if (isOnline && embedding.isNotEmpty) {
-      ragResults = await _weaviate.queryByVector(embedding, topK: 5);
+      try {
+        ragResults = await _weaviate.queryByVector(embedding, topK: 5);
+      } catch (e) {
+        print('[SymptomPipeline] Weaviate query failed (continuing without RAG): $e');
+      }
     }
     // Fix 4: Gate on isOnline, not ragResults.isNotEmpty — same fix as
     // _expandWithGemma. An online user with zero Weaviate results should NOT
@@ -170,15 +176,52 @@ class SymptomPipelineService {
     final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
     final context   = await _quickTrack.buildSymptomContext();
 
-    final gemmaRaw = await _gemma.analyzeSymptomDirectly(
-      userSymptoms: userSymptoms,
-      context:      context,
-      ragContext:   ragContext,
-    );
+    try {
+      final gemmaRaw = await _gemma.analyzeSymptomDirectly(
+        userSymptoms: userSymptoms,
+        context:      context,
+        ragContext:   ragContext,
+      );
+
+      return _buildAndStore(
+        userSymptoms:       userSymptoms,
+        diagnoses:          _parseGemmaDiagnoses(gemmaRaw),
+        ragUsed:            ragResults.isNotEmpty,
+        isOffline:          !isOnline,
+        resolvedBy:         EscalationLevel.gemma,
+        disEmbedPrediction: null,
+        disEmbedResult:     disEmbedResult,
+      );
+    } catch (gemmaError) {
+      print('[SymptomPipeline] Gemma analysis failed: $gemmaError');
+    }
+
+    if (isOnline) {
+      try {
+        final geminiRaw = await _gemini.analyzeSymptoms(
+          userSymptoms:      userSymptoms,
+          context:           context,
+          ragContext:        ragContext ?? '',
+          previousDiagnoses: '',
+        );
+
+        return _buildAndStore(
+          userSymptoms:       userSymptoms,
+          diagnoses:          _parseGemmaDiagnoses(geminiRaw),
+          ragUsed:            ragResults.isNotEmpty,
+          isOffline:          false,
+          resolvedBy:         EscalationLevel.gemini,
+          disEmbedPrediction: null,
+          disEmbedResult:     disEmbedResult,
+        );
+      } catch (geminiError) {
+        print('[SymptomPipeline] Gemini fallback failed: $geminiError');
+      }
+    }
 
     return _buildAndStore(
       userSymptoms:       userSymptoms,
-      diagnoses:          _parseGemmaDiagnoses(gemmaRaw),
+      diagnoses:          _fallbackDiagnoses('AI analysis unavailable. Symptoms were still saved.'),
       ragUsed:            ragResults.isNotEmpty,
       isOffline:          !isOnline,
       resolvedBy:         EscalationLevel.gemma,
@@ -228,12 +271,17 @@ class SymptomPipelineService {
     await IsarService.instance.writeSymptomEntry(symptomEntry);
 
     // ── 2. WRITE TO QUICK-TRACKING FILE ──────────────────────────────────
-    await _quickTrack.appendSymptomEntry(SymptomLogEntry(
-      date:             dateStr,
-      symptoms:         symptomList,
-      predictedAilment: topDisease,
-      status:           'active',
-    ));
+    try {
+      await _quickTrack.appendSymptomEntry(SymptomLogEntry(
+        date:             dateStr,
+        symptoms:         symptomList,
+        predictedAilment: topDisease,
+        status:           'active',
+      ));
+    } catch (e) {
+      // Keep save successful if quick-track write fails; ISAR remains source of truth.
+      print('[SymptomPipeline] Quick-track write failed (non-fatal): $e');
+    }
 
     return SymptomPipelineResult(
       userSymptoms:       userSymptoms,
