@@ -125,6 +125,15 @@ class MiniMeChatRequest(BaseModel):
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
     user_id_hash: Optional[str] = Field(None, max_length=128)
+    # Intelligence context (optional — passed through from client-side analysis)
+    intelligence_tier: Optional[str] = Field(None, max_length=20)
+    intelligence_phase: Optional[str] = Field(None, max_length=30)
+    intelligence_insights: List[str] = Field(default_factory=list, max_items=5)
+    intelligence_actions: List[str] = Field(default_factory=list, max_items=5)
+    intelligence_alert: Optional[str] = Field(None, max_length=500)
+    intelligence_risk_score: Optional[float] = Field(None, ge=0, le=100)
+    intelligence_confidence: Optional[float] = Field(None, ge=0, le=1)
+    intelligence_state: Optional[Dict[str, bool]] = Field(None)
 
     @validator('user_message')
     def validate_user_message(cls, v):

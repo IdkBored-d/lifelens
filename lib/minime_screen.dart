@@ -50,8 +50,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     super.initState();
     _chatSessionService = ChatSessionService(AppServices.quickTrack, AppServices.gemma);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Intelligence loads first — drives opening message + avatar mood.
+      // 3-second timeout so a slow/offline backend doesn't block the screen.
+      await _refreshIntelligence().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {},
+      );
       _bootstrapMiniMe();
-      _refreshIntelligence();
       final moodStore = context.read<MoodLogStore>();
       final moodCtx   = _buildMoodContext(moodStore);
       _sessionId = await _chatSessionService.startSession(
@@ -143,6 +148,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         recentMoods: moodContext.recentMoodSummary,
         activeSymptoms: symptomContext,
         history: const [],
+        intelligence: _intelligence,
       );
 
       if (!mounted) return;
@@ -157,6 +163,27 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       });
       await _persistMessages();
       await _refreshIntelligence();
+
+      // Proactive check-in for acute-risk users — fires only when both
+      // user_phase == 'acute-risk' and an alert string is set.
+      if (mounted &&
+          _intelligence != null &&
+          _intelligence!.userPhase == 'acute-risk' &&
+          (_intelligence!.alert?.isNotEmpty ?? false)) {
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        if (!mounted) return;
+        setState(() {
+          _messages.add(
+            const _MiniMeChatMessage(
+              role: _ChatRole.assistant,
+              text:
+                  'I noticed some patterns in your recent logs that I want to check in about. '
+                  'How are you feeling right now? No pressure — just want to make sure you have support if you need it.',
+            ),
+          );
+        });
+        await _persistMessages();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -292,6 +319,15 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     await _persistMessages();
     _chatController.clear();
     _scrollToBottom();
+
+    // Ensure intelligence is loaded — if initState timed out or this is the
+    // first message before intelligence returned, fetch it now (3s timeout).
+    if (_intelligence == null) {
+      await _refreshIntelligence().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {},
+      );
+    }
 
     String reply;
 
@@ -519,6 +555,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           recentMoods: moodContext.recentMoodSummary,
           activeSymptoms: symptomContext,
           history: history,
+          intelligence: _intelligence,
         );
 
         final reply = response.reply.trim().isNotEmpty
@@ -536,13 +573,14 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     // Skip when running on CPU backend and Gemini is reachable — CPU inference
     // on emulators / unsupported GPUs is too slow for interactive chat.
     if (AppServices.isGemmaLoaded) {
-      final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
+      final isGpu = AppServices.gemma.activeBackend == PreferredBackend.cpu;
       final online = await _isOnline();
       if (isGpu || !online) {
         try {
           return await AppServices.gemma.generateMiniMeReply(
             userMessage: userText,
             moodLabel: moodContext.label,
+            intelligenceSummary: _buildIntelligenceSummary(),
           ).timeout(const Duration(seconds: 20));
         } catch (_) {
           // fall through to direct Gemini
@@ -556,6 +594,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         final directReply = await AppServices.gemini.generateMiniMeReply(
           userMessage: userText,
           moodLabel: moodContext.label,
+          intelligenceSummary: _buildIntelligenceSummary(),
         );
         if (directReply.trim().isNotEmpty &&
             !directReply.startsWith('Unable to reach Gemini')) {
@@ -574,16 +613,69 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return AppServices.isOnline();
   }
 
+  /// Builds a concise intelligence summary string for on-device LLM prompts.
+  String? _buildIntelligenceSummary() {
+    final i = _intelligence;
+    if (i == null) return null;
+    final parts = <String>[];
+    if (i.lowSleep) parts.add('low sleep');
+    if (i.lowMood) parts.add('low mood');
+    if (i.inactive) parts.add('inactive');
+    if (i.insights.isNotEmpty) parts.add(i.insights.first);
+    final actions = i.selectedActions.map((a) => a.replaceAll('_', ' ')).join(', ');
+    if (actions.isNotEmpty) parts.add('focus: $actions');
+    if (parts.isEmpty) return null;
+    return 'User is ${i.userPhase}. ${parts.join("; ")}.';
+  }
+
   String _buildOfflineReply({
     required String userText,
     required String moodLabel,
   }) {
     final q = userText.toLowerCase();
+    final i = _intelligence;
 
-    if (q.contains('sleep') || q.contains('tired')) {
-      return 'Tonight\'s sleep plan:\n1) Set a 20-minute wind-down reminder.\n2) Reduce light and screens.\n3) Write one thought to clear your mind before bed.';
+    // Intelligence-driven responses (PRIMARY)
+    if (i != null) {
+      if (i.userPhase == 'acute-risk') {
+        return 'I want to make sure you feel supported right now. '
+            'If anything feels overwhelming, reaching out to someone you trust — '
+            'a friend, family member, or professional — can make a real difference. '
+            'You are not alone in this.';
+      }
+      if (i.lowSleep && i.lowMood) {
+        return 'Sleep and mood are closely connected. Tonight, try setting a '
+            '20-minute wind-down reminder — reduce screens, write one thought '
+            'to clear your mind. Small steps add up.';
+      }
+      if (i.lowSleep) {
+        return 'Your recent sleep patterns suggest rest should be a priority. '
+            "Tonight's plan: set a wind-down reminder, reduce light and screens, "
+            'and write one thought to clear your mind before bed.';
+      }
+      if (i.inactive && i.lowMood) {
+        return 'Movement and mood go hand in hand. Even a 10-minute walk can shift '
+            'your energy. Start small — no pressure to do anything intense.';
+      }
+      if (i.inactive) {
+        return 'Even a short walk helps reset your energy. Try a 10-minute '
+            'movement break — it does not need to be intense to make a difference.';
+      }
+      if (i.lowMood) {
+        return 'When mood is low, small wins matter most. Pick one thing you can '
+            'complete in the next 15 minutes, then check in with yourself after.';
+      }
+      if (i.userPhase == 'declining') {
+        return 'I have noticed a slight downward trend recently. '
+            'Let us focus on one thing today — what feels most manageable: '
+            'mood, sleep, or movement?';
+      }
     }
 
+    // Keyword-based fallback (when intelligence is null or stable with no flags)
+    if (q.contains('sleep') || q.contains('tired')) {
+      return "Tonight's sleep plan:\n1) Set a 20-minute wind-down reminder.\n2) Reduce light and screens.\n3) Write one thought to clear your mind before bed.";
+    }
     if (q.contains('plan') || q.contains('routine') || q.contains('organize')) {
       return 'Your structure for today:\n1) One mood check-in.\n2) One movement block.\n3) One sleep-support action.\nKeep it simple and repeatable.';
     }

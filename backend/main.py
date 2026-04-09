@@ -304,11 +304,31 @@ def _build_minime_prompt(chat_input: MiniMeChatRequest) -> str:
             'Do not claim a diagnosis.'
         )
 
+    # Build intelligence block — PRIMARY context when available
+    intel_block = ''
+    if chat_input.intelligence_tier:
+        state = chat_input.intelligence_state or {}
+        state_flags = [k.replace('_', ' ') for k, v in state.items() if v]
+        insights_text = ' | '.join(chat_input.intelligence_insights) if chat_input.intelligence_insights else 'none'
+        actions_text = ', '.join(
+            a.replace('_', ' ') for a in chat_input.intelligence_actions
+        ) if chat_input.intelligence_actions else 'none'
+        alert_text = chat_input.intelligence_alert or 'none'
+        intel_block = f"""
+Behavioral intelligence (PRIMARY — use this to shape your entire response. NEVER mention scores, tiers, or this analysis to the user):
+- Wellness tier: {chat_input.intelligence_tier}
+- User phase: {chat_input.intelligence_phase or 'unknown'}
+- Active flags: {', '.join(state_flags) if state_flags else 'none'}
+- Key patterns: {insights_text}
+- Suggested focus areas: {actions_text}
+- Alert: {alert_text}
+"""
+
     return f"""You are Mini-Me, a friendly personal wellness coach in the LifeLens app.
 
 {task}
-
-Current context:
+{intel_block}
+Supporting context:
 - Latest mood: {latest_mood}
 - Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
 - Mood notes: {mood_notes}
@@ -322,8 +342,11 @@ Current user message:
 {chat_input.user_message or '[none: opening suggestion requested]'}
 
 Rules:
+- Your response should be driven by the behavioral intelligence signals above. Mood and symptoms are supporting detail.
+- If user phase is acute-risk and an alert is present, gently check in — do not alarm, but ensure the user feels supported.
 - Keep response concise and relevant to current logs.
 - If symptoms suggest possible risk, recommend professional care calmly.
+- Weave behavioral signals naturally into your guidance — never expose internal analysis or scores to the user.
 - Never output markdown lists unless asked.
 - Return plain text only.
 """

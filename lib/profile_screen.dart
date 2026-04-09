@@ -5,6 +5,9 @@ import 'restart.dart';
 import 'preferences_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
+import 'screens/gemma_setup_screen.dart';
+import 'dev_test_screen.dart';
+import 'app_services.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -152,6 +155,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
+
+              _ProfileSection(
+                title: 'Developer',
+                children: [
+                  _ProfileTile(
+                    icon: Icons.memory_outlined,
+                    label: 'Gemma AI Model',
+                    value: AppServices.isGemmaLoaded ? 'Loaded' : 'Not loaded',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GemmaSetupScreen(
+                            onComplete: () {
+                              setState(() {});
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  _ProfileTile(
+                    icon: Icons.science_outlined,
+                    label: 'Pipeline Tests',
+                    value: 'Open',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const DevTestScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
 
               _ProfileSection(
                 title: 'Actions',

@@ -102,15 +102,17 @@ class GeminiService {
   Future<String> generateMiniMeReply({
     required String userMessage,
     required String moodLabel,
+    String? intelligenceSummary,
   }) async {
-    return generate(
-      'You are Mini-Me, a warm personal health coach in the LifeLens app.\n\n'
-      "The user's current mood is: $moodLabel\n\n"
-      'User says: "$userMessage"\n\n'
-      'Reply in 2–3 sentences with warm, actionable guidance. '
-      'Do not diagnose. Stay practical and supportive.',
-      maxOutputTokens: 512,
-    );
+    final base = 'You are Mini-Me, a warm personal health coach in the LifeLens app.\n\n'
+        "The user's current mood is: $moodLabel\n\n"
+        'User says: "$userMessage"\n\n'
+        'Reply in 2–3 sentences with warm, actionable guidance. '
+        'Do not diagnose. Stay practical and supportive.';
+    final prompt = (intelligenceSummary != null && intelligenceSummary.isNotEmpty)
+        ? '$base\n\nHealth context (internal — do not mention to user): $intelligenceSummary'
+        : base;
+    return generate(prompt, maxOutputTokens: 512);
   }
 
   // ── MOOD ────────────────────────────────────────────────────────────────────

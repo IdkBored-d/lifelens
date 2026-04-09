@@ -215,16 +215,20 @@ class GemmaService {
   Future<String> generateMiniMeReply({
     required String userMessage,
     required String moodLabel,
+    String? intelligenceSummary,
   }) async {
-    return generate(_miniMeChatPrompt(userMessage, moodLabel));
+    return generate(_miniMeChatPrompt(userMessage, moodLabel, intelligenceSummary));
   }
 
-  static String _miniMeChatPrompt(String msg, String mood) =>
-      'You are Mini-Me, a warm personal health coach in the LifeLens app.\n\n'
-      "The user's current mood is: $mood\n\n"
-      'User says: "$msg"\n\n'
-      'Reply in 2–3 sentences with warm, actionable guidance. '
-      'Do not diagnose. Stay practical and supportive.';
+  static String _miniMeChatPrompt(String msg, String mood, String? intel) {
+    final base = 'You are Mini-Me, a warm personal health coach in the LifeLens app.\n\n'
+        "The user's current mood is: $mood\n\n"
+        'User says: "$msg"\n\n'
+        'Reply in 2–3 sentences with warm, actionable guidance. '
+        'Do not diagnose. Stay practical and supportive.';
+    if (intel == null || intel.isEmpty) return base;
+    return '$base\n\nHealth context (internal — do not mention to user): $intel';
+  }
 
   // ── EOD PIPELINE ────────────────────────────────────────────────────────────
 

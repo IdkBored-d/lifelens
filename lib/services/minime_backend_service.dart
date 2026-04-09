@@ -299,8 +299,9 @@ class MiniMeBackendService {
     required List<String> recentMoods,
     required List<String> activeSymptoms,
     required List<MiniMeChatTurn> history,
+    MiniMeIntelligenceReply? intelligence,
   }) async {
-    final payload = {
+    final payload = <String, dynamic>{
       'user_message': userMessage,
       'latest_mood_label': moodLabel,
       'latest_mood_intensity': moodIntensity,
@@ -309,6 +310,18 @@ class MiniMeBackendService {
       'active_symptoms': activeSymptoms,
       'chat_history': history.map((e) => e.toJson()).toList(),
     };
+    if (intelligence != null) {
+      payload['intelligence_tier'] = intelligence.interventionTier;
+      payload['intelligence_phase'] = intelligence.userPhase;
+      payload['intelligence_insights'] = intelligence.insights;
+      payload['intelligence_actions'] = intelligence.selectedActions;
+      if (intelligence.alert != null) {
+        payload['intelligence_alert'] = intelligence.alert;
+      }
+      payload['intelligence_risk_score'] = intelligence.riskScore;
+      payload['intelligence_confidence'] = intelligence.confidenceScore;
+      payload['intelligence_state'] = intelligence.state;
+    }
 
     Object? lastError;
     for (final baseUrl in _prioritizedBaseUrls()) {
