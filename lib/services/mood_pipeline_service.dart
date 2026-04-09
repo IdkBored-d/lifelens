@@ -131,12 +131,13 @@ class MoodPipelineService {
     String? gemmaRaw;
     String  gemmaLabel = 'neutral';
     try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
       gemmaRaw   = await _gemma.analyzeMoodDirectly(
         userLog:      enrichedLog,
         context:      context,
         rejectedMood: rejectedMood,
       );
-      gemmaLabel = await _gemma.extractMoodLabel(gemmaRaw);
+      gemmaLabel = _gemma.extractMoodLabel(gemmaRaw);
     } on StateError catch (e) {
       debugPrint('[MoodPipeline] Gemma not ready, skipping: $e');
     }
@@ -203,19 +204,22 @@ class MoodPipelineService {
     String? gemmaResponse,
   }) async {
     // Generate response text if not already provided by Gemma2b/Gemini
+    // TODO: re-enable Gemma response generation when ready
     String responseText;
     if (gemmaResponse != null) {
       responseText = gemmaResponse;
     } else {
-      try {
-        responseText = await _gemma.generateMoodResponse(
-          predictedMood: resolvedMood,
-          userLog:       userLog,
-          context:       await _quickTrack.buildMoodContext(),
-        );
-      } on StateError {
-        responseText = 'Mood logged as $resolvedMood.';
-      }
+      // try {
+      //   await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
+      //   responseText = await _gemma.generateMoodResponse(
+      //     predictedMood: resolvedMood,
+      //     userLog:       userLog,
+      //     context:       await _quickTrack.buildMoodContext(),
+      //   );
+      // } on StateError {
+      //   responseText = 'Mood logged as $resolvedMood.';
+      // }
+      responseText = 'Mood logged as $resolvedMood.';
     }
 
     final now       = DateTime.now();

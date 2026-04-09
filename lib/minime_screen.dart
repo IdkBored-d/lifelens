@@ -186,9 +186,63 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       }
     } catch (_) {
       if (!mounted) return;
+
+      // Tier 2: Gemma on-device greeting (no backend required)
+      if (AppServices.isGemmaLoaded) {
+        final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
+        final online = await AppServices.isOnline();
+        if (isGpu || !online) {
+          try {
+            final greeting = await AppServices.gemma.generateMiniMeReply(
+              userMessage:
+                  'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.',
+              moodLabel: moodContext.label,
+              intelligenceSummary: _buildIntelligenceSummary(),
+            ).timeout(const Duration(seconds: 20));
+            if (!mounted) return;
+            setState(() {
+              _messages.add(
+                _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
+              );
+            });
+            await _persistMessages();
+            return;
+          } catch (_) {
+            // fall through to Gemini
+          }
+        }
+      }
+
+      // Tier 3: Direct Gemini greeting (network, no backend server required)
+      if (await AppServices.isOnline()) {
+        try {
+          final greeting = await AppServices.gemini.generateMiniMeReply(
+            userMessage:
+                'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.',
+            moodLabel: moodContext.label,
+            intelligenceSummary: _buildIntelligenceSummary(),
+          );
+          if (greeting.trim().isNotEmpty &&
+              !greeting.startsWith('Unable to reach Gemini')) {
+            if (!mounted) return;
+            setState(() {
+              _messages.add(
+                _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
+              );
+            });
+            await _persistMessages();
+            return;
+          }
+        } catch (_) {
+          // fall through to offline message
+        }
+      }
+
+      // Tier 4: Static offline message
+      if (!mounted) return;
       setState(() {
         _messages.add(
-          _MiniMeChatMessage(
+          const _MiniMeChatMessage(
             role: _ChatRole.assistant,
             text:
                 'Mini-Me backend is currently offline. I can still help in local mode and will retry when you send a message.',
@@ -573,7 +627,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     // Skip when running on CPU backend and Gemini is reachable — CPU inference
     // on emulators / unsupported GPUs is too slow for interactive chat.
     if (AppServices.isGemmaLoaded) {
-      final isGpu = AppServices.gemma.activeBackend == PreferredBackend.cpu;
+      final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
       final online = await _isOnline();
       if (isGpu || !online) {
         try {

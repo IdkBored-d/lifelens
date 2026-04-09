@@ -155,6 +155,7 @@ class SymptomPipelineService {
     // ── Try Gemma first ────────────────────────────────────────────────────
     String? gemmaRaw;
     try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
       gemmaRaw = await _gemma.expandDiagnosis(
         disEmbedPrediction: disEmbedPrediction,
         userSymptoms:       userSymptoms,
@@ -227,6 +228,7 @@ class SymptomPipelineService {
     // ── Try Gemma first ────────────────────────────────────────────────────
     String? gemmaRaw;
     try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
       gemmaRaw = await _gemma.analyzeSymptomDirectly(
         userSymptoms: userSymptoms,
         context:      context,

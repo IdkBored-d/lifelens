@@ -19,7 +19,7 @@ class AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<AppRoot> {
-  late final Future<bool> _initFuture;
+  late Future<bool> _initFuture;
   bool _gemmaSetupDone = false;
 
   @override

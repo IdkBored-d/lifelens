@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'quick_track_service.dart';
 import 'fitness_pipeline_service.dart';
 import 'disembed_service.dart';
+import 'model_lifecycle_service.dart';
 import 'gemma_service.dart';
 import 'gemini_service.dart';
 import 'weaviate_service.dart';
@@ -108,6 +109,7 @@ class EodPipelineService {
     EodCorrelation? correlation;
 
     try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
       final gemmaRaw = await _gemma.generateEodSummary(
         todayMoodEntry:        todayMoodStr,
         activeSymptomEntries:  activeSymptomsStr,
@@ -237,6 +239,7 @@ class EodPipelineService {
   }) async {
     String summary = template;
     try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
       final insight = await _gemma.generateSummaryInsight(template: template);
       summary = '$template\n\n$insight';
     } on StateError catch (e) {

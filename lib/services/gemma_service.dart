@@ -28,6 +28,11 @@ class GemmaService {
   /// Completer acting as a mutex — null when idle, non-null when busy.
   Completer<void>? _inferenceLock;
 
+  // Timeout constants — CPU inference is slower so it gets a longer budget.
+  static const _kGpuTimeout  = Duration(seconds: 45);
+  static const _kCpuTimeout  = Duration(seconds: 90);
+  static const _kLockTimeout = Duration(seconds: 120);
+
   bool get isLoaded => _isLoaded;
 
   /// Whether an inference call is currently in progress.
@@ -59,7 +64,7 @@ class GemmaService {
     } catch (e) {
       debugPrint('[GemmaService] GPU init failed ($e), falling back to CPU');
       _model = await FlutterGemma.getActiveModel(
-        maxTokens: 2048,
+        maxTokens: 1024,  // reduced for CPU — limits per-call output length
         preferredBackend: PreferredBackend.cpu,
       );
       _activeBackend = PreferredBackend.cpu;
@@ -72,9 +77,19 @@ class GemmaService {
   // ── Inference mutex ──────────────────────────────────────────────────────────
 
   /// Wait until any in-flight inference finishes, then claim the lock.
+  /// Throws [TimeoutException] if a lock cannot be acquired within [_kLockTimeout].
   Future<void> _acquireLock() async {
+    final start = DateTime.now();
     while (_inferenceLock != null) {
-      await _inferenceLock!.future;
+      if (DateTime.now().difference(start) >= _kLockTimeout) {
+        throw TimeoutException(
+          'GemmaService lock timed out — previous inference may be stuck',
+          _kLockTimeout,
+        );
+      }
+      // Wait for the current holder to finish, but cap the wait so we can
+      // re-check the deadline if the future resolves immediately.
+      await _inferenceLock!.future.timeout(_kLockTimeout, onTimeout: () {});
     }
     _inferenceLock = Completer<void>();
   }
@@ -84,6 +99,15 @@ class GemmaService {
     final lock = _inferenceLock;
     _inferenceLock = null;
     lock?.complete();
+  }
+
+  /// Force-release a stuck inference lock. Use as a last resort when inference
+  /// has hung and callers are blocked. Logs a warning.
+  void forceReleaseLock() {
+    if (_inferenceLock != null) {
+      debugPrint('[GemmaService] WARNING: force-releasing stuck inference lock');
+      _releaseLock();
+    }
   }
 
   // ── Core inference ──────────────────────────────────────────────────────────
@@ -117,7 +141,10 @@ class GemmaService {
         await session.addQueryChunk(
           Message.text(text: prompt, isUser: true),
         );
-        return await session.getResponse();
+        final timeout = _activeBackend == PreferredBackend.cpu
+            ? _kCpuTimeout
+            : _kGpuTimeout;
+        return await session.getResponse().timeout(timeout);
       } finally {
         await session.close();
       }
@@ -148,7 +175,12 @@ class GemmaService {
         await session.addQueryChunk(
           Message.text(text: prompt, isUser: true),
         );
-        yield* session.getResponseAsync();
+        final timeout = _activeBackend == PreferredBackend.cpu
+            ? _kCpuTimeout
+            : _kGpuTimeout;
+        // timeout() fires if no token arrives within the duration —
+        // catches stalled inference on CPU without a hard wall-clock limit.
+        yield* session.getResponseAsync().timeout(timeout);
       } finally {
         await session.close();
       }
@@ -175,19 +207,27 @@ class GemmaService {
     return generate(_moodDirectPrompt(userLog, context, rejectedMood));
   }
 
-  Future<String> extractMoodLabel(String gemmaResponse) async {
-    final prompt =
-        'From the response below, extract ONLY a single emotion label.\n'
-        'Choose from: sadness, joy, love, anger, fear, surprise, '
-        'anxious, content, neutral.\n'
-        'Reply with just the label — no punctuation, no explanation.\n\n'
-        'Response: "$gemmaResponse"';
-    final label = (await generate(prompt)).trim().toLowerCase();
+  /// Extracts a mood label from a Gemma response without a second inference call.
+  /// Looks for the explicit MOOD_LABEL: tag first (always present in _moodDirectPrompt),
+  /// then falls back to word-boundary matching.
+  String extractMoodLabel(String gemmaResponse) {
     const valid = {
       'sadness', 'joy', 'love', 'anger', 'fear', 'surprise',
       'anxious', 'content', 'neutral',
     };
-    return valid.contains(label) ? label : 'neutral';
+    final lower = gemmaResponse.toLowerCase();
+
+    // Primary: explicit MOOD_LABEL: tag
+    for (final label in valid) {
+      if (lower.contains('mood_label: $label')) return label;
+    }
+
+    // Fallback: word-boundary scan
+    for (final label in valid) {
+      if (RegExp(r'\b' + label + r'\b').hasMatch(lower)) return label;
+    }
+
+    return 'neutral';
   }
 
   // ── SYMPTOM PIPELINE ─────────────────────────────────────────────────────────

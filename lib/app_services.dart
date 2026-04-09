@@ -316,7 +316,9 @@ class AppServices {
     await gemma.load(path);
   }
 
-  static bool get isGemmaLoaded => gemma.isLoaded;
+  static bool get isGemmaLoaded {
+    try { return gemma.isLoaded; } catch (_) { return false; }
+  }
 
   /// Refresh fitness score from latest health data. Safe to call from any context.
   /// Returns null silently if health data is unavailable (no permissions, no data).
