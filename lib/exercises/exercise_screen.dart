@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:lifelens/database/isar_service.dart';
+
 import 'package:lifelens/models/exercise_model.dart';
+import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/exercise_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
-import 'package:lifelens/services/minime_backend_service.dart';
-import 'package:lifelens/services/minime_chat_storage_service.dart';
-import 'package:lifelens/widgets/exercise_detail_sheet.dart';
 
 class ExerciseScreen extends StatefulWidget {
   const ExerciseScreen({super.key});
@@ -15,40 +13,26 @@ class ExerciseScreen extends StatefulWidget {
 }
 
 class _ExerciseScreenState extends State<ExerciseScreen> {
+  static const List<int> _durationOptions = <int>[5, 10, 15, 20, 30, 45, 60];
+
   final TextEditingController _searchController = TextEditingController();
   final ExerciseService _service = ExerciseService();
   final ExerciseStore _exerciseStore = ExerciseStore();
 
-  late Future<List<ExerciseModel>> _futureExercises;
-  Future<_ExerciseRecommendationsState>? _recommendationsFuture;
-  Set<String> _favoriteIds = <String>{};
+  late Future<void> _future;
+  List<ExerciseModel> _exercises = const <ExerciseModel>[];
+  List<Map<String, String>> _history = const <Map<String, String>>[];
+  String _searchQuery = '';
+  String? _selectedExerciseId;
+  int _selectedDuration = 30;
   int _loggedToday = 0;
   int _loggedWeek = 0;
-  String _searchQuery = '';
-  String _selectedMuscle = 'all';
-  String _selectedType = 'all';
-  String _selectedDifficulty = 'all';
+  LogButtonVisualState _logButtonState = LogButtonVisualState.idle;
 
   @override
   void initState() {
     super.initState();
-    _futureExercises = _loadExercises();
-  }
-
-  Future<List<ExerciseModel>> _loadExercises() async {
-    await _exerciseStore.ensureReady();
-    final exercises = await _service.fetchExercises();
-    _exerciseStore.exercises = exercises;
-    _recommendationsFuture = _loadRecommendations(exercises);
-    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
-    if (mounted) {
-      setState(() {
-        _favoriteIds = _exerciseStore.getFavoriteIds().toSet();
-        _loggedToday = activity.isEmpty ? 0 : activity.first;
-        _loggedWeek = activity.fold(0, (sum, value) => sum + value);
-      });
-    }
-    return exercises;
+    _future = _load();
   }
 
   @override
@@ -57,225 +41,119 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     super.dispose();
   }
 
+  Future<void> _load() async {
+    await _exerciseStore.ensureReady();
+    await _exerciseStore.refreshFromCloud();
+    List<ExerciseModel> exercises = const <ExerciseModel>[];
+    try {
+      exercises = await _service.fetchExercises();
+    } catch (_) {
+      exercises = const <ExerciseModel>[];
+    }
+
+    _exerciseStore.exercises = exercises;
+    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
+    final history = _exerciseStore.getRecentExerciseHistory(limit: 20);
+
+    if (!mounted) return;
+    setState(() {
+      _exercises = exercises;
+      _history = history;
+      _loggedToday = activity.isEmpty ? 0 : activity.first;
+      _loggedWeek = activity.fold(0, (sum, value) => sum + value);
+    });
+  }
+
   Future<void> _refresh() async {
     setState(() {
-      _futureExercises = _loadExercises();
+      _future = _load();
     });
+    await _future;
   }
 
-  Future<void> _toggleFavorite(ExerciseModel exercise) async {
-    final isFavorite = _favoriteIds.contains(exercise.id);
-    if (isFavorite) {
-      await _exerciseStore.unfavoriteExercise(exercise.id);
-    } else {
-      await _exerciseStore.favoriteExercise(exercise.id);
+  ExerciseModel? get _selectedExercise {
+    for (final exercise in _exercises) {
+      if (exercise.id == _selectedExerciseId) return exercise;
     }
-
-    if (!mounted) return;
-    setState(() {
-      if (isFavorite) {
-        _favoriteIds.remove(exercise.id);
-      } else {
-        _favoriteIds.add(exercise.id);
-      }
-    });
+    return null;
   }
 
-  Future<void> _saveExercise(ExerciseModel exercise) async {
-    await _exerciseStore.logExercise(exercise.id);
-    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
-    final loggedToday = activity.isEmpty ? 0 : activity.first;
-    final loggedWeek = activity.fold(0, (sum, value) => sum + value);
-    if (!mounted) return;
-    setState(() {
-      _loggedToday = loggedToday;
-      _loggedWeek = loggedWeek;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Logged ${exercise.name} • Today: $loggedToday'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
+  List<ExerciseModel> get _filteredExercises {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return const <ExerciseModel>[];
 
-  void _openExerciseDetails(ExerciseModel exercise) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => ExerciseDetailSheet(exercise: exercise),
-    );
-  }
-
-  Future<_ExerciseRecommendationsState> _loadRecommendations(
-    List<ExerciseModel> exercises,
-  ) async {
-    if (exercises.isEmpty) {
-      return const _ExerciseRecommendationsState(
-        headline: '',
-        items: <_RecommendedExercise>[],
-      );
-    }
-
-    await IsarService.instance.init();
-    final recentEntries = await IsarService.instance.getRecentMoodEntries(
-      days: 7,
-    );
-    final moodEntries = recentEntries
-        .where((entry) => entry.resolvedBy != 'minime')
-        .toList(growable: false);
-    final activeSymptomsEntries = await IsarService.instance
-        .getActiveSymptomEntries();
-    final chatMessages = await MiniMeChatStorageService.instance.loadMessages();
-    final latestMood = moodEntries.isEmpty ? null : moodEntries.first;
-    final recentChatMessages = chatMessages.length <= 20
-        ? chatMessages
-        : chatMessages.sublist(chatMessages.length - 20);
-
-    try {
-      final reply = await MiniMeBackendService.instance.exerciseRecommendations(
-        latestMoodLabel: latestMood?.resolvedMood ?? 'Neutral',
-        latestMoodIntensity: latestMood == null
-            ? 3
-            : _extractIntensity(latestMood),
-        latestMoodNotes: latestMood?.rawLog ?? '',
-        recentMoods: moodEntries
-            .take(8)
-            .map(
-              (entry) =>
-                  '${entry.resolvedMood} (${_extractIntensity(entry)}/5)',
-            )
-            .toList(growable: false),
-        recentLogs: moodEntries
-            .take(10)
-            .map((entry) => entry.rawLog.trim())
-            .where((text) => text.isNotEmpty)
-            .toList(growable: false),
-        activeSymptoms: activeSymptomsEntries
-            .expand((entry) => entry.symptomList)
-            .map((item) => item.trim())
-            .where((item) => item.isNotEmpty)
-            .take(12)
-            .toList(growable: false),
-        history: recentChatMessages
-            .map(
-              (message) =>
-                  MiniMeChatTurn(role: message.role, text: message.text),
-            )
-            .toList(growable: false),
-        exercises: exercises
-            .map(
-              (exercise) => MiniMeExerciseCandidate(
-                id: exercise.id,
-                name: exercise.name,
-                type: exercise.type,
-                muscle: exercise.muscle,
-                difficulty: exercise.difficulty,
-                description: exercise.description,
-              ),
-            )
-            .toList(growable: false),
-      );
-
-      final exerciseById = {for (final item in exercises) item.id: item};
-      final items = reply.recommendations
-          .map((item) {
-            final exercise = exerciseById[item.exerciseId];
-            if (exercise == null) return null;
-            return _RecommendedExercise(
-              exercise: exercise,
-              focus: item.focus,
-              reason: item.reason,
-            );
-          })
-          .whereType<_RecommendedExercise>()
-          .toList(growable: false);
-
-      if (items.isNotEmpty) {
-        return _ExerciseRecommendationsState(
-          headline: reply.headline.isEmpty
-              ? 'A few exercises that fit your current state.'
-              : reply.headline,
-          items: items,
-        );
-      }
-    } catch (_) {
-      // fall through to the local fallback below
-    }
-
-    return _fallbackRecommendations(exercises, moodEntries);
-  }
-
-  _ExerciseRecommendationsState _fallbackRecommendations(
-    List<ExerciseModel> exercises,
-    List<dynamic> moodEntries,
-  ) {
-    final latestMood = moodEntries.isEmpty
-        ? 'neutral'
-        : (moodEntries.first.resolvedMood as String).toLowerCase();
-
-    int scoreExercise(ExerciseModel exercise) {
-      final type = exercise.type.toLowerCase();
-      final difficulty = exercise.difficulty.toLowerCase();
-      var score = 0;
-      if (latestMood.contains('anx') || latestMood.contains('stress')) {
-        if (type == 'mobility' || type == 'stretching') score += 4;
-        if (difficulty == 'beginner') score += 2;
-      } else if (latestMood.contains('sad') || latestMood.contains('low')) {
-        if (type == 'cardio' || type == 'strength') score += 4;
-      } else {
-        if (type == 'strength' || type == 'cardio' || type == 'mobility') {
-          score += 3;
-        }
-      }
-      return score;
-    }
-
-    final top = [...exercises]
-      ..sort((a, b) => scoreExercise(b).compareTo(scoreExercise(a)));
-    final items = top
-        .take(3)
-        .map((exercise) {
-          return _RecommendedExercise(
-            exercise: exercise,
-            focus: 'Good next step',
-            reason: 'Simple fit for your current state.',
-          );
-        })
-        .toList(growable: false);
-
-    return _ExerciseRecommendationsState(
-      headline: 'A few exercises that should feel realistic right now.',
-      items: items,
-    );
-  }
-
-  List<ExerciseModel> _filteredExercises(List<ExerciseModel> exercises) {
-    return exercises
+    return _exercises
         .where((exercise) {
-          final query = _searchQuery.trim().toLowerCase();
-          final matchesSearch =
-              query.isEmpty ||
-              exercise.name.toLowerCase().contains(query) ||
-              (exercise.description ?? '').toLowerCase().contains(query) ||
-              exercise.muscle.toLowerCase().contains(query) ||
-              exercise.type.toLowerCase().contains(query);
-          final matchesMuscle =
-              _selectedMuscle == 'all' ||
-              exercise.muscle.toLowerCase() == _selectedMuscle;
-          final matchesType =
-              _selectedType == 'all' ||
-              exercise.type.toLowerCase() == _selectedType;
-          final matchesDifficulty =
-              _selectedDifficulty == 'all' ||
-              exercise.difficulty.toLowerCase() == _selectedDifficulty;
-          return matchesSearch &&
-              matchesMuscle &&
-              matchesType &&
-              matchesDifficulty;
+          return exercise.name.toLowerCase().contains(query) ||
+              exercise.type.toLowerCase().contains(query) ||
+              exercise.muscle.toLowerCase().contains(query);
         })
+        .take(6)
         .toList(growable: false);
+  }
+
+  Future<void> _logSelectedExercise() async {
+    final exercise = _selectedExercise;
+    if (exercise == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Choose an exercise first.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _logButtonState = LogButtonVisualState.loading);
+
+    final syncMessage = await _exerciseStore.logExercise(
+      exercise.id,
+      exerciseName: exercise.name,
+      durationMinutes: _selectedDuration,
+    );
+
+    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
+    final history = _exerciseStore.getRecentExerciseHistory(limit: 20);
+
+    if (!mounted) return;
+    setState(() {
+      _history = history;
+      _loggedToday = activity.isEmpty ? 0 : activity.first;
+      _loggedWeek = activity.fold(0, (sum, value) => sum + value);
+      _logButtonState = LogButtonVisualState.success;
+      _selectedExerciseId = null;
+      _selectedDuration = 30;
+      _searchQuery = '';
+      _searchController.clear();
+    });
+
+    if (syncMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(syncMessage),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+    setState(() => _logButtonState = LogButtonVisualState.idle);
+  }
+
+  void _selectExercise(ExerciseModel exercise) {
+    _searchController.text = exercise.name;
+    setState(() {
+      _selectedExerciseId = exercise.id;
+      _searchQuery = exercise.name;
+    });
+  }
+
+  String _exerciseNameForId(String id) {
+    for (final exercise in _exercises) {
+      if (exercise.id == id) return exercise.name;
+    }
+    return id;
   }
 
   @override
@@ -293,155 +171,180 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _refresh,
-          child: FutureBuilder<List<ExerciseModel>>(
-            future: _futureExercises,
+          child: FutureBuilder<void>(
+            future: _future,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  _exercises.isEmpty &&
+                  _history.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
               }
-
-              if (snapshot.hasError) {
-                return ListView(
-                  padding: const EdgeInsets.all(24),
-                  children: const [
-                    SizedBox(height: 120),
-                    Center(child: Text('Could not load exercises right now.')),
-                  ],
-                );
-              }
-
-              final exercises = snapshot.data ?? const <ExerciseModel>[];
-              final filtered = _filteredExercises(exercises);
 
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                 children: [
-                  _ExerciseHeroCard(
-                    totalCount: exercises.length,
-                    favoriteCount: _favoriteIds.length,
+                  _TrackerSummary(
                     loggedToday: _loggedToday,
                     loggedWeek: _loggedWeek,
                   ),
-                  const SizedBox(height: 16),
-                  if (_recommendationsFuture != null)
-                    FutureBuilder<_ExerciseRecommendationsState>(
-                      future: _recommendationsFuture,
-                      builder: (context, recommendationSnapshot) {
-                        if (recommendationSnapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const _RecommendationLoadingCard();
-                        }
-
-                        final recommendationState = recommendationSnapshot.data;
-                        if (recommendationState == null ||
-                            recommendationState.items.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: _RecommendationPanel(
-                            state: recommendationState,
-                            favoriteIds: _favoriteIds,
-                            onOpen: _openExerciseDetails,
-                            onFavoriteToggle: _toggleFavorite,
-                          ),
-                        );
-                      },
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cs.surface,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: cs.outlineVariant.withValues(alpha: 0.35),
+                      ),
                     ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _searchController,
-                    onChanged: (value) => setState(() => _searchQuery = value),
-                    decoration: InputDecoration(
-                      hintText: 'Search exercises',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                              icon: const Icon(Icons.close_rounded),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _searchController,
+                          onChanged: (value) =>
+                              setState(() => _searchQuery = value),
+                          decoration: InputDecoration(
+                            hintText: 'Search exercise',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            suffixIcon: _searchQuery.isEmpty
+                                ? null
+                                : IconButton(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() {
+                                        _searchQuery = '';
+                                        _selectedExerciseId = null;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.close_rounded),
+                                  ),
+                            filled: true,
+                            fillColor: cs.surfaceContainerHighest.withValues(
+                              alpha: 0.28,
                             ),
-                      filled: true,
-                      fillColor: cs.surfaceContainerHighest.withValues(
-                        alpha: 0.28,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide.none,
-                      ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        if (_filteredExercises.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 220),
+                            decoration: BoxDecoration(
+                              color: cs.surfaceContainerHighest.withValues(
+                                alpha: 0.35,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: _filteredExercises.length,
+                              separatorBuilder: (_, _) => Divider(
+                                height: 1,
+                                color: cs.outlineVariant.withValues(alpha: 0.2),
+                              ),
+                              itemBuilder: (context, index) {
+                                final exercise = _filteredExercises[index];
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(exercise.name),
+                                  subtitle: Text(
+                                    '${exercise.type} • ${exercise.muscle}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  onTap: () => _selectExercise(exercise),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: _selectedExerciseId,
+                          items: _exercises
+                              .map(
+                                (exercise) => DropdownMenuItem<String>(
+                                  value: exercise.id,
+                                  child: Text(
+                                    exercise.name,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            final exercise = _exercises.firstWhere(
+                              (item) => item.id == value,
+                            );
+                            _selectExercise(exercise);
+                          },
+                          decoration: const InputDecoration(
+                            hintText: 'Choose exercise',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<int>(
+                          initialValue: _selectedDuration,
+                          items: _durationOptions
+                              .map(
+                                (value) => DropdownMenuItem<int>(
+                                  value: value,
+                                  child: Text('$value min'),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() => _selectedDuration = value);
+                          },
+                          decoration: const InputDecoration(
+                            hintText: 'Duration',
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed:
+                                _selectedExerciseId == null ||
+                                    _logButtonState ==
+                                        LogButtonVisualState.loading
+                                ? null
+                                : _logSelectedExercise,
+                            child: LogButtonContent(
+                              state: _logButtonState,
+                              idleLabel: 'Log',
+                              loadingLabel: 'Logging',
+                              successLabel: 'Logged',
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  _CompactFilterBar(
-                    muscleLabel: _selectedMuscle,
-                    typeLabel: _selectedType,
-                    difficultyLabel: _selectedDifficulty,
-                    onMuscleTap: () => _showFilterPicker(
-                      title: 'Muscle',
-                      options: _buildFilterOptions(
-                        exercises.map((item) => item.muscle),
-                      ),
-                      selected: _selectedMuscle,
-                      onSelected: (value) {
-                        setState(() => _selectedMuscle = value);
-                      },
+                  const SizedBox(height: 18),
+                  Text(
+                    'Recent',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
-                    onTypeTap: () => _showFilterPicker(
-                      title: 'Type',
-                      options: _buildFilterOptions(
-                        exercises.map((item) => item.type),
-                      ),
-                      selected: _selectedType,
-                      onSelected: (value) {
-                        setState(() => _selectedType = value);
-                      },
-                    ),
-                    onDifficultyTap: () => _showFilterPicker(
-                      title: 'Difficulty',
-                      options: _buildFilterOptions(
-                        exercises.map((item) => item.difficulty),
-                      ),
-                      selected: _selectedDifficulty,
-                      onSelected: (value) {
-                        setState(() => _selectedDifficulty = value);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _ResultSummary(
-                    totalCount: filtered.length,
-                    hasFilters:
-                        _selectedMuscle != 'all' ||
-                        _selectedType != 'all' ||
-                        _selectedDifficulty != 'all' ||
-                        _searchQuery.isNotEmpty,
-                    onClear: () {
-                      _searchController.clear();
-                      setState(() {
-                        _searchQuery = '';
-                        _selectedMuscle = 'all';
-                        _selectedType = 'all';
-                        _selectedDifficulty = 'all';
-                      });
-                    },
                   ),
                   const SizedBox(height: 12),
-                  if (filtered.isEmpty)
+                  if (_history.isEmpty)
                     const _EmptyExerciseState()
                   else
-                    ...filtered.map(
-                      (exercise) => Padding(
+                    ..._history.map(
+                      (record) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: _ExerciseCard(
-                          exercise: exercise,
-                          isFavorite: _favoriteIds.contains(exercise.id),
-                          onFavorite: () => _toggleFavorite(exercise),
-                          onOpen: () => _openExerciseDetails(exercise),
-                          onSave: () => _saveExercise(exercise),
+                        child: _ExerciseHistoryCard(
+                          record: record,
+                          fallbackName: _exerciseNameForId(
+                            record['exerciseId'] ?? '',
+                          ),
                         ),
                       ),
                     ),
@@ -453,444 +356,35 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       ),
     );
   }
-
-  List<String> _buildFilterOptions(Iterable<String> values) {
-    final unique =
-        values
-            .map((value) => value.trim().toLowerCase())
-            .where((value) => value.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    return ['all', ...unique];
-  }
-
-  int _extractIntensity(dynamic entry) {
-    final condensedLog = entry.condensedLog as String? ?? '';
-    final match = RegExp(r'([1-5])\/5').firstMatch(condensedLog);
-    if (match == null) return 3;
-    return int.tryParse(match.group(1) ?? '') ?? 3;
-  }
-
-  void _showFilterPicker({
-    required String title,
-    required List<String> options,
-    required String selected,
-    required ValueChanged<String> onSelected,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: options
-                      .map(
-                        (option) => ChoiceChip(
-                          label: Text(
-                            option == 'all' ? 'All' : _titleCase(option),
-                          ),
-                          selected: selected == option,
-                          onSelected: (_) {
-                            Navigator.pop(context);
-                            onSelected(option);
-                          },
-                          showCheckmark: false,
-                        ),
-                      )
-                      .toList(growable: false),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 }
 
-class _ExerciseRecommendationsState {
-  const _ExerciseRecommendationsState({
-    required this.headline,
-    required this.items,
-  });
+class _TrackerSummary extends StatelessWidget {
+  const _TrackerSummary({required this.loggedToday, required this.loggedWeek});
 
-  final String headline;
-  final List<_RecommendedExercise> items;
-}
-
-class _RecommendedExercise {
-  const _RecommendedExercise({
-    required this.exercise,
-    required this.focus,
-    required this.reason,
-  });
-
-  final ExerciseModel exercise;
-  final String focus;
-  final String reason;
-}
-
-class _ExerciseHeroCard extends StatelessWidget {
-  const _ExerciseHeroCard({
-    required this.totalCount,
-    required this.favoriteCount,
-    required this.loggedToday,
-    required this.loggedWeek,
-  });
-
-  final int totalCount;
-  final int favoriteCount;
   final int loggedToday;
   final int loggedWeek;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            cs.primaryContainer.withValues(alpha: 0.85),
-            cs.secondaryContainer.withValues(alpha: 0.92),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: cs.surface.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(
-                  Icons.fitness_center_rounded,
-                  color: cs.onPrimaryContainer,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Exercises',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: cs.onPrimaryContainer,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Browse, log, and save exercises.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: cs.onPrimaryContainer.withValues(alpha: 0.82),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _HeroStat(label: 'Total', value: '$totalCount'),
-              const SizedBox(width: 10),
-              _HeroStat(label: 'Saved', value: '$favoriteCount'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Logged today: $loggedToday • Last 7 days: $loggedWeek',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onPrimaryContainer.withValues(alpha: 0.88),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroStat extends StatelessWidget {
-  const _HeroStat({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: cs.surface.withValues(alpha: 0.46),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: cs.onSurface,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactFilterBar extends StatelessWidget {
-  const _CompactFilterBar({
-    required this.muscleLabel,
-    required this.typeLabel,
-    required this.difficultyLabel,
-    required this.onMuscleTap,
-    required this.onTypeTap,
-    required this.onDifficultyTap,
-  });
-
-  final String muscleLabel;
-  final String typeLabel;
-  final String difficultyLabel;
-  final VoidCallback onMuscleTap;
-  final VoidCallback onTypeTap;
-  final VoidCallback onDifficultyTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Filter',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _FilterPill(
-                label: 'Muscle',
-                value: muscleLabel,
-                onTap: onMuscleTap,
-              ),
-              const SizedBox(width: 8),
-              _FilterPill(label: 'Type', value: typeLabel, onTap: onTypeTap),
-              const SizedBox(width: 8),
-              _FilterPill(
-                label: 'Difficulty',
-                value: difficultyLabel,
-                onTap: onDifficultyTap,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FilterPill extends StatelessWidget {
-  const _FilterPill({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final active = value != 'all';
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: active
-              ? cs.primaryContainer
-              : cs.surfaceContainerHighest.withValues(alpha: 0.28),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: active
-                ? cs.primary.withValues(alpha: 0.25)
-                : cs.outlineVariant.withValues(alpha: 0.32),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '$label: ${value == 'all' ? 'All' : _titleCase(value)}',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: active ? cs.onPrimaryContainer : cs.onSurface,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 18,
-              color: active ? cs.onPrimaryContainer : cs.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ResultSummary extends StatelessWidget {
-  const _ResultSummary({
-    required this.totalCount,
-    required this.hasFilters,
-    required this.onClear,
-  });
-
-  final int totalCount;
-  final bool hasFilters;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
     return Row(
       children: [
         Expanded(
-          child: Text(
-            '$totalCount exercise${totalCount == 1 ? '' : 's'}',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          child: _SummaryPill(label: 'Today', value: '$loggedToday'),
         ),
-        if (hasFilters)
-          TextButton(
-            onPressed: onClear,
-            child: Text('Reset', style: TextStyle(color: cs.primary)),
-          ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _SummaryPill(label: 'Week', value: '$loggedWeek'),
+        ),
       ],
     );
   }
 }
 
-class _RecommendationLoadingCard extends StatelessWidget {
-  const _RecommendationLoadingCard();
+class _SummaryPill extends StatelessWidget {
+  const _SummaryPill({required this.label, required this.value});
 
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: const Row(
-        children: [
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Picking exercises...',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecommendationPanel extends StatelessWidget {
-  const _RecommendationPanel({
-    required this.state,
-    required this.favoriteIds,
-    required this.onOpen,
-    required this.onFavoriteToggle,
-  });
-
-  final _ExerciseRecommendationsState state;
-  final Set<String> favoriteIds;
-  final ValueChanged<ExerciseModel> onOpen;
-  final ValueChanged<ExerciseModel> onFavoriteToggle;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
@@ -898,54 +392,26 @@ class _RecommendationPanel extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: cs.secondaryContainer.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(24),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: cs.surface.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(Icons.auto_awesome_rounded, color: cs.primary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Suggested',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
           Text(
-            state.headline,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
               color: cs.onSurfaceVariant,
-              height: 1.35,
             ),
           ),
-          const SizedBox(height: 14),
-          ...state.items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _RecommendedExerciseTile(
-                item: item,
-                isFavorite: favoriteIds.contains(item.exercise.id),
-                onOpen: () => onOpen(item.exercise),
-                onFavoriteToggle: () => onFavoriteToggle(item.exercise),
-              ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -954,243 +420,71 @@ class _RecommendationPanel extends StatelessWidget {
   }
 }
 
-class _RecommendedExerciseTile extends StatelessWidget {
-  const _RecommendedExerciseTile({
-    required this.item,
-    required this.isFavorite,
-    required this.onOpen,
-    required this.onFavoriteToggle,
+class _ExerciseHistoryCard extends StatelessWidget {
+  const _ExerciseHistoryCard({
+    required this.record,
+    required this.fallbackName,
   });
 
-  final _RecommendedExercise item;
-  final bool isFavorite;
-  final VoidCallback onOpen;
-  final VoidCallback onFavoriteToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final exercise = item.exercise;
-
-    return InkWell(
-      onTap: onOpen,
-      borderRadius: BorderRadius.circular(18),
-      child: Ink(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: cs.surface.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    exercise.name,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: onFavoriteToggle,
-                  icon: Icon(
-                    isFavorite ? Icons.favorite_rounded : Icons.favorite_border,
-                    color: isFavorite ? cs.primary : cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              item.focus,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: cs.primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              item.reason,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _CardTag(label: _titleCase(exercise.type)),
-                _CardTag(label: _titleCase(exercise.difficulty)),
-                _CardTag(label: _titleCase(exercise.muscle)),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExerciseCard extends StatelessWidget {
-  const _ExerciseCard({
-    required this.exercise,
-    required this.isFavorite,
-    required this.onFavorite,
-    required this.onOpen,
-    required this.onSave,
-  });
-
-  final ExerciseModel exercise;
-  final bool isFavorite;
-  final VoidCallback onFavorite;
-  final VoidCallback onOpen;
-  final VoidCallback onSave;
+  final Map<String, String> record;
+  final String fallbackName;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-
-    return InkWell(
-      onTap: onOpen,
-      borderRadius: BorderRadius.circular(22),
-      child: Ink(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.28)),
-          boxShadow: [
-            BoxShadow(
-              color: cs.shadow.withValues(alpha: 0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer.withValues(alpha: 0.72),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Icon(
-                    _iconForExercise(exercise),
-                    color: cs.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        exercise.name,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _exerciseSummary(exercise),
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          height: 1.35,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: onFavorite,
-                  icon: Icon(
-                    isFavorite ? Icons.favorite_rounded : Icons.favorite_border,
-                    color: isFavorite ? cs.primary : cs.onSurfaceVariant,
-                  ),
-                  tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _CardTag(label: _titleCase(exercise.type)),
-                _CardTag(label: _titleCase(exercise.muscle)),
-                _CardTag(label: _titleCase(exercise.difficulty)),
-                if (exercise.equipment.isNotEmpty)
-                  _CardTag(label: '${exercise.equipment.length} equipment'),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onOpen,
-                    child: const Text('Details'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: onSave,
-                    child: const Text('Log'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _exerciseSummary(ExerciseModel exercise) {
-    final description = (exercise.description ?? '').trim();
-    if (description.isNotEmpty) {
-      return description;
-    }
-    return 'A ${exercise.difficulty.toLowerCase()} ${exercise.type.toLowerCase()} movement focused on ${exercise.muscle.toLowerCase()}.';
-  }
-}
-
-class _CardTag extends StatelessWidget {
-  const _CardTag({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final name = (record['exerciseName'] ?? '').trim().isNotEmpty
+        ? record['exerciseName']!.trim()
+        : fallbackName;
+    final duration = (record['durationMinutes'] ?? '').trim();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(999),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: cs.onSurfaceVariant,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.fitness_center_rounded,
+              color: cs.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (duration.isNotEmpty) '$duration min',
+                    if ((record['timestamp'] ?? '').isNotEmpty)
+                      _formatTimestamp(record['timestamp']!),
+                  ].join(' • '),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1202,65 +496,38 @@ class _EmptyExerciseState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(22),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
-      child: Column(
-        children: [
-          Icon(Icons.search_off_rounded, size: 42, color: cs.primary),
-          const SizedBox(height: 12),
-          Text(
-            'No exercises match those filters',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Try a simpler search or reset filters.',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
-      ),
+      child: const Text('No logs yet.'),
     );
   }
 }
 
-String _titleCase(String value) {
-  return value
-      .split(RegExp(r'[\s_-]+'))
-      .where((part) => part.isNotEmpty)
-      .map(
-        (part) => '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
-      )
-      .join(' ');
-}
-
-IconData _iconForExercise(ExerciseModel exercise) {
-  switch (exercise.type.toLowerCase()) {
-    case 'cardio':
-      return Icons.directions_run_rounded;
-    case 'mobility':
-      return Icons.self_improvement_rounded;
-    case 'stretching':
-      return Icons.accessibility_new_rounded;
-    default:
-      switch (exercise.muscle.toLowerCase()) {
-        case 'legs':
-          return Icons.directions_run_rounded;
-        case 'core':
-          return Icons.airline_seat_flat_angled_rounded;
-        case 'back':
-          return Icons.accessibility_new_rounded;
-        default:
-          return Icons.fitness_center_rounded;
-      }
-  }
+String _formatTimestamp(String raw) {
+  final timestamp = DateTime.tryParse(raw);
+  if (timestamp == null) return raw;
+  final local = timestamp.toLocal();
+  final month = switch (local.month) {
+    1 => 'Jan',
+    2 => 'Feb',
+    3 => 'Mar',
+    4 => 'Apr',
+    5 => 'May',
+    6 => 'Jun',
+    7 => 'Jul',
+    8 => 'Aug',
+    9 => 'Sep',
+    10 => 'Oct',
+    11 => 'Nov',
+    _ => 'Dec',
+  };
+  final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final suffix = local.hour >= 12 ? 'PM' : 'AM';
+  return '$month ${local.day} • $hour:$minute $suffix';
 }

@@ -37,6 +37,10 @@ service cloud.firestore {
         allow read, create, update, delete: if isSelf(userId);
       }
 
+      match /mood_logs/{logId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
       match /exercise_logs/{logId} {
         allow read, create, update, delete: if isSelf(userId);
       }

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:lifelens/models/sleep.dart';
+import 'package:lifelens/shared_widgets/log_button_content.dart';
 
 class SleepTrackingWidget extends StatefulWidget {
   const SleepTrackingWidget({super.key, required this.onSleepLogged});
 
-  final Function(Sleep) onSleepLogged;
+  final Future<String?> Function(Sleep) onSleepLogged;
 
   @override
   State<SleepTrackingWidget> createState() => _SleepTrackingWidgetState();
@@ -15,6 +16,7 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
   TimeOfDay? _wakeTime;
   SleepQuality? _quality;
   final _notesController = TextEditingController();
+  LogButtonVisualState _buttonState = LogButtonVisualState.idle;
 
   @override
   Widget build(BuildContext context) {
@@ -75,19 +77,25 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
-            children: sleepQualities.map((quality) => 
-              ChoiceChip(
-                label: Text('${quality.emoji} ${quality.label}'),
-                selected: _quality == quality,
-                onSelected: (_) => setState(() => _quality = quality),
-                backgroundColor: cs.primaryContainer,
-                side: BorderSide(color: cs.outlineVariant.withOpacity(0.4)),
-                labelStyle: TextStyle(
-                  color: _quality == quality ? cs.onPrimaryContainer: cs.onSurface,
-                  fontWeight: _quality == quality ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-              ).toList(),
+            children: sleepQualities
+                .map(
+                  (quality) => ChoiceChip(
+                    label: Text('${quality.emoji} ${quality.label}'),
+                    selected: _quality == quality,
+                    onSelected: (_) => setState(() => _quality = quality),
+                    backgroundColor: cs.primaryContainer,
+                    side: BorderSide(color: cs.outlineVariant.withOpacity(0.4)),
+                    labelStyle: TextStyle(
+                      color: _quality == quality
+                          ? cs.onPrimaryContainer
+                          : cs.onSurface,
+                      fontWeight: _quality == quality
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                  ),
+                )
+                .toList(),
           ),
 
           const SizedBox(height: 16),
@@ -102,7 +110,9 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: cs.outlineVariant.withOpacity(0.4)),
+                borderSide: BorderSide(
+                  color: cs.outlineVariant.withOpacity(0.4),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -115,17 +125,24 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _canSave ? _saveSleep : null,
-              icon: const Icon(Icons.save_outlined),
-              label: const Text('Save Sleep Entry'),
-              style: ElevatedButton.styleFrom(
+            child: FilledButton(
+              onPressed:
+                  _canSave && _buttonState != LogButtonVisualState.loading
+                  ? _saveSleep
+                  : null,
+              style: FilledButton.styleFrom(
                 backgroundColor: cs.primary,
                 foregroundColor: cs.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+              ),
+              child: LogButtonContent(
+                state: _buttonState,
+                idleLabel: 'Save Sleep Entry',
+                loadingLabel: 'Saving sleep',
+                successLabel: 'Saved',
               ),
             ),
           ),
@@ -135,18 +152,28 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
   }
 
   bool get _canSave =>
-    _bedTime != null && _wakeTime != null && _quality != null;
+      _bedTime != null && _wakeTime != null && _quality != null;
 
-  void _saveSleep() {
+  Future<void> _saveSleep() async {
     if (!_canSave) return;
+
+    setState(() => _buttonState = LogButtonVisualState.loading);
 
     final now = DateTime.now();
     final bedDateTime = DateTime(
-      now.year, now.month, now.day, _bedTime!.hour, _bedTime!.minute,
+      now.year,
+      now.month,
+      now.day,
+      _bedTime!.hour,
+      _bedTime!.minute,
     );
-    
+
     final wakeDateTime = DateTime(
-      now.year, now.month, now.day, _wakeTime!.hour, _wakeTime!.minute,
+      now.year,
+      now.month,
+      now.day,
+      _wakeTime!.hour,
+      _wakeTime!.minute,
     );
 
     final sleep = Sleep(
@@ -157,14 +184,21 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
       notes: _notesController.text.trim(),
     );
 
-    widget.onSleepLogged(sleep);
+    await widget.onSleepLogged(sleep);
+
+    if (!mounted) return;
 
     setState(() {
       _bedTime = null;
       _wakeTime = null;
       _quality = null;
       _notesController.clear();
+      _buttonState = LogButtonVisualState.success;
     });
+
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted) return;
+    setState(() => _buttonState = LogButtonVisualState.idle);
   }
 
   @override
@@ -230,18 +264,14 @@ class _TimeSelector extends StatelessWidget {
                   Text(
                     time?.format(context) ?? 'Select time',
                     style: theme.textTheme.bodyLarge?.copyWith(
-                      color: time != null ? cs.onSurface: cs.onSurfaceVariant,
+                      color: time != null ? cs.onSurface : cs.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(
-              Icons.schedule,
-              color: cs.onSurfaceVariant,
-              size: 20,
-            ),
+            Icon(Icons.schedule, color: cs.onSurfaceVariant, size: 20),
           ],
         ),
       ),

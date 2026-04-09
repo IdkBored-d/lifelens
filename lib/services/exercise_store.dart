@@ -1,23 +1,32 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/exercise_model.dart';
 
 class ExerciseStore {
+  ExerciseStore({FirebaseFirestore? firestore, FirebaseAuth? auth})
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance {
+    _ready = _initializePrefs();
+  }
+
   static const String _favoritesKey = 'favorite_exercises';
   static const String _exerciseHistoryKey = 'exercise_history_v2';
+  static const String _pendingExerciseSyncKey = 'pending_exercise_sync_v1';
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
   late SharedPreferences _prefs;
   late final Future<void> _ready;
   List<ExerciseModel> exercises = [];
   List<String> _favoriteIds = [];
 
-  ExerciseStore() {
-    _ready = _initializePrefs();
-  }
-
   Future<void> _initializePrefs() async {
     _prefs = await SharedPreferences.getInstance();
     _loadFavorites();
+    await _flushPendingCloudSync();
+    await _loadCloudHistory();
   }
 
   Future<void> ensureReady() => _ready;
@@ -101,21 +110,47 @@ class ExerciseStore {
   }
 
   /// Record an exercise completion in the local timeline.
-  Future<void> logExercise(
+  Future<String?> logExercise(
     String exerciseId, {
     String mood = '',
+    String exerciseName = '',
+    int durationMinutes = 0,
   }) async {
     await _ready;
-    final history = _loadExerciseHistory();
-    history.insert(0, {
+    final timestamp = DateTime.now();
+    final record = <String, String>{
       'exerciseId': exerciseId,
+      'exerciseName': exerciseName,
       'mood': mood,
-      'timestamp': DateTime.now().toIso8601String(),
-    });
+      'durationMinutes': durationMinutes.toString(),
+      'timestamp': timestamp.toIso8601String(),
+    };
+    final history = List<Map<String, String>>.from(_loadExerciseHistory());
+    history.insert(0, record);
     await _prefs.setStringList(
       _exerciseHistoryKey,
       history.map(_encodeHistoryRecord).toList(growable: false),
     );
+    await _enqueuePendingSync(record);
+
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      return 'Saved on this device. Sign in to sync exercise logs.';
+    }
+
+    final synced = await _syncRecordToCloud(record, timestamp: timestamp);
+    if (synced) {
+      await _removePendingSync(record);
+      return null;
+    }
+
+    return 'Saved on this device. Cloud sync will retry automatically.';
+  }
+
+  Future<void> refreshFromCloud() async {
+    await _ready;
+    await _flushPendingCloudSync();
+    await _loadCloudHistory();
   }
 
   /// Return recent exercise activity as daily counts for the last [days] days.
@@ -168,11 +203,176 @@ class ExerciseStore {
       final parts = encoded.split('|');
       return {
         'exerciseId': parts.isNotEmpty ? parts[0] : '',
+        'exerciseName': '',
         'mood': parts.length > 1 ? parts[1] : '',
+        'durationMinutes': '',
         'timestamp': parts.length > 2 ? parts[2] : '',
       };
     }
 
-    return const {'exerciseId': '', 'mood': '', 'timestamp': ''};
+    return const {
+      'exerciseId': '',
+      'exerciseName': '',
+      'mood': '',
+      'durationMinutes': '',
+      'timestamp': '',
+    };
+  }
+
+  Future<void> _loadCloudHistory() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('exercise_logs')
+          .orderBy('timestamp', descending: true)
+          .limit(120)
+          .get();
+
+      if (snapshot.docs.isEmpty) return;
+
+      final history = snapshot.docs
+          .map(_fromFirestore)
+          .where((record) => record['exerciseId']?.isNotEmpty ?? false)
+          .toList(growable: false);
+
+      await _prefs.setStringList(
+        _exerciseHistoryKey,
+        history.map(_encodeHistoryRecord).toList(growable: false),
+      );
+    } on FirebaseException {
+      // Keep the local history when cloud sync is unavailable.
+    }
+  }
+
+  Future<void> _enqueuePendingSync(Map<String, String> record) async {
+    final pending = List<Map<String, String>>.from(_loadPendingSyncRecords());
+    final recordId = _cloudLogIdFor(record);
+    final exists = pending.any((item) => _cloudLogIdFor(item) == recordId);
+    if (exists) return;
+
+    pending.add(record);
+    await _prefs.setStringList(
+      _pendingExerciseSyncKey,
+      pending.map(_encodeHistoryRecord).toList(growable: false),
+    );
+  }
+
+  Future<void> _removePendingSync(Map<String, String> record) async {
+    final recordId = _cloudLogIdFor(record);
+    final pending = _loadPendingSyncRecords()
+        .where((item) => _cloudLogIdFor(item) != recordId)
+        .toList(growable: false);
+    await _prefs.setStringList(
+      _pendingExerciseSyncKey,
+      pending.map(_encodeHistoryRecord).toList(growable: false),
+    );
+  }
+
+  List<Map<String, String>> _loadPendingSyncRecords() {
+    final raw =
+        _prefs.getStringList(_pendingExerciseSyncKey) ?? const <String>[];
+    return raw
+        .map(_decodeHistoryRecord)
+        .where((record) => record['exerciseId']?.isNotEmpty ?? false)
+        .where((record) => record['timestamp']?.isNotEmpty ?? false)
+        .toList(growable: true);
+  }
+
+  Future<void> _flushPendingCloudSync() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final pending = _loadPendingSyncRecords();
+    if (pending.isEmpty) return;
+
+    final remaining = <Map<String, String>>[];
+    for (final record in pending) {
+      final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
+      final synced = await _syncRecordToCloud(record, timestamp: timestamp);
+      if (!synced) {
+        remaining.add(record);
+      }
+    }
+
+    await _prefs.setStringList(
+      _pendingExerciseSyncKey,
+      remaining.map(_encodeHistoryRecord).toList(growable: false),
+    );
+  }
+
+  Future<bool> _syncRecordToCloud(
+    Map<String, String> record, {
+    DateTime? timestamp,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return false;
+
+    final effectiveTimestamp =
+        timestamp ?? DateTime.tryParse(record['timestamp'] ?? '');
+    if (effectiveTimestamp == null) return false;
+
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('exercise_logs')
+          .doc(_cloudLogIdFor(record))
+          .set(
+            _toFirestore(record, effectiveTimestamp),
+            SetOptions(merge: true),
+          );
+      return true;
+    } on FirebaseException {
+      return false;
+    }
+  }
+
+  String _cloudLogIdFor(Map<String, String> record) {
+    final exerciseId = (record['exerciseId'] ?? '').trim();
+    final timestamp = (record['timestamp'] ?? '').trim();
+    final safeExerciseId = exerciseId.replaceAll(
+      RegExp(r'[^A-Za-z0-9_-]'),
+      '_',
+    );
+    final safeTimestamp = timestamp.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return '${safeExerciseId}_$safeTimestamp';
+  }
+
+  Map<String, dynamic> _toFirestore(
+    Map<String, String> record,
+    DateTime timestamp,
+  ) {
+    return {
+      'exerciseId': record['exerciseId'],
+      'exerciseName': record['exerciseName'],
+      'mood': record['mood'],
+      'durationMinutes': int.tryParse(record['durationMinutes'] ?? '') ?? 0,
+      'timestamp': Timestamp.fromDate(timestamp),
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+  }
+
+  Map<String, String> _fromFirestore(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    final timestamp = data['timestamp'];
+
+    return {
+      'exerciseId': (data['exerciseId'] ?? '').toString(),
+      'exerciseName': (data['exerciseName'] ?? '').toString(),
+      'mood': (data['mood'] ?? '').toString(),
+      'durationMinutes': (data['durationMinutes'] ?? '').toString(),
+      'timestamp': switch (timestamp) {
+        Timestamp value => value.toDate().toIso8601String(),
+        DateTime value => value.toIso8601String(),
+        String value => value,
+        _ => '',
+      },
+    };
   }
 }

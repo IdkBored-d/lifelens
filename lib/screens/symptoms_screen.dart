@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
+import 'package:lifelens/models/symptom_result.dart';
+import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_summary_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:share_plus/share_plus.dart';
@@ -18,7 +22,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   final TextEditingController _symptomFocusController = TextEditingController();
   final SymptomSummaryService _summaryService = SymptomSummaryService();
 
-  bool _isSaving = false;
+  LogButtonVisualState _saveButtonState = LogButtonVisualState.idle;
   bool _isGeneratingSummary = false;
   SymptomSummaryRange _selectedSummaryRange = SymptomSummaryRange.last30;
   DateTime? _customSummaryStartDate;
@@ -44,9 +48,12 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   Future<void> _saveSymptoms() async {
     final rawInput = _symptomsController.text.trim();
     final parsedSymptoms = _parseSymptoms();
-    final detectedSymptoms = SymptomAutoDetectorService.detectSymptomsFromText(rawInput);
-    final symptomsForPipeline =
-        detectedSymptoms.isNotEmpty ? detectedSymptoms : parsedSymptoms;
+    final detectedSymptoms = SymptomAutoDetectorService.detectSymptomsFromText(
+      rawInput,
+    );
+    final symptomsForPipeline = detectedSymptoms.isNotEmpty
+        ? detectedSymptoms
+        : parsedSymptoms;
 
     if (symptomsForPipeline.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -59,15 +66,16 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     }
 
     FocusScope.of(context).unfocus();
-    setState(() => _isSaving = true);
+    setState(() => _saveButtonState = LogButtonVisualState.loading);
 
     final messenger = ScaffoldMessenger.of(context);
+    String? syncWarning;
 
     try {
       final online = await AppServices.isOnline();
       final result = await AppServices.symptomPipeline.analyze(
         userSymptoms: symptomsForPipeline.join(', '),
-        isOnline:     online,
+        isOnline: online,
       );
 
       if (!mounted) return;
@@ -78,22 +86,40 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
           ? result.diagnoses.first.diseaseName
           : 'No diagnosis';
       final urgentCount = result.diagnoses.where((d) => d.isUrgent).length;
-      final urgentNote  = urgentCount > 0 ? ' · $urgentCount urgent' : '';
 
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Symptoms saved · $topDiagnosis$urgentNote'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      try {
+        await _syncSymptomsToCloud(
+          rawInput: rawInput,
+          symptoms: symptomsForPipeline,
+          topDiagnosis: topDiagnosis,
+          urgentCount: urgentCount,
+          result: result,
+        );
+      } catch (_) {
+        syncWarning =
+            'Saved on this device. Cloud sync failed for this symptom log.';
+      }
 
       _symptomsController.clear();
+      setState(() => _saveButtonState = LogButtonVisualState.success);
+      if (syncWarning != null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(syncWarning),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (!mounted) return;
+      setState(() => _saveButtonState = LogButtonVisualState.idle);
     } catch (error) {
       if (!mounted) return;
       print('[SymptomsScreen] Save failed: $error');
       final errorMsg = error.toString();
-      final truncated = errorMsg.length > 70 ? '${errorMsg.substring(0, 70)}...' : errorMsg;
+      final truncated = errorMsg.length > 70
+          ? '${errorMsg.substring(0, 70)}...'
+          : errorMsg;
       messenger.showSnackBar(
         SnackBar(
           content: Text('Error: $truncated'),
@@ -102,8 +128,46 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted && _saveButtonState == LogButtonVisualState.loading) {
+        setState(() => _saveButtonState = LogButtonVisualState.idle);
+      }
     }
+  }
+
+  Future<void> _syncSymptomsToCloud({
+    required String rawInput,
+    required List<String> symptoms,
+    required String topDiagnosis,
+    required int urgentCount,
+    required SymptomPipelineResult result,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return;
+    }
+
+    await FirebaseFirestore.instance.collection('symptom_entries').add({
+      'userId': uid,
+      'rawInput': rawInput,
+      'symptoms': symptoms,
+      'topDiagnosis': topDiagnosis,
+      'urgentCount': urgentCount,
+      'resolvedBy': result.resolvedBy.name,
+      'ragUsed': result.ragUsed,
+      'isOffline': result.isOffline,
+      'diagnoses': result.diagnoses
+          .map(
+            (diagnosis) => {
+              'diseaseName': diagnosis.diseaseName,
+              'reasoning': diagnosis.reasoning,
+              'nextSteps': diagnosis.nextSteps,
+              'isUrgent': diagnosis.isUrgent,
+            },
+          )
+          .toList(growable: false),
+      'createdAt': Timestamp.fromDate(result.timestamp),
+      'date': Timestamp.fromDate(result.timestamp),
+    });
   }
 
   Stream<List<SymptomEntry>> _trendStream() {
@@ -155,7 +219,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       final recent = recentCounts[key] ?? 0;
       final previous = previousCounts[key] ?? 0;
       if (recent > previous && recent >= 2) {
-        worsening.add(_WorseningItem(symptom: key, increase: recent - previous));
+        worsening.add(
+          _WorseningItem(symptom: key, increase: recent - previous),
+        );
       }
     }
     worsening.sort((a, b) => b.increase.compareTo(a.increase));
@@ -223,19 +289,14 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     return daySet.length;
   }
 
-  List<int> _buildDailySeries(
-    List<SymptomEntry> docs,
-    String symptom,
-  ) {
+  List<int> _buildDailySeries(List<SymptomEntry> docs, String symptom) {
     final now = DateTime.now();
     final dayStarts = List<DateTime>.generate(
       14,
       (i) => _startOfDay(now.subtract(Duration(days: 13 - i))),
     );
 
-    final countsByDay = <DateTime, int>{
-      for (final day in dayStarts) day: 0,
-    };
+    final countsByDay = <DateTime, int>{for (final day in dayStarts) day: 0};
 
     for (final doc in docs) {
       final day = _startOfDay(doc.timestamp);
@@ -295,7 +356,8 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
   Future<void> _pickCustomSummaryDate({required bool isStart}) async {
     final initial = isStart
-        ? (_customSummaryStartDate ?? DateTime.now().subtract(const Duration(days: 14)))
+        ? (_customSummaryStartDate ??
+              DateTime.now().subtract(const Duration(days: 14)))
         : (_customSummaryEndDate ?? DateTime.now());
 
     final picked = await showDatePicker(
@@ -362,7 +424,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         windowLabel = 'Custom range';
       } else {
         final now = DateTime.now();
-        startDate = now.subtract(Duration(days: _selectedSummaryRange.days - 1));
+        startDate = now.subtract(
+          Duration(days: _selectedSummaryRange.days - 1),
+        );
         endDate = now;
         windowLabel = _selectedSummaryRange.label;
       }
@@ -411,10 +475,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
     try {
       await SharePlus.instance.share(
-        ShareParams(
-          text: summary.text,
-          subject: 'Symptom Summary',
-        ),
+        ShareParams(text: summary.text, subject: 'Symptom Summary'),
       );
     } on MissingPluginException {
       if (!mounted) {
@@ -422,7 +483,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Share is not ready yet. Please fully restart the app and try again.'),
+          content: Text(
+            'Share is not ready yet. Please fully restart the app and try again.',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -473,13 +536,13 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         final cs = theme.colorScheme;
 
         final topSymptoms = summary.topSymptoms
-          .map((e) => _titleCase(e.key))
+            .map((e) => _titleCase(e.key))
             .toList();
         final worseningSymptoms = summary.worseningSymptoms
-          .map((e) => _titleCase(e.key))
+            .map((e) => _titleCase(e.key))
             .toList();
         final improvingSymptoms = summary.improvingSymptoms
-          .map((e) => _titleCase(e.key))
+            .map((e) => _titleCase(e.key))
             .toList();
 
         return SafeArea(
@@ -551,14 +614,14 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                             title: 'Symptoms showing up most often',
                             body: topSymptoms.isEmpty
                                 ? 'No predominant symptom identified for this window.'
-                              : topSymptoms.join(', '),
+                                : topSymptoms.join(', '),
                           ),
                           const SizedBox(height: 10),
                           _ReportSectionCard(
                             title: 'Compared with the previous period',
                             body:
-                              'Symptoms that increased:\n${worseningSymptoms.isEmpty ? 'None detected.' : worseningSymptoms.join(', ')}\n\n'
-                              'Symptoms that improved:\n${improvingSymptoms.isEmpty ? 'None detected.' : improvingSymptoms.join(', ')}',
+                                'Symptoms that increased:\n${worseningSymptoms.isEmpty ? 'None detected.' : worseningSymptoms.join(', ')}\n\n'
+                                'Symptoms that improved:\n${improvingSymptoms.isEmpty ? 'None detected.' : improvingSymptoms.join(', ')}',
                           ),
                           const SizedBox(height: 10),
                           _ReportSectionCard(
@@ -590,14 +653,19 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     final twoWeeksAgo = now.subtract(const Duration(days: 14));
 
     final thisWeekCount = _countSymptomInWindow(docs, symptom, weekAgo, now);
-    final lastWeekCount = _countSymptomInWindow(docs, symptom, twoWeeksAgo, weekAgo);
+    final lastWeekCount = _countSymptomInWindow(
+      docs,
+      symptom,
+      twoWeeksAgo,
+      weekAgo,
+    );
     final activeDays14 = _activeDaysWithSymptom(docs, symptom, 14);
     final delta = thisWeekCount - lastWeekCount;
     final trendText = delta > 0
         ? 'Up by $delta vs last week'
         : delta < 0
-            ? 'Down by ${delta.abs()} vs last week'
-            : 'Same as last week';
+        ? 'Down by ${delta.abs()} vs last week'
+        : 'Same as last week';
 
     await showModalBottomSheet<void>(
       context: context,
@@ -735,7 +803,8 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                       StreamBuilder<List<SymptomEntry>>(
                         stream: _trendStream(),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
                             return const Padding(
                               padding: EdgeInsets.symmetric(vertical: 8),
                               child: LinearProgressIndicator(minHeight: 3),
@@ -814,7 +883,8 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                       FutureBuilder<List<SymptomFrequency>>(
                         future: _buildSymptomFrequencies(),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
                             return const Padding(
                               padding: EdgeInsets.symmetric(vertical: 8),
                               child: LinearProgressIndicator(minHeight: 3),
@@ -858,8 +928,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                                       child: Stack(
                                         children: [
                                           ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(4),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
                                             child: LinearProgressIndicator(
                                               value: fraction,
                                               minHeight: 24,
@@ -872,15 +943,18 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                                               alignment: Alignment.centerRight,
                                               child: Padding(
                                                 padding: const EdgeInsets.only(
-                                                    right: 8),
+                                                  right: 8,
+                                                ),
                                                 child: Text(
                                                   '${freq.count}',
-                                                  style: theme.textTheme
+                                                  style: theme
+                                                      .textTheme
                                                       .labelSmall
                                                       ?.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                    color: cs.onPrimary,
-                                                  ),
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color: cs.onPrimary,
+                                                      ),
                                                 ),
                                               ),
                                             ),
@@ -922,7 +996,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const _SectionHeader(title: 'Doctor Visit Summary'),
+                                const _SectionHeader(
+                                  title: 'Doctor Visit Summary',
+                                ),
                                 const SizedBox(height: 2),
                                 Text(
                                   'Clinical report for appointments and care discussions.',
@@ -953,14 +1029,16 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                           );
                         }).toList(),
                       ),
-                      if (_selectedSummaryRange == SymptomSummaryRange.custom) ...[
+                      if (_selectedSummaryRange ==
+                          SymptomSummaryRange.custom) ...[
                         const SizedBox(height: 10),
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: [
                             OutlinedButton.icon(
-                              onPressed: () => _pickCustomSummaryDate(isStart: true),
+                              onPressed: () =>
+                                  _pickCustomSummaryDate(isStart: true),
                               icon: const Icon(Icons.event_outlined),
                               label: Text(
                                 _customSummaryStartDate == null
@@ -969,7 +1047,8 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                               ),
                             ),
                             OutlinedButton.icon(
-                              onPressed: () => _pickCustomSummaryDate(isStart: false),
+                              onPressed: () =>
+                                  _pickCustomSummaryDate(isStart: false),
                               icon: const Icon(Icons.event_available_outlined),
                               label: Text(
                                 _customSummaryEndDate == null
@@ -985,7 +1064,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         value: _compareWithPreviousPeriod,
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Compare with previous period'),
-                        subtitle: const Text('Shows what symptoms are increasing or improving.'),
+                        subtitle: const Text(
+                          'Shows what symptoms are increasing or improving.',
+                        ),
                         onChanged: (value) {
                           setState(() => _compareWithPreviousPeriod = value);
                         },
@@ -1102,8 +1183,15 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: _isSaving ? null : _saveSymptoms,
-                    child: Text(_isSaving ? 'Saving...' : 'Save entry'),
+                    onPressed: _saveButtonState == LogButtonVisualState.loading
+                        ? null
+                        : _saveSymptoms,
+                    child: LogButtonContent(
+                      state: _saveButtonState,
+                      idleLabel: 'Save entry',
+                      loadingLabel: 'Saving symptoms',
+                      successLabel: 'Saved',
+                    ),
                   ),
                 ),
               ],
@@ -1172,17 +1260,17 @@ class _WorseningItem {
 }
 
 class _TrendBarChart extends StatelessWidget {
-  const _TrendBarChart({
-    required this.items,
-    required this.onTapSymptom,
-  });
+  const _TrendBarChart({required this.items, required this.onTapSymptom});
 
   final List<MapEntry<String, int>> items;
   final ValueChanged<String> onTapSymptom;
 
   @override
   Widget build(BuildContext context) {
-    final maxCount = items.fold<int>(0, (max, item) => item.value > max ? item.value : max);
+    final maxCount = items.fold<int>(
+      0,
+      (max, item) => item.value > max ? item.value : max,
+    );
 
     return Column(
       children: items.map((item) {
@@ -1217,10 +1305,9 @@ class _TrendBarChart extends StatelessWidget {
                         child: LinearProgressIndicator(
                           value: fraction,
                           minHeight: 10,
-                          backgroundColor: Theme.of(context)
-                              .colorScheme
-                              .outlineVariant
-                              .withOpacity(0.35),
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.outlineVariant.withOpacity(0.35),
                         ),
                       ),
                     ),
@@ -1252,7 +1339,10 @@ class _DailyTrendMiniChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxValue = values.fold<int>(0, (max, value) => value > max ? value : max);
+    final maxValue = values.fold<int>(
+      0,
+      (max, value) => value > max ? value : max,
+    );
     final cs = Theme.of(context).colorScheme;
 
     return SizedBox(
@@ -1269,7 +1359,9 @@ class _DailyTrendMiniChart extends StatelessWidget {
               child: Container(
                 height: barHeight,
                 decoration: BoxDecoration(
-                  color: value > 0 ? cs.primary : cs.outlineVariant.withOpacity(0.4),
+                  color: value > 0
+                      ? cs.primary
+                      : cs.outlineVariant.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
@@ -1356,14 +1448,8 @@ class _ReportSectionCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           selectable
-              ? SelectableText(
-                  body,
-                  style: theme.textTheme.bodySmall,
-                )
-              : Text(
-                  body,
-                  style: theme.textTheme.bodySmall,
-                ),
+              ? SelectableText(body, style: theme.textTheme.bodySmall)
+              : Text(body, style: theme.textTheme.bodySmall),
         ],
       ),
     );
