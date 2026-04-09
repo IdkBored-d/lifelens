@@ -7,9 +7,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../intro_screen.dart';
 import '../auth/verifyemail_screen.dart';
 import 'app_init.dart';
-import '../screens/gemma_setup_screen.dart';
-import '../services/gemma_model_manager.dart';
-import '../app_services.dart';
 
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
@@ -19,22 +16,17 @@ class AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<AppRoot> {
-  late Future<bool> _initFuture;
-  bool _gemmaSetupDone = false;
+  late Future<void> _initFuture;
 
   @override
   void initState() {
     super.initState();
-    _initFuture = initializeApp().then((_) async {
-      if (AppServices.isGemmaLoaded) return false;
-      final skipped = await GemmaModelManager.wasSkipped();
-      return !skipped;
-    });
+    _initFuture = initializeApp();
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
+    return FutureBuilder<void>(
       future: _initFuture,
       builder: (context, initSnapshot) {
         if (initSnapshot.connectionState != ConnectionState.done) {
@@ -45,19 +37,8 @@ class _AppRootState extends State<AppRoot> {
           return _InitErrorScreen(
             error: initSnapshot.error.toString(),
             onRetry: () => setState(() {
-              _initFuture = initializeApp().then((_) async {
-                if (AppServices.isGemmaLoaded) return false;
-                final skipped = await GemmaModelManager.wasSkipped();
-                return !skipped;
-              });
+              _initFuture = initializeApp();
             }),
-          );
-        }
-
-        final showSetup = initSnapshot.data ?? false;
-        if (showSetup && !_gemmaSetupDone) {
-          return GemmaSetupScreen(
-            onComplete: () => setState(() => _gemmaSetupDone = true),
           );
         }
 

@@ -1,0 +1,112 @@
+{
+  "suggestions": [
+    {
+      "id": "sg_rest_01",
+      "text": "Rest today and keep the load light — recovery matters just as much as effort.",
+      "category": "rest",
+      "embedding": []
+    },
+    {
+      "id": "sg_rest_02",
+      "text": "Your body may be signalling that it needs a slower day. Prioritise sleep and low-stimulation activities.",
+      "category": "rest",
+      "embedding": []
+    },
+    {
+      "id": "sg_rest_03",
+      "text": "A consistent wind-down routine tonight could help reset your sleep quality for the rest of the week.",
+      "category": "rest",
+      "embedding": []
+    },
+    {
+      "id": "sg_exercise_01",
+      "text": "A short low-intensity walk should help reset your momentum without adding stress.",
+      "category": "exercise",
+      "embedding": []
+    },
+    {
+      "id": "sg_exercise_02",
+      "text": "Even 10 minutes of movement today can shift your energy and mood in a positive direction.",
+      "category": "exercise",
+      "embedding": []
+    },
+    {
+      "id": "sg_exercise_03",
+      "text": "Getting back to light activity is the fastest way to rebuild the exercise habit after a gap.",
+      "category": "exercise",
+      "embedding": []
+    },
+    {
+      "id": "sg_social_01",
+      "text": "Consider reaching out to someone you trust for support — connection is one of the fastest mood regulators.",
+      "category": "social_support",
+      "embedding": []
+    },
+    {
+      "id": "sg_social_02",
+      "text": "Even a brief check-in with a friend or family member can provide meaningful relief on hard days.",
+      "category": "social_support",
+      "embedding": []
+    },
+    {
+      "id": "sg_clinician_01",
+      "text": "This pattern is high-risk. A clinician check-in is the safest next step — please reach out today.",
+      "category": "clinician_followup",
+      "embedding": []
+    },
+    {
+      "id": "sg_clinician_02",
+      "text": "Given what your logs are showing, speaking with a healthcare professional this week is strongly recommended.",
+      "category": "clinician_followup",
+      "embedding": []
+    },
+    {
+      "id": "sg_logging_01",
+      "text": "Add one more log today so the system can tailor guidance more accurately to your current state.",
+      "category": "logging",
+      "embedding": []
+    },
+    {
+      "id": "sg_logging_02",
+      "text": "Consistent daily check-ins unlock more personalised insights. Try logging at the same time each day.",
+      "category": "logging",
+      "embedding": []
+    },
+    {
+      "id": "sg_routine_01",
+      "text": "Keep your routine steady and keep logging — stability is its own form of progress.",
+      "category": "routine",
+      "embedding": []
+    },
+    {
+      "id": "sg_routine_02",
+      "text": "Anchor your day with one small predictable habit — routine is a powerful mood stabiliser.",
+      "category": "routine",
+      "embedding": []
+    },
+    {
+      "id": "sg_sleep_01",
+      "text": "Protecting your sleep window tonight is the highest-leverage action you can take for tomorrow's energy.",
+      "category": "sleep",
+      "embedding": []
+    },
+    {
+      "id": "sg_sleep_02",
+      "text": "Your recent sleep pattern suggests some disruption — try a fixed bedtime for the next 3 nights.",
+      "category": "sleep",
+      "embedding": []
+    },
+    {
+      "id": "sg_mindfulness_01",
+      "text": "A 3-minute breathing reset before your next task can help reduce the stress load you're carrying.",
+      "category": "mindfulness",
+      "embedding": []
+    },
+    {
+      "id": "sg_mindfulness_02",
+      "text": "Taking a moment to notice what you're feeling — without judgement — is a small but powerful act.",
+      "category": "mindfulness",
+      "embedding": []
+    }
+  ]
+}

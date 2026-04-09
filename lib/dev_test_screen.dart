@@ -400,21 +400,24 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testGemmaStatus() async {
-    return AppServices.isGemmaLoaded
-        ? '✓ Gemma model is loaded and ready'
-        : '✗ Gemma model is not loaded';
+    // Gemma removed — in-house models active
+    final mbLoaded = AppServices.mobileBert.isLoaded;
+    final deLoaded = AppServices.disEmbed.isLoaded;
+    final kbLoaded = AppServices.diseaseKb.isLoaded;
+    return 'MobileBERT: ${mbLoaded ? "loaded" : "not loaded"}\n'
+        'DisEmbed: ${deLoaded ? "loaded" : "not loaded"}\n'
+        'Disease KB: ${kbLoaded ? "loaded" : "not loaded"}';
   }
 
   Future<String> _testGemmaInference() async {
-    if (!AppServices.isGemmaLoaded) {
-      return '✗ Gemma model is not loaded';
-    }
-
-    final reply = await AppServices.gemma.generateMiniMeReply(
-      userMessage: 'I feel overwhelmed and tired today.',
-      moodLabel: 'Anxious',
+    // Gemma removed — testing template mood response instead
+    final result = AppServices.templateMoodResponse.analyze(
+      enrichedLog: 'I feel overwhelmed and tired today.',
+      mbTopLabel: 'anxious',
     );
-    return '✓ Gemma inference succeeded\nReply: $reply';
+    return '✓ TemplateMoodResponse succeeded\n'
+        'Resolved mood: ${result.$1}\n'
+        'Response: ${result.$2}';
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────────

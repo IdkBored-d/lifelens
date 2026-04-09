@@ -39,7 +39,7 @@ config.json
 /coverage/
 /android/app/build
 assets/models/for MVP/disembed_fp32.onnx
-
+*.md
 # Symbolication related
 app.*.symbols
 

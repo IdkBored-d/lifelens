@@ -1,0 +1,345 @@
+[
+  {
+    "name": "Common Cold",
+    "keywords": ["cold", "runny nose", "sneezing", "congestion", "sore throat", "cough", "stuffy nose"],
+    "is_urgent": false,
+    "reasoning": "Your symptoms — runny nose, congestion, and sore throat — are consistent with the common cold, a viral upper respiratory infection typically caused by rhinovirus. Colds are extremely common and usually resolve within 7–10 days.",
+    "next_steps": "Rest, stay hydrated, and use over-the-counter symptom relievers (decongestants, throat lozenges) as needed. See a doctor if symptoms worsen after 10 days, you develop a high fever, or you have difficulty breathing."
+  },
+  {
+    "name": "Influenza (Flu)",
+    "keywords": ["flu", "influenza", "fever", "chills", "body aches", "fatigue", "headache", "sore throat", "cough"],
+    "is_urgent": false,
+    "reasoning": "The combination of sudden-onset fever, body aches, chills, and fatigue is characteristic of influenza. Unlike a cold, flu typically comes on quickly and causes more severe systemic symptoms.",
+    "next_steps": "Rest and stay well hydrated. Antiviral medications (oseltamivir/Tamiflu) are most effective when started within 48 hours of symptoms. Seek care promptly if you are high-risk (elderly, immunocompromised, pregnant) or if symptoms become severe."
+  },
+  {
+    "name": "COVID-19",
+    "keywords": ["covid", "covid-19", "coronavirus", "loss of smell", "loss of taste", "fever", "cough", "shortness of breath", "fatigue"],
+    "is_urgent": false,
+    "reasoning": "Fever, cough, fatigue, and loss of smell or taste can indicate COVID-19. The symptom range varies widely from mild cold-like symptoms to more serious respiratory illness.",
+    "next_steps": "Take a rapid antigen test if available. Isolate to protect others. Most cases resolve with rest and hydration. Seek emergency care for severe shortness of breath, persistent chest pain, confusion, or inability to stay awake."
+  },
+  {
+    "name": "Strep Throat",
+    "keywords": ["strep", "sore throat", "throat pain", "tonsils", "swollen lymph nodes", "fever", "difficulty swallowing", "white patches"],
+    "is_urgent": false,
+    "reasoning": "Severe sore throat with fever, difficulty swallowing, and potentially white patches on the tonsils are classic signs of streptococcal (strep) pharyngitis — a bacterial infection requiring antibiotic treatment.",
+    "next_steps": "See a doctor or urgent care for a throat swab test. If strep is confirmed, a full course of antibiotics (typically penicillin or amoxicillin) is necessary to prevent complications like rheumatic fever."
+  },
+  {
+    "name": "Sinusitis",
+    "keywords": ["sinus", "sinusitis", "facial pain", "facial pressure", "congestion", "nasal discharge", "headache", "post-nasal drip", "stuffy nose"],
+    "is_urgent": false,
+    "reasoning": "Facial pressure or pain around the cheeks and forehead, nasal congestion, and thick nasal discharge suggest sinusitis — inflammation of the sinus cavities, often following a cold.",
+    "next_steps": "Saline nasal rinses and over-the-counter decongestants can help. If symptoms persist beyond 10 days or worsen significantly, see a doctor — bacterial sinusitis may require antibiotics."
+  },
+  {
+    "name": "Seasonal Allergies",
+    "keywords": ["allergy", "allergies", "hay fever", "pollen", "sneezing", "itchy eyes", "runny nose", "watery eyes", "congestion"],
+    "is_urgent": false,
+    "reasoning": "Recurring sneezing, itchy or watery eyes, and runny nose — especially at certain times of year or around specific triggers — are hallmarks of seasonal allergic rhinitis (hay fever).",
+    "next_steps": "Over-the-counter antihistamines (cetirizine, loratadine) and nasal corticosteroid sprays are first-line treatments. Identify and avoid your triggers where possible. An allergist can provide testing and immunotherapy options for severe cases."
+  },
+  {
+    "name": "Asthma",
+    "keywords": ["asthma", "wheezing", "shortness of breath", "chest tightness", "breathing difficulty", "cough at night", "exercise-induced"],
+    "is_urgent": false,
+    "reasoning": "Recurrent episodes of wheezing, shortness of breath, chest tightness, and cough — particularly at night or triggered by exercise or allergens — are characteristic of asthma, a chronic airway condition.",
+    "next_steps": "Consult a doctor for diagnosis and a management plan. A rescue inhaler (albuterol) is typically prescribed for acute episodes. Avoid known triggers (allergens, smoke, cold air). Do not delay seeking emergency care if breathing becomes severely restricted."
+  },
+  {
+    "name": "Bronchitis",
+    "keywords": ["bronchitis", "persistent cough", "productive cough", "coughing up mucus", "chest discomfort", "wheezing", "low-grade fever"],
+    "is_urgent": false,
+    "reasoning": "A persistent cough — often producing mucus — along with mild chest discomfort and sometimes wheezing suggests bronchitis, inflammation of the bronchial tubes. Most cases are viral and resolve within 3 weeks.",
+    "next_steps": "Rest, stay hydrated, and use a humidifier if helpful. Cough suppressants may provide relief. See a doctor if symptoms last more than 3 weeks, you cough up blood, have a high fever, or are short of breath at rest."
+  },
+  {
+    "name": "Pneumonia",
+    "keywords": ["pneumonia", "cough", "chest pain", "fever", "chills", "shortness of breath", "difficulty breathing", "productive cough", "low oxygen"],
+    "is_urgent": true,
+    "reasoning": "High fever, productive cough, chest pain, and difficulty breathing can indicate pneumonia — an infection of the lung tissue that can be bacterial, viral, or fungal. Pneumonia can progress rapidly and requires medical evaluation.",
+    "next_steps": "Seek medical care promptly. Your doctor will likely order a chest X-ray and may prescribe antibiotics if bacterial. Hospitalization may be required for severe cases, very young children, elderly individuals, or those with underlying conditions."
+  },
+  {
+    "name": "Gastroenteritis (Stomach Bug)",
+    "keywords": ["stomach bug", "gastroenteritis", "vomiting", "diarrhea", "nausea", "stomach cramps", "upset stomach", "stomach pain", "stomach flu"],
+    "is_urgent": false,
+    "reasoning": "Nausea, vomiting, diarrhea, and stomach cramps together suggest gastroenteritis — inflammation of the stomach and intestines, usually caused by a viral or bacterial infection.",
+    "next_steps": "Focus on staying hydrated with clear fluids (water, electrolyte drinks). Eat bland foods (BRAT diet) when ready. Most cases resolve within 1–3 days. Seek care if symptoms last more than 3 days, you see blood in stool, or cannot keep any fluids down."
+  },
+  {
+    "name": "Food Poisoning",
+    "keywords": ["food poisoning", "vomiting", "nausea", "diarrhea", "stomach cramps", "after eating", "bad food", "food-borne"],
+    "is_urgent": false,
+    "reasoning": "Rapid-onset nausea, vomiting, and diarrhea after eating are classic signs of food poisoning from contaminated food. Symptoms typically begin within hours of exposure.",
+    "next_steps": "Rest and rehydrate with clear fluids. Most cases resolve within 24–48 hours. Seek emergency care for severe dehydration (extreme thirst, no urination, dizziness), bloody diarrhea, high fever, or neurological symptoms."
+  },
+  {
+    "name": "Acid Reflux / GERD",
+    "keywords": ["heartburn", "acid reflux", "gerd", "chest burning", "regurgitation", "sour taste", "indigestion", "after eating"],
+    "is_urgent": false,
+    "reasoning": "Burning sensation in the chest or throat, especially after meals or when lying down, along with a sour or bitter taste suggests acid reflux or GERD (gastroesophageal reflux disease) — stomach acid backing up into the esophagus.",
+    "next_steps": "Avoid trigger foods (spicy, fatty, acidic foods, caffeine, alcohol). Eat smaller meals and avoid lying down for 2–3 hours after eating. Over-the-counter antacids or H2 blockers can help. See a doctor if symptoms are frequent or severe."
+  },
+  {
+    "name": "Irritable Bowel Syndrome (IBS)",
+    "keywords": ["ibs", "irritable bowel", "bloating", "constipation", "diarrhea", "stomach cramps", "abdominal pain", "bowel changes"],
+    "is_urgent": false,
+    "reasoning": "Recurring abdominal cramping, bloating, and alternating constipation and diarrhea that is relieved by bowel movements suggests IBS — a functional bowel disorder without underlying inflammation.",
+    "next_steps": "Keep a food and symptom diary to identify triggers. Stress management, dietary changes (low-FODMAP diet), and regular exercise can help. See a doctor to rule out other conditions and discuss management strategies."
+  },
+  {
+    "name": "Appendicitis",
+    "keywords": ["appendicitis", "right lower abdomen", "abdominal pain", "nausea", "vomiting", "fever", "rebound tenderness", "stomach pain"],
+    "is_urgent": true,
+    "reasoning": "Pain that begins around the navel and migrates to the lower right abdomen, accompanied by nausea, vomiting, and fever, is a classic presentation of appendicitis — inflammation of the appendix requiring urgent evaluation.",
+    "next_steps": "Go to an emergency room immediately. Appendicitis is a surgical emergency. Do not eat or drink anything in case surgery is needed. Delay increases risk of rupture, which is life-threatening."
+  },
+  {
+    "name": "Tension Headache",
+    "keywords": ["tension headache", "headache", "head pain", "forehead pressure", "tight band", "neck tension", "stress headache"],
+    "is_urgent": false,
+    "reasoning": "A dull, aching pain or pressure around the forehead, temples, or back of the head — often feeling like a tight band — is characteristic of a tension-type headache, the most common headache type, typically triggered by stress or poor posture.",
+    "next_steps": "Over-the-counter pain relievers (ibuprofen, acetaminophen) usually provide relief. Gentle neck stretches, rest, and stress reduction help. If headaches are frequent (more than 15 days/month), see a doctor to discuss preventive options."
+  },
+  {
+    "name": "Migraine",
+    "keywords": ["migraine", "severe headache", "pulsating", "throbbing", "light sensitivity", "nausea with headache", "aura", "visual disturbance"],
+    "is_urgent": false,
+    "reasoning": "Severe, throbbing head pain — often one-sided — with nausea, sensitivity to light and sound, and sometimes preceded by visual disturbances (aura) is characteristic of migraine, a neurological condition with well-established treatment options.",
+    "next_steps": "Rest in a dark, quiet room. Triptans (e.g., sumatriptan) are highly effective when taken early. Over-the-counter NSAIDs can help for mild attacks. Seek medical care for frequent migraines to discuss preventive medication."
+  },
+  {
+    "name": "Hypertension (High Blood Pressure)",
+    "keywords": ["high blood pressure", "hypertension", "headache", "dizziness", "nosebleed", "chest tightness", "elevated bp"],
+    "is_urgent": false,
+    "reasoning": "Headaches, dizziness, and nosebleeds can occasionally accompany elevated blood pressure, though hypertension is often asymptomatic. It is a significant cardiovascular risk factor that requires management.",
+    "next_steps": "Check your blood pressure. If it is consistently elevated (above 130/80 mmHg), see a doctor. Lifestyle changes (reduced sodium, regular exercise, healthy weight, limited alcohol) are first-line. Medication may be needed."
+  },
+  {
+    "name": "Anemia",
+    "keywords": ["anemia", "fatigue", "pale skin", "tiredness", "weakness", "shortness of breath on exertion", "dizziness", "cold hands", "cold feet"],
+    "is_urgent": false,
+    "reasoning": "Persistent fatigue, weakness, paleness, and shortness of breath with exertion can indicate anemia — a deficiency in red blood cells or hemoglobin that reduces oxygen delivery to tissues. Iron-deficiency anemia is the most common type.",
+    "next_steps": "See a doctor for a blood count test. Treatment depends on the cause — iron supplements for iron-deficiency anemia, vitamin B12 for pernicious anemia. Dietary changes (iron-rich foods, vitamin C) can help alongside treatment."
+  },
+  {
+    "name": "Urinary Tract Infection (UTI)",
+    "keywords": ["uti", "urinary tract infection", "burning urination", "frequent urination", "pelvic pain", "cloudy urine", "strong-smelling urine", "lower abdominal pain"],
+    "is_urgent": false,
+    "reasoning": "Burning or pain with urination, increased urinary frequency, and pelvic discomfort suggest a urinary tract infection — a bacterial infection of the bladder or urethra, most common in women.",
+    "next_steps": "See a doctor for a urine test. UTIs are typically treated with a short course of antibiotics. Drink plenty of water. If you develop fever, back/flank pain, or chills, seek care urgently as the infection may have spread to the kidneys."
+  },
+  {
+    "name": "Kidney Infection (Pyelonephritis)",
+    "keywords": ["kidney infection", "flank pain", "back pain", "fever", "chills", "nausea", "frequent urination", "burning urination", "pyelonephritis"],
+    "is_urgent": true,
+    "reasoning": "Fever, chills, nausea, and pain in the back or flank — especially combined with urinary symptoms — suggest pyelonephritis (kidney infection), a serious condition requiring prompt antibiotic treatment.",
+    "next_steps": "Seek medical care promptly — kidney infections require antibiotics and can progress to sepsis if untreated. Hospitalization may be needed for severe cases. Do not delay treatment."
+  },
+  {
+    "name": "Type 2 Diabetes (Uncontrolled)",
+    "keywords": ["diabetes", "frequent urination", "excessive thirst", "blurred vision", "fatigue", "slow healing", "frequent infections", "weight loss"],
+    "is_urgent": false,
+    "reasoning": "Frequent urination, excessive thirst, blurred vision, and unexplained fatigue can indicate uncontrolled blood sugar. These symptoms are associated with both Type 2 diabetes and prediabetes.",
+    "next_steps": "See a doctor for a blood glucose test (fasting glucose or HbA1c). If diabetes is confirmed, lifestyle changes (diet, exercise) are foundational, and medication may be needed. Do not ignore these symptoms — early management prevents serious complications."
+  },
+  {
+    "name": "Hypothyroidism",
+    "keywords": ["thyroid", "hypothyroidism", "fatigue", "weight gain", "cold intolerance", "constipation", "dry skin", "hair loss", "slow heart rate", "brain fog"],
+    "is_urgent": false,
+    "reasoning": "Persistent fatigue, unexplained weight gain, feeling cold, constipation, dry skin, and hair loss suggest hypothyroidism — an underactive thyroid gland that slows metabolism.",
+    "next_steps": "See a doctor for a thyroid function test (TSH, T4). Hypothyroidism is usually treated with daily levothyroxine, which effectively restores normal thyroid levels. Symptoms typically improve within weeks of starting treatment."
+  },
+  {
+    "name": "Anxiety Disorder",
+    "keywords": ["anxiety", "worry", "nervous", "panic", "heart racing", "restless", "sleep difficulty", "tension", "dread", "apprehension"],
+    "is_urgent": false,
+    "reasoning": "Persistent worry, physical tension, racing heart, sleep difficulties, and a sense of dread that is difficult to control — particularly when it interferes with daily life — are hallmarks of an anxiety disorder.",
+    "next_steps": "Speak with a doctor or mental health professional. Therapy (CBT is highly effective), lifestyle changes (exercise, sleep hygiene, reduced caffeine), and in some cases medication can all help. You do not have to manage this alone."
+  },
+  {
+    "name": "Depression",
+    "keywords": ["depression", "depressed", "low mood", "hopelessness", "loss of interest", "fatigue", "sleep changes", "appetite changes", "worthlessness", "sadness"],
+    "is_urgent": false,
+    "reasoning": "Persistent low mood, loss of interest in activities you used to enjoy, fatigue, changes in sleep and appetite, and feelings of hopelessness or worthlessness are core symptoms of a depressive episode.",
+    "next_steps": "Talk to a doctor or mental health professional. Depression is highly treatable with therapy, medication (antidepressants), lifestyle changes, or a combination. Reaching out is the most important first step."
+  },
+  {
+    "name": "Insomnia",
+    "keywords": ["insomnia", "sleep trouble", "cannot sleep", "waking up at night", "difficulty falling asleep", "unrefreshing sleep", "sleep problems"],
+    "is_urgent": false,
+    "reasoning": "Difficulty falling asleep, staying asleep, or waking too early — combined with daytime fatigue — constitutes insomnia, a common sleep disorder often related to stress, anxiety, or poor sleep habits.",
+    "next_steps": "Practice good sleep hygiene: consistent sleep/wake times, cool and dark bedroom, no screens 1 hour before bed. CBT-I (cognitive behavioral therapy for insomnia) is the most effective long-term treatment. See a doctor if it persists."
+  },
+  {
+    "name": "Musculoskeletal Back Pain",
+    "keywords": ["back pain", "lower back pain", "back ache", "lumbar pain", "muscle pain", "stiffness", "back stiffness", "spasm"],
+    "is_urgent": false,
+    "reasoning": "Dull or aching pain in the lower back — often worsening with movement and improving with rest — is most commonly musculoskeletal in origin, due to muscle strain, poor posture, or disc issues.",
+    "next_steps": "Gentle movement and stretching is better than prolonged bed rest. Over-the-counter NSAIDs (ibuprofen) and heat/cold therapy can provide relief. See a doctor if pain radiates down the leg, is accompanied by numbness/weakness, or follows an injury."
+  },
+  {
+    "name": "Migraine with Aura",
+    "keywords": ["aura", "visual aura", "flashing lights", "zigzag lines", "blind spot", "tingling before headache", "migraine aura"],
+    "is_urgent": false,
+    "reasoning": "Visual disturbances (zigzag lines, flashing lights, blind spots) or tingling that precede a headache are classic aura symptoms associated with migraine. Aura reflects temporary changes in brain activity.",
+    "next_steps": "Take migraine medication at the first sign of aura — early treatment is most effective. Identify and avoid personal triggers (certain foods, hormonal changes, stress, sleep disruption). Consult a neurologist for frequent attacks."
+  },
+  {
+    "name": "Allergic Reaction",
+    "keywords": ["allergic reaction", "hives", "rash", "itching", "swelling", "allergy", "anaphylaxis", "allergic"],
+    "is_urgent": false,
+    "reasoning": "Hives, itching, skin rash, or localized swelling after exposure to a potential allergen (food, medication, insect sting) indicates an allergic reaction, ranging from mild to potentially severe.",
+    "next_steps": "For mild reactions, oral antihistamines (diphenhydramine, cetirizine) can help. Avoid the trigger. If you experience throat swelling, difficulty breathing, or rapid heartbeat, use an epinephrine auto-injector (EpiPen) if available and call emergency services immediately."
+  },
+  {
+    "name": "Anaphylaxis",
+    "keywords": ["anaphylaxis", "throat swelling", "difficulty breathing", "hives", "rapid heartbeat", "dizziness", "allergic shock"],
+    "is_urgent": true,
+    "reasoning": "Rapid-onset throat swelling, difficulty breathing, hives, and hemodynamic instability after allergen exposure is anaphylaxis — a life-threatening allergic emergency.",
+    "next_steps": "Use epinephrine (EpiPen) immediately and call emergency services (911). Do not delay. Antihistamines alone are not sufficient for anaphylaxis. Go to the emergency room even after epinephrine, as symptoms can recur."
+  },
+  {
+    "name": "Ear Infection (Otitis Media)",
+    "keywords": ["ear infection", "ear pain", "earache", "hearing loss", "ear fullness", "otitis", "ear drainage", "muffled hearing"],
+    "is_urgent": false,
+    "reasoning": "Ear pain, feeling of fullness, and sometimes muffled hearing or drainage suggest otitis media (middle ear infection) — common in children but can occur in adults, especially after respiratory infections.",
+    "next_steps": "See a doctor for evaluation. Many ear infections resolve on their own within 1–2 weeks. Antibiotics may be prescribed if bacterial or if symptoms are severe. Pain can be managed with OTC pain relievers and warm compresses."
+  },
+  {
+    "name": "Contact Dermatitis",
+    "keywords": ["contact dermatitis", "skin rash", "itchy rash", "red rash", "skin irritation", "blisters", "skin reaction", "poison ivy", "allergic rash"],
+    "is_urgent": false,
+    "reasoning": "Red, itchy, sometimes blistering skin rash that appeared after contact with a substance — such as nickel, latex, certain soaps, or plants — suggests contact dermatitis, an inflammatory skin reaction.",
+    "next_steps": "Identify and avoid the irritant or allergen. Wash the affected area thoroughly. Hydrocortisone cream and antihistamines can reduce inflammation and itching. See a doctor if the rash is severe, widespread, affects the face or genitals, or does not improve."
+  },
+  {
+    "name": "Eczema (Atopic Dermatitis)",
+    "keywords": ["eczema", "atopic dermatitis", "dry itchy skin", "skin rash", "inflamed skin", "scaly skin", "chronic itching"],
+    "is_urgent": false,
+    "reasoning": "Chronic itchy, dry, inflamed skin — often with periods of flare-ups and remission — is characteristic of eczema (atopic dermatitis), a common inflammatory skin condition with both genetic and environmental components.",
+    "next_steps": "Moisturize frequently with fragrance-free emollients. Avoid known triggers (soaps, detergents, allergens, stress). Topical corticosteroids during flares are first-line. See a dermatologist for persistent or severe eczema."
+  },
+  {
+    "name": "Chest Pain (Cardiac, Rule-Out)",
+    "keywords": ["chest pain", "chest pressure", "chest tightness", "heart attack", "left arm pain", "jaw pain", "shortness of breath with chest"],
+    "is_urgent": true,
+    "reasoning": "Chest pain or pressure — especially if radiating to the left arm, jaw, or back, accompanied by shortness of breath, sweating, or nausea — must be evaluated urgently to rule out cardiac causes including heart attack.",
+    "next_steps": "Call emergency services (911) immediately if you suspect a heart attack. Do not drive yourself to the hospital. Chew aspirin (325mg) if not allergic and no contraindications. Every minute counts — do not delay."
+  },
+  {
+    "name": "Vertigo (BPPV)",
+    "keywords": ["vertigo", "dizziness", "room spinning", "balance problem", "bppv", "benign positional", "inner ear", "lightheaded"],
+    "is_urgent": false,
+    "reasoning": "A sudden sensation that the room is spinning — particularly triggered by head position changes — suggests benign paroxysmal positional vertigo (BPPV), caused by displaced calcium crystals in the inner ear.",
+    "next_steps": "The Epley maneuver (a series of head movements) can reposition the crystals and is often effective immediately. A doctor or physiotherapist can guide you through it. Vestibular suppressants provide temporary relief. See a doctor if vertigo is severe or persistent."
+  },
+  {
+    "name": "Dehydration",
+    "keywords": ["dehydration", "thirsty", "dry mouth", "dark urine", "dizziness", "headache", "fatigue", "not drinking enough water"],
+    "is_urgent": false,
+    "reasoning": "Excessive thirst, dark urine, dry mouth, headache, and fatigue — especially in hot weather or after vomiting/diarrhea — suggest dehydration, a fluid deficit that affects cellular function.",
+    "next_steps": "Drink water or electrolyte beverages slowly and steadily. Avoid caffeine and alcohol. For mild dehydration, oral rehydration is sufficient. Seek urgent care for severe dehydration (no urination, extreme lethargy, confusion)."
+  },
+  {
+    "name": "Iron Deficiency Anemia",
+    "keywords": ["iron deficiency", "fatigue", "weakness", "pale", "brittle nails", "restless legs", "pica", "cravings for ice"],
+    "is_urgent": false,
+    "reasoning": "Fatigue, weakness, pale skin, brittle nails, and cravings for non-food items (pica) point toward iron deficiency anemia — the most common nutritional deficiency worldwide, reducing the blood's oxygen-carrying capacity.",
+    "next_steps": "See a doctor for blood tests. Iron supplements (ferrous sulfate) are usually prescribed. Eat iron-rich foods (red meat, legumes, leafy greens) with vitamin C to improve absorption. Identify the source of iron loss (diet, heavy periods, GI bleeding)."
+  },
+  {
+    "name": "Gastric Ulcer",
+    "keywords": ["gastric ulcer", "peptic ulcer", "stomach burning", "burning stomach pain", "after eating pain", "nausea", "belching", "h. pylori"],
+    "is_urgent": false,
+    "reasoning": "Burning or gnawing stomach pain — often worse on an empty stomach or at night, relieved by eating or antacids — along with nausea and bloating suggests a gastric or peptic ulcer, often caused by H. pylori bacteria or NSAID use.",
+    "next_steps": "See a doctor for testing (breath test or endoscopy). Treatment typically includes proton pump inhibitors and, if H. pylori is present, antibiotics. Avoid NSAIDs, alcohol, and smoking."
+  },
+  {
+    "name": "Deep Vein Thrombosis (DVT)",
+    "keywords": ["dvt", "deep vein thrombosis", "leg swelling", "leg pain", "calf pain", "warm leg", "red leg", "blood clot"],
+    "is_urgent": true,
+    "reasoning": "Swelling, pain, warmth, and redness in one leg — particularly the calf — following prolonged immobility, recent surgery, or travel suggests deep vein thrombosis. A DVT can break off and travel to the lungs (pulmonary embolism), which is life-threatening.",
+    "next_steps": "Seek urgent medical evaluation. Do not massage the leg. An ultrasound will confirm the diagnosis. Treatment with blood thinners (anticoagulants) is needed. If you develop sudden shortness of breath or chest pain, call 911 immediately."
+  },
+  {
+    "name": "Fibromyalgia",
+    "keywords": ["fibromyalgia", "widespread pain", "tender points", "chronic pain", "fatigue", "sleep problems", "brain fog", "muscle pain all over"],
+    "is_urgent": false,
+    "reasoning": "Widespread musculoskeletal pain, fatigue, sleep difficulties, memory problems, and mood issues that are not explained by other conditions suggest fibromyalgia — a chronic pain condition affecting the way the brain processes pain signals.",
+    "next_steps": "See a rheumatologist or pain specialist. Fibromyalgia is managed through a combination of exercise, sleep improvement, stress management, CBT, and medication (duloxetine, pregabalin, tricyclic antidepressants)."
+  },
+  {
+    "name": "Lupus (SLE)",
+    "keywords": ["lupus", "sle", "butterfly rash", "joint pain", "fatigue", "sun sensitivity", "mouth sores", "hair loss", "autoimmune"],
+    "is_urgent": false,
+    "reasoning": "A butterfly-shaped rash across the cheeks and nose, joint pain, fatigue, and sun sensitivity — particularly in young women — raise concern for systemic lupus erythematosus (SLE), an autoimmune condition affecting multiple organ systems.",
+    "next_steps": "See a rheumatologist for antibody testing (ANA, anti-dsDNA). Lupus is managed with hydroxychloroquine, NSAIDs, and immunosuppressants depending on severity. Sun protection is essential."
+  },
+  {
+    "name": "Rheumatoid Arthritis",
+    "keywords": ["rheumatoid arthritis", "joint pain", "joint swelling", "morning stiffness", "symmetric joint pain", "swollen joints", "hands joints", "autoimmune arthritis"],
+    "is_urgent": false,
+    "reasoning": "Symmetric joint pain and swelling — especially in the hands, wrists, and feet — with prolonged morning stiffness suggests rheumatoid arthritis, an autoimmune condition causing chronic joint inflammation.",
+    "next_steps": "See a rheumatologist. Early treatment with disease-modifying antirheumatic drugs (DMARDs) like methotrexate is critical to prevent joint damage. Regular monitoring is needed."
+  },
+  {
+    "name": "Gout",
+    "keywords": ["gout", "big toe pain", "sudden joint pain", "red joint", "swollen joint", "uric acid", "crystal arthritis"],
+    "is_urgent": false,
+    "reasoning": "Sudden, intense pain, redness, and swelling — often in the big toe but can affect other joints — that comes on rapidly (often overnight) suggests gout, a form of crystalline arthritis caused by uric acid deposition.",
+    "next_steps": "NSAIDs or colchicine are effective for acute gout attacks. Avoid purine-rich foods (red meat, alcohol, shellfish). See a doctor to confirm diagnosis and discuss long-term urate-lowering therapy (allopurinol) if attacks are recurrent."
+  },
+  {
+    "name": "Carpal Tunnel Syndrome",
+    "keywords": ["carpal tunnel", "wrist pain", "hand numbness", "hand tingling", "fingers numb", "hand weakness", "night hand pain"],
+    "is_urgent": false,
+    "reasoning": "Tingling, numbness, and pain in the hand and fingers — particularly the thumb, index, and middle fingers — that worsens at night or with hand use suggests carpal tunnel syndrome, compression of the median nerve at the wrist.",
+    "next_steps": "Wear a wrist splint at night. Avoid repetitive wrist motions. Physical therapy and NSAIDs can help. See a doctor for evaluation; corticosteroid injections or surgery may be needed in moderate-to-severe cases."
+  },
+  {
+    "name": "Migraine (Vestibular)",
+    "keywords": ["vestibular migraine", "dizziness with headache", "vertigo migraine", "balance migraine"],
+    "is_urgent": false,
+    "reasoning": "Episodes of vertigo or dizziness — with or without headache — that occur in a pattern consistent with migraine, particularly in someone with a migraine history, suggest vestibular migraine.",
+    "next_steps": "Consult a neurologist or ENT specialist. Treatment overlaps with classic migraine management. Keeping a diary of episodes, triggers, and symptoms is helpful."
+  },
+  {
+    "name": "Hypoglycemia (Low Blood Sugar)",
+    "keywords": ["low blood sugar", "hypoglycemia", "shakiness", "sweating", "hunger", "dizziness", "confusion", "rapid heartbeat", "weakness"],
+    "is_urgent": false,
+    "reasoning": "Shakiness, sweating, hunger, and dizziness — particularly in someone with diabetes or after fasting — suggest hypoglycemia (low blood glucose), which can progress to confusion or loss of consciousness if not treated.",
+    "next_steps": "Consume 15g of fast-acting carbohydrates (glucose tablets, juice, regular soda). Recheck blood sugar after 15 minutes. See a doctor if hypoglycemia occurs without an obvious cause or if it is recurrent."
+  },
+  {
+    "name": "Pancreatitis",
+    "keywords": ["pancreatitis", "upper abdominal pain", "radiating to back", "nausea", "vomiting", "abdominal pain after eating", "elevated lipase"],
+    "is_urgent": true,
+    "reasoning": "Severe upper abdominal pain radiating to the back, nausea, and vomiting — often following a fatty meal or alcohol — suggests pancreatitis, inflammation of the pancreas requiring urgent medical evaluation.",
+    "next_steps": "Go to an emergency room. Pancreatitis can be life-threatening and requires IV fluids, pain management, and monitoring. Avoid eating or drinking until assessed by a doctor. Alcohol cessation and dietary changes are important for recovery."
+  },
+  {
+    "name": "Kidney Stones",
+    "keywords": ["kidney stones", "renal colic", "flank pain", "side pain", "pain in back", "blood in urine", "painful urination", "nausea with back pain"],
+    "is_urgent": false,
+    "reasoning": "Severe, colicky pain in the flank or lower back radiating to the groin — accompanied by nausea and possibly blood in the urine — is characteristic of a kidney stone passing through the ureter.",
+    "next_steps": "Drink plenty of water to help pass the stone. OTC or prescription pain relievers manage discomfort. Most small stones (< 5mm) pass on their own. See a doctor — alpha-blockers can help passage. Go to the ER for uncontrollable pain, high fever, or inability to urinate."
+  },
+  {
+    "name": "Psoriasis",
+    "keywords": ["psoriasis", "scaly patches", "plaques", "itchy skin", "silvery scales", "red patches", "skin plaques", "elbow skin", "scalp plaques"],
+    "is_urgent": false,
+    "reasoning": "Well-defined, red, scaly plaques — often on the elbows, knees, and scalp — that are itchy or painful suggest psoriasis, a chronic autoimmune skin condition causing accelerated skin cell turnover.",
+    "next_steps": "See a dermatologist. Topical corticosteroids and vitamin D analogues are first-line for mild psoriasis. Phototherapy and systemic medications (biologics) are used for moderate-to-severe cases. Psoriasis can also affect joints (psoriatic arthritis)."
+  },
+  {
+    "name": "Chronic Fatigue Syndrome (ME/CFS)",
+    "keywords": ["chronic fatigue", "me/cfs", "extreme tiredness", "fatigue not relieved by rest", "post-exertional malaise", "cognitive difficulties", "unrefreshing sleep", "widespread pain"],
+    "is_urgent": false,
+    "reasoning": "Severe, persistent fatigue not relieved by rest — worsening after physical or mental exertion — combined with sleep problems, cognitive difficulties, and possibly pain suggests ME/CFS (myalgic encephalomyelitis / chronic fatigue syndrome).",
+    "next_steps": "See a doctor to rule out other causes. Management focuses on pacing (avoiding overexertion), sleep hygiene, and symptom relief. Push for a referral to a specialist clinic. Post-COVID patients may experience similar symptoms."
+  }
+]

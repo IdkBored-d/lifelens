@@ -5,38 +5,54 @@ import 'quick_track_service.dart';
 import 'fitness_pipeline_service.dart';
 import 'disembed_service.dart';
 import 'model_lifecycle_service.dart';
-import 'gemma_service.dart';
 import 'gemini_service.dart';
 import 'weaviate_service.dart';
+import 'eod_correlation_engine.dart';
+import 'template_summary_insight_service.dart';
+import 'health_feature_computer.dart';
+import 'health_summary_model_service.dart';
+import 'sentence_bank_service.dart';
 import '../database/isar_service.dart';
 import '../database/eod_entry.dart';
 import '../database/mood_entry.dart';
 import '../database/symptom_entry.dart';
 
 class EodPipelineService {
-  final GemmaService           _gemma;
-  final GeminiService          _gemini;
-  final WeaviateService        _weaviate;
-  final QuickTrackService      _quickTrack;
-  final FitnessPipelineService _fitness;
-  final DisEmbedService        _disEmbed;
+  final GeminiService                 _gemini;
+  final WeaviateService               _weaviate;
+  final QuickTrackService             _quickTrack;
+  final FitnessPipelineService        _fitness;
+  final DisEmbedService               _disEmbed;
+  final EodCorrelationEngine          _correlationEngine;
+  final TemplateSummaryInsightService _templateInsight;
+  final HealthFeatureComputer         _featureComputer;
+  final HealthSummaryModelService     _summaryModel;
+  final SentenceBankService           _sentenceBank;
   final Map<String, List<int>> Function(String, int) _tokenize;
 
   EodPipelineService({
-    required GemmaService           gemma,
-    required GeminiService          gemini,
-    required WeaviateService        weaviate,
-    required QuickTrackService      quickTrack,
-    required FitnessPipelineService fitness,
-    required DisEmbedService        disEmbed,
+    required GeminiService                 gemini,
+    required WeaviateService               weaviate,
+    required QuickTrackService             quickTrack,
+    required FitnessPipelineService        fitness,
+    required DisEmbedService               disEmbed,
+    required EodCorrelationEngine          correlationEngine,
+    required TemplateSummaryInsightService templateInsight,
+    required HealthFeatureComputer         featureComputer,
+    required HealthSummaryModelService     summaryModel,
+    required SentenceBankService           sentenceBank,
     required Map<String, List<int>> Function(String, int) tokenize,
-  })  : _gemma      = gemma,
-        _gemini     = gemini,
-        _weaviate   = weaviate,
-        _quickTrack = quickTrack,
-        _fitness    = fitness,
-        _disEmbed   = disEmbed,
-        _tokenize   = tokenize;
+  })  : _gemini            = gemini,
+        _weaviate          = weaviate,
+        _quickTrack        = quickTrack,
+        _fitness           = fitness,
+        _disEmbed          = disEmbed,
+        _correlationEngine = correlationEngine,
+        _templateInsight   = templateInsight,
+        _featureComputer   = featureComputer,
+        _summaryModel      = summaryModel,
+        _sentenceBank      = sentenceBank,
+        _tokenize          = tokenize;
 
   Future<EodResult> runEndOfDay({required bool isOnline}) async {
     final today   = DateTime.now();
@@ -48,10 +64,7 @@ class EodPipelineService {
     final last14Fitness  = await IsarService.instance.getLastNDaysFitnessScores(14);
 
     // ── STEP 2: Quick-track sync repair ───────────────────────────────────
-    // Compares existing plaintext summaries against fresh ISAR-derived
-    // templates. Regenerates any that have diverged (e.g. after a crash).
     await _repairQuickTrackSummaries(
-      isOnline:       isOnline,
       recentMoods:    recentMoods,
       activeSymptoms: activeSymptoms,
       fitnessScores:  last14Fitness,
@@ -74,7 +87,6 @@ class EodPipelineService {
     final trend = _fitness.fitnessTrend(last14FitnessScores);
 
     // ── STEP 4: Build context strings ─────────────────────────────────────
-    // ISAR data for detailed structured analysis.
     final todayMoods = recentMoods.where((e) => e.date == dateStr).toList();
 
     final todayMoodStr = todayMoods.isNotEmpty
@@ -95,42 +107,47 @@ class EodPipelineService {
         .map((e) => '${e.date} | ${e.resolvedMood} | ${e.condensedLog}')
         .join('\n');
 
-    // Quick-track summaries provide additional narrative context for the LLM.
-    final moodSummary         = await _quickTrack.buildMoodContext();
-    final symptomSummary      = await _quickTrack.buildSymptomContext();
-    final conversationSummary = await _quickTrack.buildConversationContext();
-    final quickTrackSummaries =
-        'Mood summary:\n$moodSummary\n\n'
-        'Symptom summary:\n$symptomSummary\n\n'
-        'Conversation summary:\n$conversationSummary';
-
-    // ── STEP 5: Correlation analysis ──────────────────────────────────────
-    String summaryText = 'End-of-day summary unavailable.';
+    // ── STEP 5: Correlation analysis + narrative generation ──────────────
+    //
+    // Narrative strategy (in priority order):
+    //   1. HealthSummaryModel (ML) — when loaded and sentence bank has embeddings
+    //   2. EodCorrelationEngine   — deterministic template fallback (always available)
+    //
+    // Safety: correlation/flag detection always uses EodCorrelationEngine.
+    // The ML model only replaces the narrative sentences, never the flag logic.
+    String summaryText;
     EodCorrelation? correlation;
 
-    try {
-      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
-      final gemmaRaw = await _gemma.generateEodSummary(
-        todayMoodEntry:        todayMoodStr,
-        activeSymptomEntries:  activeSymptomsStr,
-        todayFitnessScore:     todayFitnessScore,
-        periodAvgFitnessScore: periodAvg,
-        fitnessTrend:          trend,
-        lastPeriodMoodEntries: last14MoodStr,
-        quickTrackSummaries:   quickTrackSummaries,
-      );
-      summaryText = _extractUserFacingSummary(gemmaRaw);
-      correlation = _extractCorrelation(gemmaRaw);
-    } catch (e) {
-      debugPrint('[EodPipeline] Gemma failed, falling back to Gemini: $e');
+    final (engineSummary, engineCorrelation) = _correlationEngine.analyze(
+      recentMoods:       recentMoods,
+      activeSymptoms:    activeSymptoms,
+      fitnessScores:     last14FitnessScores,
+      fitnessTrend:      trend,
+      todayFitnessScore: todayFitnessScore,
+    );
 
-      if (isOnline) {
+    // Correlation/flagging always comes from the deterministic engine
+    correlation = engineCorrelation;
+
+    // Attempt ML-based narrative if model and sentence bank are ready
+    summaryText = await _tryMlNarrative(
+      recentMoods:    recentMoods,
+      fitnessScores:  last14FitnessScores,
+      activeSymptoms: activeSymptoms,
+    ) ?? engineSummary;
+
+    // ── STEP 6: Gemini enrichment (online, optional — improves narrative) ──
+    // Only attempt if the engine flagged a concern or there are active symptoms,
+    // as Gemini adds the most value for complex/concerning patterns.
+    if (isOnline && (correlation.flag || activeSymptoms.isNotEmpty)) {
+      try {
         String ragContext = '';
         if (activeSymptoms.isNotEmpty) {
           try {
             final symptomQueryText = activeSymptoms
                 .map((e) => '${e.predictedAilment}: ${e.symptomList.join(", ")}')
                 .join('. ');
+            await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
             final queryVector = await _disEmbed.embed(symptomQueryText, _tokenize);
             final ragResults  = await _weaviate.queryByVector(queryVector, topK: 3);
             ragContext = _weaviate.buildRagContext(ragResults);
@@ -139,31 +156,39 @@ class EodPipelineService {
           }
         }
 
-        // Append quick-track summaries to the mood entries context so
-        // GeminiService signature does not need to change.
+        final quickTrackSummaries =
+            'Mood summary:\n${await _quickTrack.buildMoodContext()}\n\n'
+            'Symptom summary:\n${await _quickTrack.buildSymptomContext()}\n\n'
+            'Conversation summary:\n${await _quickTrack.buildConversationContext()}';
+
         final enrichedMoodEntries = last14MoodStr.isEmpty
             ? quickTrackSummaries
             : '$last14MoodStr\n\n$quickTrackSummaries';
 
-        try {
-          final geminiRaw = await _gemini.generateDeepEodAnalysis(
-            todayMoodEntry:       todayMoodStr,
-            activeSymptomEntries: activeSymptomsStr,
-            todayFitnessScore:    todayFitnessScore,
-            periodAvgFitnessScore: periodAvg,
-            fitnessTrend:          trend,
-            last14MoodEntries:     enrichedMoodEntries,
-            ragContext:           ragContext,
-          );
-          summaryText = _extractUserFacingSummary(geminiRaw);
-          correlation = _extractCorrelation(geminiRaw);
-        } catch (e) {
-          debugPrint('[EodPipeline] Gemini failed, using stub summary: $e');
+        final geminiRaw = await _gemini.generateDeepEodAnalysis(
+          todayMoodEntry:       todayMoodStr,
+          activeSymptomEntries: activeSymptomsStr,
+          todayFitnessScore:    todayFitnessScore,
+          periodAvgFitnessScore: periodAvg,
+          fitnessTrend:          trend,
+          last14MoodEntries:     enrichedMoodEntries,
+          ragContext:           ragContext,
+        );
+
+        final geminiSummary     = _extractUserFacingSummary(geminiRaw);
+        final geminiCorrelation = _extractCorrelation(geminiRaw);
+
+        // Use Gemini's richer narrative if it produced a non-empty result
+        if (geminiSummary.isNotEmpty) {
+          summaryText = geminiSummary;
+          correlation = geminiCorrelation ?? correlation;
         }
+      } catch (e) {
+        debugPrint('[EodPipeline] Gemini enrichment failed (using engine result): $e');
       }
     }
 
-    // ── STEP 6: WRITE EOD SUMMARY TO ISAR ─────────────────────────────────
+    // ── STEP 7: WRITE EOD SUMMARY TO ISAR ─────────────────────────────────
     final eodEntry = EodEntry()
       ..date               = dateStr
       ..summaryText        = summaryText
@@ -188,13 +213,70 @@ class EodPipelineService {
     );
   }
 
+  // ── ML narrative generation ──────────────────────────────────────────────────
+
+  /// Attempt to generate a narrative using the HealthSummaryModel + sentence bank.
+  /// Returns null if the model is not loaded or the bank has no embeddings yet,
+  /// allowing callers to fall back to the template engine.
+  Future<String?> _tryMlNarrative({
+    required List<MoodEntry>    recentMoods,
+    required List<double>       fitnessScores,
+    required List<SymptomEntry> activeSymptoms,
+  }) async {
+    if (!_summaryModel.isLoaded || !_sentenceBank.embeddingsReady) return null;
+
+    try {
+      await ModelLifecycleService.instance.ensureLoaded([
+        ModelType.disEmbed,
+        ModelType.healthSummary,
+      ]);
+
+      // Build text context: concatenate recent mood logs for DisEmbed
+      final moodLogText = recentMoods
+          .take(7)
+          .map((e) => '${e.resolvedMood}: ${e.condensedLog}')
+          .join('. ');
+      final textEmbedding = moodLogText.isNotEmpty
+          ? await _disEmbed.embed(moodLogText, _tokenize)
+          : List<double>.filled(384, 0.0);
+
+      final numericalFeatures = _featureComputer.compute(
+        recentMoods:    recentMoods,
+        fitnessScores:  fitnessScores,
+        activeSymptoms: activeSymptoms,
+      );
+
+      final contextVectors = await _summaryModel.predict(
+        numericalFeatures: numericalFeatures,
+        textEmbedding:     textEmbedding,
+      );
+
+      final s1 = _sentenceBank.rank(
+        contextVectors[0],
+        _sentenceBank.summaryCategory(SentenceBankService.categoryMoodStatus),
+      ).firstOrNull?.entry.text;
+
+      final s2 = _sentenceBank.rank(
+        contextVectors[1],
+        _sentenceBank.summaryCategory(SentenceBankService.categoryHealthContext),
+      ).firstOrNull?.entry.text;
+
+      final s3 = _sentenceBank.rank(
+        contextVectors[2],
+        _sentenceBank.summaryCategory(SentenceBankService.categoryActionableClosing),
+      ).firstOrNull?.entry.text;
+
+      if (s1 == null || s2 == null || s3 == null) return null;
+      return '$s1 $s2 $s3';
+    } catch (e) {
+      debugPrint('[EodPipeline] ML narrative failed (using template): $e');
+      return null;
+    }
+  }
+
   // ── Quick-track sync repair ──────────────────────────────────────────────────
 
-  /// Compares existing quick-track summary files against fresh ISAR-derived
-  /// templates. If a file has diverged (Jaccard similarity < 0.5), it is
-  /// regenerated from ISAR data + a Gemma insight block.
   Future<void> _repairQuickTrackSummaries({
-    required bool              isOnline,
     required List<MoodEntry>    recentMoods,
     required List<SymptomEntry> activeSymptoms,
     required List<double>       fitnessScores,
@@ -216,16 +298,17 @@ class EodPipelineService {
       debugPrint('[EodPipeline] Mood summary diverged (sim=$moodSim) — regenerating');
       unawaited(_regenerateSummary(
         template:  freshMoodTemplate,
+        insight:   _templateInsight.generateMoodInsight(freshMoodTemplate),
         write:     _quickTrack.writeMoodSummary,
         label:     'mood',
       ));
     }
 
     if (symptomSim < 0.5) {
-      debugPrint(
-          '[EodPipeline] Symptom summary diverged (sim=$symptomSim) — regenerating');
+      debugPrint('[EodPipeline] Symptom summary diverged (sim=$symptomSim) — regenerating');
       unawaited(_regenerateSummary(
         template:  freshSymptomTemplate,
+        insight:   _templateInsight.generateSymptomInsight(freshSymptomTemplate),
         write:     _quickTrack.writeSymptomSummary,
         label:     'symptom',
       ));
@@ -234,19 +317,12 @@ class EodPipelineService {
 
   Future<void> _regenerateSummary({
     required String template,
+    required String insight,
     required Future<void> Function(String) write,
     required String label,
   }) async {
-    String summary = template;
     try {
-      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
-      final insight = await _gemma.generateSummaryInsight(template: template);
-      summary = '$template\n\n$insight';
-    } on StateError catch (e) {
-      debugPrint('[EodPipeline] Gemma not available for $label repair: $e');
-    }
-    try {
-      await write(summary);
+      await write('$template\n\n$insight');
     } catch (e) {
       debugPrint('[EodPipeline] $label summary repair write failed: $e');
     }
@@ -269,7 +345,7 @@ class EodPipelineService {
     return union == 0 ? 0.0 : intersection / union;
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  // ── Gemini response parsing ──────────────────────────────────────────────────
 
   String _extractUserFacingSummary(String raw) {
     final cleaned   = _stripCodeFences(raw);

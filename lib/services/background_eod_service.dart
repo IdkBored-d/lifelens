@@ -98,7 +98,7 @@ void backgroundFetchHeadlessTask(HeadlessTask task) async {
   try {
     // AppServices must be re-initialised in the headless isolate — it has
     // no shared memory with the foreground isolate.
-    await AppServices.init(gemmaPath: '');
+    await AppServices.init();
     await BackgroundEodService._runEodIfNeeded();
   } catch (e) {
     debugPrint('[BackgroundEodService] headless error: $e');

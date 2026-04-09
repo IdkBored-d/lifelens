@@ -3,7 +3,6 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  flutter_gemma
   isar_flutter_libs
   url_launcher_linux
 )

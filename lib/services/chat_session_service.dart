@@ -5,7 +5,7 @@ import '../database/chat_session.dart';
 import '../database/chat_message.dart';
 import '../database/isar_service.dart';
 import 'quick_track_service.dart';
-import 'gemma_service.dart';
+import 'template_summary_insight_service.dart';
 
 /// Manages MiniMe chat session lifecycle and persistence.
 ///
@@ -19,11 +19,11 @@ import 'gemma_service.dart';
 /// Sessions with no [endTime] are repaired by [repairIncompleteSessions],
 /// which should be called once at app startup.
 class ChatSessionService {
-  ChatSessionService(this._quickTrack, this._gemma);
+  ChatSessionService(this._quickTrack, this._templateInsight);
 
-  final QuickTrackService _quickTrack;
-  final GemmaService      _gemma;
-  final IsarService       _isar = IsarService.instance;
+  final QuickTrackService             _quickTrack;
+  final TemplateSummaryInsightService _templateInsight;
+  final IsarService                   _isar = IsarService.instance;
 
   // ── Session lifecycle ────────────────────────────────────────────────────────
 
@@ -86,15 +86,8 @@ class ChatSessionService {
     try {
       final sessions = await _isar.getChatSessionsForLastNDays(days: 14);
       final template = QuickTrackService.buildConversationTemplate(sessions);
-
-      String summary = template;
-      try {
-        final insight = await _gemma.generateSummaryInsight(template: template);
-        summary = '$template\n\n$insight';
-      } on StateError catch (e) {
-        debugPrint('[ChatSession] Gemma not ready for summary insight: $e');
-      }
-
+      final insight  = _templateInsight.generateConversationInsight(template);
+      final summary  = '$template\n\n$insight';
       await _quickTrack.writeConversationSummary(summary);
     } catch (e) {
       debugPrint('[ChatSession] Conversation summary write failed: $e');

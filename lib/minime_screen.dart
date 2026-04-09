@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_gemma/flutter_gemma.dart' show PreferredBackend;
 import 'package:provider/provider.dart';
 import 'package:lifelens/app_services.dart';
 import 'moodlog_store.dart';
@@ -48,7 +47,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   @override
   void initState() {
     super.initState();
-    _chatSessionService = ChatSessionService(AppServices.quickTrack, AppServices.gemma);
+    _chatSessionService = ChatSessionService(AppServices.quickTrack, AppServices.templateInsight);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Intelligence loads first — drives opening message + avatar mood.
       // 3-second timeout so a slow/offline backend doesn't block the screen.
@@ -187,33 +186,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     } catch (_) {
       if (!mounted) return;
 
-      // Tier 2: Gemma on-device greeting (no backend required)
-      if (AppServices.isGemmaLoaded) {
-        final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
-        final online = await AppServices.isOnline();
-        if (isGpu || !online) {
-          try {
-            final greeting = await AppServices.gemma.generateMiniMeReply(
-              userMessage:
-                  'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.',
-              moodLabel: moodContext.label,
-              intelligenceSummary: _buildIntelligenceSummary(),
-            ).timeout(const Duration(seconds: 20));
-            if (!mounted) return;
-            setState(() {
-              _messages.add(
-                _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
-              );
-            });
-            await _persistMessages();
-            return;
-          } catch (_) {
-            // fall through to Gemini
-          }
-        }
-      }
-
-      // Tier 3: Direct Gemini greeting (network, no backend server required)
+      // Tier 2: Direct Gemini greeting (network, no backend server required)
       if (await AppServices.isOnline()) {
         try {
           final greeting = await AppServices.gemini.generateMiniMeReply(
@@ -623,26 +596,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       }
     }
 
-    // Tier 2: Gemma on-device (no network required)
-    // Skip when running on CPU backend and Gemini is reachable — CPU inference
-    // on emulators / unsupported GPUs is too slow for interactive chat.
-    if (AppServices.isGemmaLoaded) {
-      final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
-      final online = await _isOnline();
-      if (isGpu || !online) {
-        try {
-          return await AppServices.gemma.generateMiniMeReply(
-            userMessage: userText,
-            moodLabel: moodContext.label,
-            intelligenceSummary: _buildIntelligenceSummary(),
-          ).timeout(const Duration(seconds: 20));
-        } catch (_) {
-          // fall through to direct Gemini
-        }
-      }
-    }
-
-    // Tier 3: Direct Gemini (network, no backend server required)
+    // Tier 2: Direct Gemini (network, no backend server required)
     if (await _isOnline()) {
       try {
         final directReply = await AppServices.gemini.generateMiniMeReply(
@@ -659,7 +613,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       }
     }
 
-    // Tier 4: Offline template
+    // Tier 3: Offline template
     return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
   }
 

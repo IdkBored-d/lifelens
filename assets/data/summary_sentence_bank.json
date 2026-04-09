@@ -1,0 +1,152 @@
+{
+  "mood_status": [
+    {
+      "id": "ms_01",
+      "text": "Your mood has been trending upward this week — that's a positive sign worth acknowledging.",
+      "category": "mood_status",
+      "embedding": []
+    },
+    {
+      "id": "ms_02",
+      "text": "Your mood has been lower than usual lately. It is okay to have harder stretches — be gentle with yourself.",
+      "category": "mood_status",
+      "embedding": []
+    },
+    {
+      "id": "ms_03",
+      "text": "Your mood has dipped a little over the past few days. Keep tracking — patterns help identify what helps.",
+      "category": "mood_status",
+      "embedding": []
+    },
+    {
+      "id": "ms_04",
+      "text": "Your mood has been steady and fairly positive over the past week. Nice to see that consistency.",
+      "category": "mood_status",
+      "embedding": []
+    },
+    {
+      "id": "ms_05",
+      "text": "You've been checking in consistently, which is the most important habit for understanding your wellbeing.",
+      "category": "mood_status",
+      "embedding": []
+    },
+    {
+      "id": "ms_06",
+      "text": "There's been noticeable variability in your mood this week — that's worth paying attention to.",
+      "category": "mood_status",
+      "embedding": []
+    },
+    {
+      "id": "ms_07",
+      "text": "Your mood has been recovering after a rough patch — that upward movement is encouraging.",
+      "category": "mood_status",
+      "embedding": []
+    },
+    {
+      "id": "ms_08",
+      "text": "You've had a strong stretch of positive moods recently. Keep building on that momentum.",
+      "category": "mood_status",
+      "embedding": []
+    }
+  ],
+  "health_context": [
+    {
+      "id": "hc_01",
+      "text": "Some of your active symptoms may warrant a professional check-in — consider reaching out to a healthcare provider soon.",
+      "category": "health_context",
+      "embedding": []
+    },
+    {
+      "id": "hc_02",
+      "text": "Having multiple active symptoms while your mood is dipping can feel draining. Rest and hydration are a good starting point.",
+      "category": "health_context",
+      "embedding": []
+    },
+    {
+      "id": "hc_03",
+      "text": "You have active symptoms to keep monitoring. Note any changes and consult a professional if things worsen.",
+      "category": "health_context",
+      "embedding": []
+    },
+    {
+      "id": "hc_04",
+      "text": "Your fitness trend is heading upward — physical momentum like this often carries over into energy and mood.",
+      "category": "health_context",
+      "embedding": []
+    },
+    {
+      "id": "hc_05",
+      "text": "Both your fitness and mood have been declining — even a short walk or rest day can help break that cycle.",
+      "category": "health_context",
+      "embedding": []
+    },
+    {
+      "id": "hc_06",
+      "text": "Your fitness level has been consistent, which provides a stable base to build on.",
+      "category": "health_context",
+      "embedding": []
+    },
+    {
+      "id": "hc_07",
+      "text": "No active symptoms and stable fitness — your physical health looks solid this week.",
+      "category": "health_context",
+      "embedding": []
+    },
+    {
+      "id": "hc_08",
+      "text": "Low activity combined with low mood can reinforce each other — even light movement can help shift that.",
+      "category": "health_context",
+      "embedding": []
+    }
+  ],
+  "actionable_closing": [
+    {
+      "id": "ac_01",
+      "text": "Try to prioritize one small act of self-care today — movement, sleep, or connection — and see what shifts.",
+      "category": "actionable_closing",
+      "embedding": []
+    },
+    {
+      "id": "ac_02",
+      "text": "Your mood has been variable this week. Identifying triggers in your logs can help bring more consistency.",
+      "category": "actionable_closing",
+      "embedding": []
+    },
+    {
+      "id": "ac_03",
+      "text": "Keep logging — every entry helps build a clearer picture of your health.",
+      "category": "actionable_closing",
+      "embedding": []
+    },
+    {
+      "id": "ac_04",
+      "text": "You are doing the right thing by staying consistent with your check-ins.",
+      "category": "actionable_closing",
+      "embedding": []
+    },
+    {
+      "id": "ac_05",
+      "text": "Small, consistent actions add up. Keep building on what you track here.",
+      "category": "actionable_closing",
+      "embedding": []
+    },
+    {
+      "id": "ac_06",
+      "text": "Rest today and keep the load light — recovery matters just as much as effort.",
+      "category": "actionable_closing",
+      "embedding": []
+    },
+    {
+      "id": "ac_07",
+      "text": "A short walk or low-intensity activity today could help both your mood and energy levels.",
+      "category": "actionable_closing",
+      "embedding": []
+    },
+    {
+      "id": "ac_08",
+      "text": "Consider reaching out to someone you trust — connection is one of the fastest mood regulators.",
+      "category": "actionable_closing",
+      "embedding": []
+    }
+  ]
+}

@@ -10,7 +10,6 @@ import 'services/weaviate_service.dart';
 import 'services/mobilebert_service.dart';
 import 'services/disembed_service.dart';
 import 'services/fitness_mlp_service.dart';
-import 'services/gemma_service.dart';
 import 'services/gemini_service.dart';
 import 'services/health_service.dart';
 import 'services/mood_pipeline_service.dart';
@@ -19,12 +18,20 @@ import 'services/fitness_pipeline_service.dart';
 import 'services/eod_pipeline_service.dart';
 import 'services/chat_session_service.dart';
 import 'services/model_lifecycle_service.dart';
+import 'services/disease_knowledge_base.dart';
+import 'services/eod_correlation_engine.dart';
+import 'services/template_mood_response_service.dart';
+import 'services/template_summary_insight_service.dart';
+import 'services/health_feature_computer.dart';
+import 'services/health_summary_model_service.dart';
+import 'services/health_suggestions_model_service.dart';
+import 'services/sentence_bank_service.dart';
 
 /// Central service locator for LifeLens.
 /// Initialised once at app startup — all pipelines accessible as singletons.
 ///
 /// Usage:
-///   await AppServices.init(gemmaPath: path);
+///   await AppServices.init();
 ///   AppServices.moodPipeline.analyze(...)
 ///
 /// TOKENIZER NOTE:
@@ -37,20 +44,27 @@ class AppServices {
   AppServices._();
 
   // ── Singletons ──────────────────────────────────────────────────────────────
-  static late final IsarService            isar;
-  static late final ConfidenceManager      confidence;
-  static late final QuickTrackService      quickTrack;
-  static late final WeaviateService        weaviate;
-  static late final MobileBertService      mobileBert;
-  static late final DisEmbedService        disEmbed;
-  static late final FitnessMlpService      fitnessMlp;
-  static late final GemmaService           gemma;
-  static late final GeminiService          gemini;
-  static ModelLifecycleService get models  => ModelLifecycleService.instance;
-  static late final MoodPipelineService    moodPipeline;
-  static late final SymptomPipelineService symptomPipeline;
-  static late final FitnessPipelineService fitnessPipeline;
-  static late final EodPipelineService     eodPipeline;
+  static late final IsarService                isar;
+  static late final ConfidenceManager          confidence;
+  static late final QuickTrackService          quickTrack;
+  static late final WeaviateService            weaviate;
+  static late final MobileBertService          mobileBert;
+  static late final DisEmbedService            disEmbed;
+  static late final FitnessMlpService          fitnessMlp;
+  static late final GeminiService              gemini;
+  static late final DiseaseKnowledgeBase       diseaseKb;
+  static late final EodCorrelationEngine          eodCorrelation;
+  static late final TemplateMoodResponseService   templateMoodResponse;
+  static late final TemplateSummaryInsightService templateInsight;
+  static late final HealthFeatureComputer         healthFeatureComputer;
+  static late final HealthSummaryModelService     healthSummaryModel;
+  static late final HealthSuggestionsModelService healthSuggestionsModel;
+  static late final SentenceBankService           sentenceBank;
+  static ModelLifecycleService get models      => ModelLifecycleService.instance;
+  static late final MoodPipelineService        moodPipeline;
+  static late final SymptomPipelineService     symptomPipeline;
+  static late final FitnessPipelineService     fitnessPipeline;
+  static late final EodPipelineService         eodPipeline;
 
   // Two tokenizer instances — same vocab, different maxLength
   static late final WordPieceTokenizer _mbTokenizer; // maxLen=128 for MobileBERT
@@ -64,47 +78,41 @@ class AppServices {
   // config.json is gitignored — never commit real keys.
   //
   // TODO(prod): Move key retrieval to a server-side call before release.
-  //   The client should fetch a short-lived token from the backend at login
-  //   rather than bundling API keys in the binary.
 
   static const String _weaviateHost   = String.fromEnvironment('WEAVIATE_HOST',    defaultValue: '');
   static const String _weaviateApiKey = String.fromEnvironment('WEAVIATE_API_KEY', defaultValue: '');
   static const String _geminiApiKey   = String.fromEnvironment('GEMINI_API_KEY',   defaultValue: '');
 
   // Asset paths
-  static const String _mobileBertAsset = 'assets/models/mobile_bert_emotion.onnx';
+  static const String _mobileBertAsset      = 'assets/models/mobile_bert_emotion.onnx';
   // TODO(ship): Switch back to FP16 model when shipping — FP32 is for MVP only.
-  //static const String _disEmbedAsset = 'assets/models/disembed_fp16.onnx';
-  static const String _disEmbedAsset   = 'assets/models/for MVP/disembed_fp32.onnx';
+  static const String _disEmbedAsset        = 'assets/models/for MVP/disembed_fp32.onnx';
   // TODO(ship): Retrain/re-export and swap in a versioned production model before shipping.
-  //static const String _fitnessAsset = 'assets/models/fitness_model.onnx';
-  static const String _fitnessAsset    = 'assets/models/for MVP/fitness_model_v9.onnx';
-  static const String _vocabAsset      = 'assets/models/vocab.txt';
+  static const String _fitnessAsset         = 'assets/models/for MVP/fitness_model_v9.onnx';
+  static const String _vocabAsset           = 'assets/models/vocab.txt';
+  // In-house models — drop trained .onnx files here to activate ML inference.
+  // See docs/training_plan.md for training and export instructions.
+  static const String _healthSummaryAsset     = 'assets/models/health_summary_model.onnx';
+  static const String _healthSuggestionsAsset = 'assets/models/health_suggestions_model.onnx';
 
   // ── Initialisation ───────────────────────────────────────────────────────────
 
   /// Returns the in-flight or completed init future. Safe to call from any
   /// screen — awaiting it guarantees all services are ready before use.
-  /// Starts a fresh init if [init] was never called or previously failed.
-  static Future<void> ensureInitialized({String gemmaPath = ''}) =>
-      _initFuture ?? init(gemmaPath: gemmaPath);
+  static Future<void> ensureInitialized() =>
+      _initFuture ?? init();
 
   /// Idempotent init — returns the same [Future] on every concurrent call.
-  /// Clears [_initFuture] on failure so the caller can retry by calling [init].
-  ///
-  /// NOTE: [late final] fields cannot be reassigned, so retrying after a
-  /// partial init failure will throw "already assigned". Treat init failures
-  /// as fatal and guide the user to restart the app.
-  static Future<void> init({required String gemmaPath}) {
+  static Future<void> init() {
     if (_initFuture != null) return _initFuture!;
-    _initFuture = _initInternal(gemmaPath: gemmaPath).catchError((Object e) {
+    _initFuture = _initInternal().catchError((Object e) {
       _initFuture = null;
       throw e;
     });
     return _initFuture!;
   }
 
-  static Future<void> _initInternal({required String gemmaPath}) async {
+  static Future<void> _initInternal() async {
     WidgetsFlutterBinding.ensureInitialized();
     final sw = Stopwatch()..start();
     debugPrint('[AppServices] init: start');
@@ -138,10 +146,12 @@ class AppServices {
     }
 
     // ── 3. Stateless services ────────────────────────────────────────────────
-    final statelessStart = sw.elapsedMilliseconds;
-    confidence = const ConfidenceManager();
-    quickTrack = QuickTrackService();
-    debugPrint('[AppServices] init: Stateless services in ${sw.elapsedMilliseconds - statelessStart}ms');
+    confidence            = const ConfidenceManager();
+    quickTrack            = QuickTrackService();
+    eodCorrelation        = const EodCorrelationEngine();
+    templateMoodResponse  = const TemplateMoodResponseService();
+    templateInsight       = const TemplateSummaryInsightService();
+    healthFeatureComputer = const HealthFeatureComputer();
 
     // ── 4. External services ─────────────────────────────────────────────────
     final externalStart = sw.elapsedMilliseconds;
@@ -151,41 +161,48 @@ class AppServices {
 
     // ── 5. ONNX model services (load in parallel) ────────────────────────────
     final modelsStart = sw.elapsedMilliseconds;
-    mobileBert = MobileBertService();
-    disEmbed   = DisEmbedService();
-    fitnessMlp = FitnessMlpService();
+    mobileBert             = MobileBertService();
+    disEmbed               = DisEmbedService();
+    fitnessMlp             = FitnessMlpService();
+    healthSummaryModel     = HealthSummaryModelService();
+    healthSuggestionsModel = HealthSuggestionsModelService();
+
+    // Load disease knowledge base (lightweight JSON, ~40KB)
+    diseaseKb    = DiseaseKnowledgeBase();
+    sentenceBank = SentenceBankService();
 
     try {
       await Future.wait([
         mobileBert.load(_mobileBertAsset),
         disEmbed.load(_disEmbedAsset),
         fitnessMlp.load(_fitnessAsset),
+        diseaseKb.load(),
+        sentenceBank.load(),
       ]);
-      debugPrint('[AppServices] init: ONNX models loaded in ${sw.elapsedMilliseconds - modelsStart}ms');
+      debugPrint('[AppServices] init: ONNX models + KB loaded in ${sw.elapsedMilliseconds - modelsStart}ms');
     } catch (e) {
-      debugPrint('[AppServices] init: ONNX model load failed: $e');
+      debugPrint('[AppServices] init: Model/KB load failed: $e');
     }
 
-    // ── 6. Gemma 2 2B IT (skip gracefully if not yet downloaded) ────────────
-    final gemmaStart = sw.elapsedMilliseconds;
-    gemma = GemmaService();
-    if (gemmaPath.isNotEmpty) {
-      try {
-        await gemma.load(gemmaPath);
-        debugPrint('[AppServices] init: Gemma loaded in ${sw.elapsedMilliseconds - gemmaStart}ms');
-      } catch (e) {
-        debugPrint('[AppServices] init: Gemma load failed: $e');
-      }
-    } else {
-      debugPrint('[AppServices] init: Gemma skipped (no path provided)');
+    // Load in-house models if trained ONNX files are present
+    try {
+      await Future.wait([
+        healthSummaryModel.load(_healthSummaryAsset),
+        healthSuggestionsModel.load(_healthSuggestionsAsset),
+      ]);
+      debugPrint('[AppServices] init: In-house models loaded');
+    } catch (e) {
+      // Non-fatal: models fall back to template logic when ONNX files are absent
+      debugPrint('[AppServices] init: In-house models not available (using templates): $e');
     }
 
-    // ── 6b. Model lifecycle service ─────────────────────────────────────────
+    // ── 6. Model lifecycle service ───────────────────────────────────────────
     ModelLifecycleService.instance.init(
-      mobileBert: mobileBert,
-      disEmbed:   disEmbed,
-      fitnessMlp: fitnessMlp,
-      gemma:      gemma,
+      mobileBert:        mobileBert,
+      disEmbed:          disEmbed,
+      fitnessMlp:        fitnessMlp,
+      healthSummary:     healthSummaryModel,
+      healthSuggestions: healthSuggestionsModel,
     );
     WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
 
@@ -199,31 +216,32 @@ class AppServices {
     }
 
     // ── 7b. Chat session repair ─────────────────────────────────────────────
-    // Mark any sessions that had no endTime (app killed mid-chat) as interrupted.
     try {
-      await ChatSessionService(quickTrack, gemma).repairIncompleteSessions();
+      await ChatSessionService(quickTrack, templateInsight).repairIncompleteSessions();
     } catch (e) {
       debugPrint('[AppServices] chat session repair failed (non-fatal): $e');
     }
 
     // ── 8. Pipeline services ─────────────────────────────────────────────────
     moodPipeline = MoodPipelineService(
-      mobileBert: mobileBert,
-      gemma:      gemma,
-      gemini:     gemini,
-      confidence: confidence,
-      quickTrack: quickTrack,
-      tokenize:   _mobileBertTokenize,
+      mobileBert:      mobileBert,
+      gemini:          gemini,
+      confidence:      confidence,
+      quickTrack:      quickTrack,
+      templateMood:    templateMoodResponse,
+      templateInsight: templateInsight,
+      tokenize:        _mobileBertTokenize,
     );
 
     symptomPipeline = SymptomPipelineService(
-      disEmbed:   disEmbed,
-      gemma:      gemma,
-      gemini:     gemini,
-      weaviate:   weaviate,
-      confidence: confidence,
-      quickTrack: quickTrack,
-      tokenize:   _disEmbedTokenize,
+      disEmbed:        disEmbed,
+      gemini:          gemini,
+      weaviate:        weaviate,
+      confidence:      confidence,
+      quickTrack:      quickTrack,
+      diseaseKb:       diseaseKb,
+      templateInsight: templateInsight,
+      tokenize:        _disEmbedTokenize,
     );
 
     fitnessPipeline = FitnessPipelineService(
@@ -233,13 +251,17 @@ class AppServices {
     );
 
     eodPipeline = EodPipelineService(
-      gemma:      gemma,
-      gemini:     gemini,
-      weaviate:   weaviate,
-      quickTrack:  quickTrack,
-      fitness:     fitnessPipeline,
-      disEmbed:    disEmbed,
-      tokenize:    _disEmbedTokenize,
+      gemini:              gemini,
+      weaviate:            weaviate,
+      quickTrack:          quickTrack,
+      fitness:             fitnessPipeline,
+      disEmbed:            disEmbed,
+      correlationEngine:   eodCorrelation,
+      templateInsight:     templateInsight,
+      featureComputer:     healthFeatureComputer,
+      summaryModel:        healthSummaryModel,
+      sentenceBank:        sentenceBank,
+      tokenize:            _disEmbedTokenize,
     );
 
     debugPrint('[AppServices] init: completed in ${sw.elapsedMilliseconds}ms');
@@ -266,8 +288,6 @@ class AppServices {
   }
 
   // ── Public tokenizer accessors ────────────────────────────────────────────────
-  // These expose the private tokenizer functions so that dev_test_screen and
-  // any other callers outside this class can pass them as callbacks.
 
   /// Public accessor for MobileBERT tokenizer (maxLen=128).
   static Map<String, List<int>> mobileBertTokenize(String text, int maxLen) =>
@@ -278,9 +298,6 @@ class AppServices {
       _disEmbedTokenize(text, maxLen);
 
   // ── Startup sync check ───────────────────────────────────────────────────────
-  // Quick-track files are now plaintext summaries overwritten after each
-  // pipeline run. Deep sync repair (Jaccard comparison vs ISAR) runs inside
-  // EodPipelineService.runEndOfDay() — nothing to do at startup.
   static Future<void> _runStartupSyncCheck() async {}
 
   // ── Health data fetcher ───────────────────────────────────────────────────────
@@ -289,7 +306,6 @@ class AppServices {
     try {
       final snapshot = await HealthService().fetchSnapshot();
       // TODO(health): replace placeholder defaults with real profile values
-      // once onboarding collects height (CLAUDE.md #7) and profile is wired (#10).
       return RawHealthData(
         age:              0.0,
         weightKg:         snapshot.weight ?? 70.0,
@@ -303,33 +319,22 @@ class AppServices {
         timestamp:        snapshot.capturedAt,
       );
     } catch (e) {
-      // No permissions, Health Connect unavailable, or no data — skip silently.
       debugPrint('[AppServices] HealthService fetch failed: $e');
       return null;
     }
   }
+
   // ── Runtime helpers ───────────────────────────────────────────────────────────
-
-  /// Load Gemma after OTA download completes — no app restart needed.
-  static Future<void> loadGemmaModel(String path) async {
-    if (gemma.isLoaded) return;
-    await gemma.load(path);
-  }
-
-  static bool get isGemmaLoaded {
-    try { return gemma.isLoaded; } catch (_) { return false; }
-  }
-
-  /// Refresh fitness score from latest health data. Safe to call from any context.
-  /// Returns null silently if health data is unavailable (no permissions, no data).
-  static Future<void> refreshFitnessScore() async {
-    await fitnessPipeline.score();
-  }
 
   /// Returns true if the device has any active network connection.
   static Future<bool> isOnline() async {
     final results = await Connectivity().checkConnectivity();
     return results.any((r) => r != ConnectivityResult.none);
+  }
+
+  /// Refresh fitness score from latest health data. Safe to call from any context.
+  static Future<void> refreshFitnessScore() async {
+    await fitnessPipeline.score();
   }
 
   // ── Teardown ─────────────────────────────────────────────────────────────────
@@ -338,8 +343,8 @@ class AppServices {
     mobileBert.dispose();
     disEmbed.dispose();
     fitnessMlp.dispose();
-    gemma.dispose();
+    healthSummaryModel.dispose();
+    healthSuggestionsModel.dispose();
     await isar.close();
   }
 }
-

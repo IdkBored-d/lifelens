@@ -5,9 +5,7 @@ import 'restart.dart';
 import 'preferences_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
-import 'screens/gemma_setup_screen.dart';
 import 'dev_test_screen.dart';
-import 'app_services.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -161,18 +159,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   _ProfileTile(
                     icon: Icons.memory_outlined,
-                    label: 'Gemma AI Model',
-                    value: AppServices.isGemmaLoaded ? 'Loaded' : 'Not loaded',
+                    label: 'AI Models',
+                    value: 'ONNX models active',
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => GemmaSetupScreen(
-                            onComplete: () {
-                              setState(() {});
-                              Navigator.pop(context);
-                            },
-                          ),
+                          builder: (_) => const DevTestScreen(),
                         ),
                       );
                     },

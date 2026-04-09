@@ -27,9 +27,6 @@ dependencies:
   # ── ONNX Runtime (MobileBERT, DisEmbed, Fitness MLP) ──────────────────────
   onnxruntime: ^1.4.0
 
-  # ── Gemma 2 2B IT on-device ────────────────────────────────────────────────
-  flutter_gemma: ^0.12.3
-
   # ── Networking (Weaviate + Gemini) ─────────────────────────────────────────
   http: ^1.2.1
 
@@ -62,8 +59,12 @@ flutter:
 
   assets:
     - lib/assets/minime/             # existing
+    - assets/data/disease_kb.json
+    - assets/data/summary_sentence_bank.json
+    - assets/data/suggestion_bank.json
     - assets/models/mobile_bert_emotion.onnx
     - assets/models/disembed_fp16.onnx
+    - assets/models/for MVP/disembed_fp32.onnx
   #  - assets/models/fitness_model.onnx
     - assets/models/for MVP/fitness_model_v9.onnx
     - assets/models/vocab.txt
