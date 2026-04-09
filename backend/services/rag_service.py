@@ -9,6 +9,7 @@ from typing import List, Dict, Optional, Any
 import logging
 from datetime import datetime
 import hashlib
+from urllib.parse import urlparse
 
 # 1. Swapped import to use your custom PyTorch utility
 from utils.disembed_utils import DisEmbedModel
@@ -33,26 +34,34 @@ class WeaviateRAGService:
         self.client = None
         self.embedding_model = None
         self._initialize_client()
-        self._initialize_embedding_model()
+
+    def _ensure_embedding_model(self):
+        """Lazily load the embedding model on first use."""
+        if self.embedding_model is None:
+            self._initialize_embedding_model()
     
     def _initialize_client(self):
         """Connect to Weaviate instance"""
         try:
-            if self.settings.weaviate_api_key:
-                clean_host = self.settings.weaviate_url.replace('http://', '').replace('https://', '')
-                clean_host = clean_host.split(':')[0].strip('/')
-                
+            raw_url = (self.settings.weaviate_url or "http://localhost:8080").strip()
+            parsed = urlparse(raw_url if "://" in raw_url else f"http://{raw_url}")
+            host = (parsed.hostname or "localhost").strip()
+            port = parsed.port or 8080
+            scheme = (parsed.scheme or "http").lower()
+            has_api_key = bool((self.settings.weaviate_api_key or "").strip())
+            is_local_host = host in {"localhost", "127.0.0.1", "0.0.0.0", "weaviate"}
+
+            # Use cloud connection only for non-local endpoints.
+            if has_api_key and not is_local_host:
+                cluster_url = raw_url if "://" in raw_url else f"https://{raw_url}"
                 self.client = weaviate.connect_to_weaviate_cloud(
-                    cluster_url=clean_host,
-                    auth_credentials=Auth.api_key(self.settings.weaviate_api_key)
+                    cluster_url=cluster_url,
+                    auth_credentials=Auth.api_key(self.settings.weaviate_api_key.strip())
                 )
             else:
-                clean_host = self.settings.weaviate_url.replace('http://', '').replace('https://', '')
-                clean_host = clean_host.split(':')[0]
-                
                 self.client = weaviate.connect_to_local(
-                    host=clean_host,
-                    port=8080
+                    host=host,
+                    port=port
                 )
             
             logger.info(f"Successfully connected to Weaviate at {self.settings.weaviate_url}")
@@ -135,6 +144,7 @@ class WeaviateRAGService:
     async def add_medical_knowledge(self, doc: MedicalKnowledgeDoc) -> str:
         """Add a medical knowledge document to Weaviate"""
         try:
+            self._ensure_embedding_model()
             collection = self.client.collections.get(self.COLLECTION_NAME)
             
             if not doc.doc_id:
@@ -175,6 +185,7 @@ class WeaviateRAGService:
     async def bulk_add_knowledge(self, docs: List[MedicalKnowledgeDoc]) -> Dict[str, Any]:
         """Bulk add multiple documents efficiently"""
         try:
+            self._ensure_embedding_model()
             collection = self.client.collections.get(self.COLLECTION_NAME)
             
             successful = 0
@@ -239,6 +250,7 @@ class WeaviateRAGService:
     ) -> List[RAGResult]:
         """Search for medically relevant knowledge based on symptoms"""
         try:
+            self._ensure_embedding_model()
             collection = self.client.collections.get(self.COLLECTION_NAME)
             
             # 5. Extract flat list for query

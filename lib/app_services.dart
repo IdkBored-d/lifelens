@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -134,39 +136,42 @@ class AppServices {
     disEmbed = DisEmbedService();
     fitnessMlp = FitnessMlpService();
 
-    try {
-      await Future.wait([
+    unawaited(
+      Future.wait([
         mobileBert.load(_mobileBertAsset),
         disEmbed.load(_disEmbedAsset),
         fitnessMlp.load(_fitnessAsset),
-      ]);
-      debugPrint('[AppServices] init: ONNX models loaded in ${sw.elapsedMilliseconds - modelsStart}ms');
-    } catch (e) {
-      debugPrint('[AppServices] init: ONNX model load failed: $e');
-    }
+      ]).then((_) {
+        debugPrint('[AppServices] init: ONNX models loaded in ${sw.elapsedMilliseconds - modelsStart}ms');
+      }).catchError((e) {
+        debugPrint('[AppServices] init: ONNX model load failed: $e');
+      }),
+    );
 
     // ── 6. Gemma 2 2B IT (skip gracefully if not yet downloaded) ────────────
     final gemmaStart = sw.elapsedMilliseconds;
     gemma = GemmaService();
     if (gemmaPath.isNotEmpty) {
-      try {
-        await gemma.load(gemmaPath);
-        debugPrint('[AppServices] init: Gemma loaded in ${sw.elapsedMilliseconds - gemmaStart}ms');
-      } catch (e) {
-        debugPrint('[AppServices] init: Gemma load failed: $e');
-      }
+      unawaited(
+        gemma.load(gemmaPath).then((_) {
+          debugPrint('[AppServices] init: Gemma loaded in ${sw.elapsedMilliseconds - gemmaStart}ms');
+        }).catchError((e) {
+          debugPrint('[AppServices] init: Gemma load failed: $e');
+        }),
+      );
     } else {
       debugPrint('[AppServices] init: Gemma skipped (no path provided)');
     }
 
     // ── 7. Startup sync check ───────────────────────────────────────────────
     final syncStart = sw.elapsedMilliseconds;
-    try {
-      await _runStartupSyncCheck();
-      debugPrint('[AppServices] init: Startup sync check in ${sw.elapsedMilliseconds - syncStart}ms');
-    } catch (e) {
-      debugPrint('[AppServices] startup sync check failed (non-fatal): $e');
-    }
+    unawaited(
+      _runStartupSyncCheck().then((_) {
+        debugPrint('[AppServices] init: Startup sync check in ${sw.elapsedMilliseconds - syncStart}ms');
+      }).catchError((e) {
+        debugPrint('[AppServices] startup sync check failed (non-fatal): $e');
+      }),
+    );
 
     // ── 8. Pipeline services ─────────────────────────────────────────────────
     moodPipeline = MoodPipelineService(

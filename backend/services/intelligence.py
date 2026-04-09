@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import logging
 import math
 
@@ -11,6 +11,56 @@ from services.intelligence_policy import get_intelligence_policy
 from models.schemas import IntelligenceAnalyzeResponse
 
 logger = logging.getLogger(__name__)
+
+
+def _build_weaviate_query_text(logs: Dict[str, List[int]]) -> str:
+    """Build a compact retrieval query from recent user logs."""
+    sleep = logs.get("sleep", [])
+    mood = logs.get("mood", [])
+    exercise = logs.get("exercise", [])
+    symptom_count = logs.get("symptom_count", [])
+
+    recent_sleep = sleep[-7:]
+    recent_mood = mood[-7:]
+    recent_exercise = exercise[-7:]
+    recent_symptoms = symptom_count[-7:]
+
+    return (
+        "Find relevant health behavior patterns for: "
+        f"sleep(last7)={recent_sleep}, "
+        f"mood(last7)={recent_mood}, "
+        f"exercise(last7)={recent_exercise}, "
+        f"symptom_count(last7)={recent_symptoms}."
+    )
+
+
+async def _retrieve_weaviate_patterns(logs: Dict[str, List[int]]) -> List[Dict[str, Any]]:
+    """Retrieve candidate patterns from Weaviate before deterministic analysis."""
+    try:
+        from models.schemas import RAGQuery
+        from services.rag_service import get_rag_service
+
+        rag_service = get_rag_service()
+        query = RAGQuery(
+            query_text=_build_weaviate_query_text(logs),
+            max_results=3,
+            min_certainty=0.65,
+        )
+
+        results = await rag_service.search_similar_conditions(query)
+        patterns = []
+        for item in results:
+            patterns.append(
+                {
+                    "condition": item.condition,
+                    "relevance_score": round(float(item.relevance_score), 4),
+                    "source": item.source,
+                }
+            )
+        return patterns
+    except Exception as e:
+        logger.warning(f"Weaviate retrieval unavailable for intelligence pipeline: {e}")
+        return []
 
 
 def _window(values: List[int], n: int) -> List[float]:
@@ -350,7 +400,12 @@ def generate_supportive_message(
         return _fallback_message(selected_actions, confidence_score)
 
 
-def analyze_logs(logs: Dict[str, List[int]], include_gemini_message: bool = True) -> IntelligenceAnalyzeResponse:
+def analyze_logs(
+    logs: Dict[str, List[int]],
+    include_gemini_message: bool = True,
+    retrieved_patterns: Optional[List[Dict[str, Any]]] = None,
+) -> IntelligenceAnalyzeResponse:
+    retrieved_patterns = retrieved_patterns or []
     policy = get_intelligence_policy()
     features = compute_features(logs)
     state = compute_user_state(logs=logs, features=features, policy=policy)
@@ -372,6 +427,23 @@ def analyze_logs(logs: Dict[str, List[int]], include_gemini_message: bool = True
         constraints.append("Low confidence guardrail activated.")
 
     insights = detect_patterns(features=features, state=state)
+    if retrieved_patterns:
+        top_matches = ", ".join(
+            str(item.get("condition", "unknown"))
+            for item in retrieved_patterns[:2]
+        )
+        insights.insert(0, f"Weaviate pattern match: {top_matches}.")
+
+        evidence.append(f"weaviate.pattern_count={len(retrieved_patterns)}")
+        for item in retrieved_patterns[:2]:
+            evidence.append(
+                "weaviate.match="
+                f"{item.get('condition', 'unknown')}"
+                f" score={item.get('relevance_score', 0)}"
+            )
+    else:
+        constraints.append("No Weaviate pattern matched above certainty threshold.")
+
     alert = check_alerts(
         risk_score=risk_score,
         confidence_score=confidence_score,
@@ -394,6 +466,24 @@ def analyze_logs(logs: Dict[str, List[int]], include_gemini_message: bool = True
         else _fallback_message(selected_actions=selected_actions, confidence_score=confidence_score)
     )
 
+    llm_step = (
+        "pipeline.step5.llm_optional_enabled"
+        if include_gemini_message
+        else "pipeline.step5.llm_optional_skipped"
+    )
+    retrieval_step = (
+        "pipeline.step2.weaviate_retrieval_completed"
+        if retrieved_patterns
+        else "pipeline.step2.weaviate_retrieval_no_match"
+    )
+    pipeline_trace = [
+        "pipeline.step1.logs_ingested",
+        retrieval_step,
+        "pipeline.step3.python_logic_analyzed",
+        "pipeline.step4.actions_selected",
+        llm_step,
+    ]
+
     return IntelligenceAnalyzeResponse(
         contract_version=str(policy.get("version", "2.0")),
         state=state,
@@ -406,7 +496,7 @@ def analyze_logs(logs: Dict[str, List[int]], include_gemini_message: bool = True
         reasons=reasons,
         evidence=evidence,
         constraints=constraints,
-        explanation_trace=trace,
+        explanation_trace=pipeline_trace + trace,
         action_probabilities=probs,
         insights=insights,
         actions=selected_actions,
@@ -422,4 +512,17 @@ def analyze_logs(logs: Dict[str, List[int]], include_gemini_message: bool = True
             risk_score=risk_score,
             confidence_score=confidence_score,
         ),
+    )
+
+
+async def analyze_logs_in_order(
+    logs: Dict[str, List[int]],
+    include_gemini_message: bool = True,
+) -> IntelligenceAnalyzeResponse:
+    """Enforce ordered pipeline: logs -> Weaviate -> Python -> actions -> optional LLM."""
+    retrieved_patterns = await _retrieve_weaviate_patterns(logs)
+    return analyze_logs(
+        logs=logs,
+        include_gemini_message=include_gemini_message,
+        retrieved_patterns=retrieved_patterns,
     )

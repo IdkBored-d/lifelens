@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'app/app_root.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
@@ -13,13 +16,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
-  // Initialize the FlutterGemma plugin (required before using Gemma APIs).
-  try {
-    await FlutterGemma.initialize();
-    debugPrint('[main] FlutterGemma initialized');
-  } catch (e) {
-    debugPrint('[main] FlutterGemma.initialize() failed: $e');
-  }
+  debugPaintSizeEnabled = false;
+  debugPaintBaselinesEnabled = false;
+  debugPaintPointersEnabled = false;
+  debugRepaintRainbowEnabled = false;
 
   // Register the headless background fetch callback for when the app is terminated.
   // Must be called before runApp().
@@ -34,6 +34,21 @@ void main() async {
       child: const MyApp(),
     ),
   );
+
+  // Initialize FlutterGemma after the first frame so startup is not blocked
+  // on native model setup or first paint.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_initializeFlutterGemma());
+  });
+}
+
+Future<void> _initializeFlutterGemma() async {
+  try {
+    await FlutterGemma.initialize();
+    debugPrint('[main] FlutterGemma initialized');
+  } catch (e) {
+    debugPrint('[main] FlutterGemma.initialize() failed: $e');
+  }
 }
 
 class MyApp extends StatelessWidget {

@@ -31,7 +31,7 @@ from models.schemas import (
     IntelligenceAnalyzeResponse,
 )
 from services.gemini_service import get_analysis_service, GeminiAnalysisService
-from services.intelligence import analyze_logs
+from services.intelligence import analyze_logs_in_order
 from services.intelligence_policy import get_intelligence_policy
 from config.settings import get_settings
 from google.genai import types
@@ -145,9 +145,9 @@ async def health_check():
     try:
         from services.rag_service import get_rag_service
         rag_service = await asyncio.wait_for(
-            asyncio.to_thread(get_rag_service), timeout=1.5
+            asyncio.to_thread(get_rag_service), timeout=5.0
         )
-        doc_count = await asyncio.wait_for(rag_service.get_document_count(), timeout=1.5)
+        doc_count = await asyncio.wait_for(rag_service.get_document_count(), timeout=5.0)
     except TimeoutError:
         rag_error = "RAG health check timed out"
         weaviate_status = "degraded"
@@ -578,7 +578,10 @@ async def intelligence_analyze(payload: IntelligenceAnalyzeRequest):
         "symptom_count": payload.symptom_count,
     }
     try:
-        return analyze_logs(logs, include_gemini_message=payload.include_gemini_message)
+        return await analyze_logs_in_order(
+            logs,
+            include_gemini_message=payload.include_gemini_message,
+        )
     except Exception as e:
         logger.error(f"Intelligence analyze failed: {e}")
         raise HTTPException(

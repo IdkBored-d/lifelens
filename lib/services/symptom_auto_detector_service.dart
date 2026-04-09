@@ -39,40 +39,6 @@ class SymptomAutoDetectorService {
     'weakness': ['weakness', 'weak', 'feeling weak'],
   };
 
-  /// Canonical symptom names (used as primary keys).
-  static final List<String> canonicalSymptoms = [
-    'headache',
-    'nausea',
-    'fatigue',
-    'fever',
-    'cough',
-    'sore throat',
-    'congestion',
-    'runny nose',
-    'sneezing',
-    'shivers',
-    'body ache',
-    'dizziness',
-    'back pain',
-    'neck pain',
-    'joint pain',
-    'stomach pain',
-    'diarrhea',
-    'constipation',
-    'rash',
-    'anxiety',
-    'depression',
-    'insomnia',
-    'sleep issues',
-    'brain fog',
-    'memory issues',
-    'swelling',
-    'shortness of breath',
-    'chest pain',
-    'palpitations',
-    'weakness',
-  ];
-
   /// Detects symptoms from free-form text and returns list of matched symptoms.
   static List<String> detectSymptomsFromText(String text) {
     final lowerText = text.toLowerCase().trim();

@@ -6,8 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
+import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
+import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
 
@@ -451,6 +453,16 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               await IsarService.instance.init();
                               await IsarService.instance.writeMoodEntry(
                                 moodEntry,
+                              );
+                              context.read<MoodLogStore>().add(
+                                MoodCheckIn(
+                                  moodLabel: m.label,
+                                  emoji: m.emoji,
+                                  intensity: intensity.toInt(),
+                                  tags: tags.toList(growable: false),
+                                  notes: notes,
+                                  createdAt: now,
+                                ),
                               );
                               try {
                                 await _syncMoodToCloud(

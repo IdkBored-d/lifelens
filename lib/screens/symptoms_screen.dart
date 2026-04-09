@@ -235,10 +235,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     );
   }
 
-  Future<List<SymptomFrequency>> _buildSymptomFrequencies() async {
-    return SymptomAutoDetectorService.getSymptomFrequencies();
-  }
-
   int _countSymptomInWindow(
     List<SymptomEntry> docs,
     String symptom,
@@ -798,7 +794,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const _SectionHeader(title: 'Trends'),
+                      const _SectionHeader(title: 'Symptoms Experienced'),
                       const SizedBox(height: 8),
                       StreamBuilder<List<SymptomEntry>>(
                         stream: _trendStream(),
@@ -813,7 +809,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
                           if (!snapshot.hasData || snapshot.data!.isEmpty) {
                             return Text(
-                              'No symptom trends yet. Add a few entries to start seeing patterns.',
+                              'No symptoms experienced yet. Add a few entries to start seeing patterns.',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: cs.onSurfaceVariant,
                               ),
@@ -860,112 +856,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                                 ),
                               ],
                             ],
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _SectionHeader(title: 'Symptom Counter'),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Total occurrences of each symptom',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      FutureBuilder<List<SymptomFrequency>>(
-                        future: _buildSymptomFrequencies(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: LinearProgressIndicator(minHeight: 3),
-                            );
-                          }
-
-                          final frequencies = snapshot.data ?? [];
-                          if (frequencies.isEmpty) {
-                            return Text(
-                              'No symptoms tracked yet.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: cs.onSurfaceVariant,
-                              ),
-                            );
-                          }
-
-                          return Column(
-                            children: frequencies.map((freq) {
-                              final maxCount = frequencies.isNotEmpty
-                                  ? frequencies.first.count
-                                  : 1;
-                              final fraction = maxCount == 0
-                                  ? 0.0
-                                  : freq.count / maxCount;
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 100,
-                                      child: Text(
-                                        _titleCase(freq.symptom),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.bodySmall,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Stack(
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                            child: LinearProgressIndicator(
-                                              value: fraction,
-                                              minHeight: 24,
-                                              backgroundColor: cs.outlineVariant
-                                                  .withOpacity(0.35),
-                                            ),
-                                          ),
-                                          Positioned.fill(
-                                            child: Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Padding(
-                                                padding: const EdgeInsets.only(
-                                                  right: 8,
-                                                ),
-                                                child: Text(
-                                                  '${freq.count}',
-                                                  style: theme
-                                                      .textTheme
-                                                      .labelSmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        color: cs.onPrimary,
-                                                      ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
                           );
                         },
                       ),
