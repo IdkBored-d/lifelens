@@ -28,7 +28,7 @@ class WeaviateDisease {
 
   /// Format as a grounding block for Gemma2b / Gemini prompts.
   String toPromptBlock() =>
-      '• ${disease}: ${description}\n  Symptoms: ${symptoms}';
+      '• $disease: $description\n  Symptoms: $symptoms';
 }
 
 /// Thin Weaviate Cloud client.

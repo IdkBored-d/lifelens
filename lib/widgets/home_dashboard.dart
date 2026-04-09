@@ -18,6 +18,7 @@ import 'package:lifelens/widgets/summary_strip.dart';
 
 class HomeDashboard extends StatelessWidget {
   const HomeDashboard({
+    super.key,
     required this.selectedMood,
     required this.onMoodSelected,
     required this.onOpenMiniMe,
@@ -149,7 +150,7 @@ class HomeDashboard extends StatelessWidget {
           ),
 
           const SizedBox(height: 8),
-          Divider(color: cs.outlineVariant.withOpacity(0.7)),
+          Divider(color: cs.outlineVariant.withValues(alpha:0.7)),
           const SizedBox(height: 10),
 
           // Small "continue" card

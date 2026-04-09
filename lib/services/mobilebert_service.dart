@@ -12,11 +12,13 @@ class MobileBertService {
 
   OrtSession? _session;
   bool _isLoaded = false;
+  String? _assetPath;
 
   bool get isLoaded => _isLoaded;
 
   /// Load the ONNX model from a Flutter asset path.
   Future<void> load(String assetPath) async {
+    _assetPath = assetPath;
     OrtEnv.instance.init();
     final rawAssetFile = await rootBundle.load(assetPath);
     final bytes       = rawAssetFile.buffer.asUint8List();
@@ -25,12 +27,18 @@ class MobileBertService {
     _isLoaded         = true;
   }
 
+  /// Reload the model from the last-used asset path.
+  Future<void> reload() async {
+    if (_assetPath == null) throw StateError('MobileBertService: reload() called before load()');
+    await load(_assetPath!);
+  }
+
   /// Run inference on a single [text] string.
   ///
-  /// [tokenize] returns { 'input_ids': List<int>, 'attention_mask': List<int> }
+  /// [tokenize] returns `{ 'input_ids': List<int>, 'attention_mask': List<int> }`
   /// both of length [_seqLen].
   ///
-  /// Returns softmax probabilities as List<double> of length 6.
+  /// Returns softmax probabilities as `List<double>` of length 6.
   Future<List<double>> classify(
     String text,
     Map<String, List<int>> Function(String text, int maxLen) tokenize,

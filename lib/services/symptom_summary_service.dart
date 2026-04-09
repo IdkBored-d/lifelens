@@ -194,7 +194,7 @@ class SymptomSummaryService {
     worsening.sort((a, b) => b.value.compareTo(a.value));
     improving.sort((a, b) => b.value.compareTo(a.value));
 
-    final totalMentions = currentCounts.values.fold<int>(0, (sum, v) => sum + v);
+    final totalMentions = currentCounts.values.fold<int>(0, (acc, v) => acc + v);
     final summaryText = _buildSummaryText(
       windowLabel: windowLabel,
       windowDays: windowDays,

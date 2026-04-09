@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lifelens/models/quick_action.dart';
 
 class QuickActionsGrid extends StatelessWidget {
-  const QuickActionsGrid({required this.actions});
+  const QuickActionsGrid({super.key, required this.actions});
 
   final List<Quickaction> actions;
 
@@ -30,10 +30,10 @@ class QuickActionsGrid extends StatelessWidget {
             decoration: BoxDecoration(
               color: cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha:0.6)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha:0.03),
                   blurRadius: 12,
                   offset: const Offset(0, 8),
                 ),
@@ -45,10 +45,10 @@ class QuickActionsGrid extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: cs.primaryContainer.withOpacity(0.7),
+                    color: cs.primaryContainer.withValues(alpha:0.7),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: cs.outlineVariant.withOpacity(0.35),
+                      color: cs.outlineVariant.withValues(alpha:0.35),
                     ),
                   ),
                   child: Icon(a.icon, color: cs.primary),

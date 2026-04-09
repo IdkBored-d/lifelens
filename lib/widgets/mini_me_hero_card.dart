@@ -4,6 +4,7 @@ import 'package:lifelens/shared_widgets/soft_icon_button.dart';
 
 class MiniMeHeroCard extends StatelessWidget {
   const MiniMeHeroCard({
+    super.key,
     required this.title,
     required this.moodLabel,
     required this.statusLine,
@@ -27,15 +28,15 @@ class MiniMeHeroCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            cs.primaryContainer.withOpacity(0.55),
-            cs.secondaryContainer.withOpacity(0.45),
+            cs.primaryContainer.withValues(alpha:0.55),
+            cs.secondaryContainer.withValues(alpha:0.45),
             cs.surface,
           ],
         ),
         borderRadius: BorderRadius.circular(40),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha:0.04),
             blurRadius: 12,
             offset: const Offset(0, 8),
           ),
@@ -51,7 +52,7 @@ class MiniMeHeroCard extends StatelessWidget {
               color: stateColor,
               boxShadow: [
                 BoxShadow(
-                  color: stateColor.withOpacity(0.28),
+                  color: stateColor.withValues(alpha:0.28),
                   blurRadius: 12,
                   spreadRadius: 1,
                 ),
@@ -63,7 +64,7 @@ class MiniMeHeroCard extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: cs.surface,
-                border: Border.all(color: cs.outlineVariant.withOpacity(0.55)),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha:0.55)),
               ),
               child: Icon(Icons.person_rounded, size: 44, color: cs.primary),
             ),
@@ -122,8 +123,9 @@ class MiniMeHeroCard extends StatelessWidget {
     if (m.contains("happy") || m.contains("joy")) return Colors.greenAccent;
     if (m.contains("sad")) return Colors.redAccent;
     if (m.contains("neutral")) return Color(0xFF8C91A8);
-    if (m.contains("anxious") || m.contains("stress"))
+    if (m.contains("anxious") || m.contains("stress")) {
       return Colors.orangeAccent;
+    }
 
     return cs.primary;
   }

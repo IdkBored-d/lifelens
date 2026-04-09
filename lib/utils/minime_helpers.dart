@@ -17,9 +17,9 @@ String miniMeAssetForMood(String? moodLabel) {
 }
 
 Color glowForIntensity(ColorScheme cs, int intensity) {
-  if (intensity <= 1) return cs.primary.withOpacity(0.18);
-  if (intensity == 2) return cs.primary.withOpacity(0.26);
-  if (intensity == 3) return cs.primary.withOpacity(0.34);
-  if (intensity == 4) return cs.primary.withOpacity(0.42);
-  return cs.primary.withOpacity(0.5);
+  if (intensity <= 1) return cs.primary.withValues(alpha:0.18);
+  if (intensity == 2) return cs.primary.withValues(alpha:0.26);
+  if (intensity == 3) return cs.primary.withValues(alpha:0.34);
+  if (intensity == 4) return cs.primary.withValues(alpha:0.42);
+  return cs.primary.withValues(alpha:0.5);
 }

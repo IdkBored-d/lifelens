@@ -15,11 +15,13 @@ class DisEmbedService {
 
   OrtSession? _session;
   bool _isLoaded = false;
+  String? _assetPath;
 
   bool get isLoaded => _isLoaded;
 
   /// Load the ONNX model from a Flutter asset path.
   Future<void> load(String assetPath) async {
+    _assetPath = assetPath;
     OrtEnv.instance.init();
     final rawAssetFile = await rootBundle.load(assetPath);
     final bytes        = rawAssetFile.buffer.asUint8List();
@@ -28,9 +30,15 @@ class DisEmbedService {
     _isLoaded          = true;
   }
 
+  /// Reload the model from the last-used asset path.
+  Future<void> reload() async {
+    if (_assetPath == null) throw StateError('DisEmbedService: reload() called before load()');
+    await load(_assetPath!);
+  }
+
   /// Embed [text] and return a 384-dim L2-normalised vector.
   ///
-  /// [tokenize] returns { 'input_ids': List<int>, 'attention_mask': List<int> }
+  /// [tokenize] returns `{ 'input_ids': List<int>, 'attention_mask': List<int> }`
   /// both padded/truncated to [_maxSeqLen].
   Future<List<double>> embed(
     String text,

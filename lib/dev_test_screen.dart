@@ -8,7 +8,6 @@ import 'package:lifelens/models/escalation_level.dart'; // ← ADD
 import 'package:lifelens/models/mood_result.dart'; // ← ADD (kMobileBertLabels)
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
-import 'package:lifelens/services/quick_track_service.dart'; // ← ADD (MoodLogEntry, SymptomLogEntry)
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 
 /// ─────────────────────────────────────────────────────────────────────────────
@@ -198,33 +197,23 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testQuickTrackMood() async {
-    await AppServices.quickTrack.appendMoodEntry(
-      MoodLogEntry(
-        date: '2026-03-21',
-        log: 'Dev test: feeling good today',
-        predictedMood: 'joy',
-        fitnessScore: 72.0,
-      ),
-    );
-    final entries = await AppServices.quickTrack.readMoodLog();
-    final found = entries.any((e) => e.date == '2026-03-21');
-    return '✓ QuickTrack mood append succeeded\n'
-        'Total entries in file: ${entries.length}\n'
-        'Found 2026-03-21: $found';
+    // Write a test mood summary and read it back.
+    const testSummary = 'Mood: Joy (1 day).\nFitness: stable.\n\n[Dev test entry]';
+    await AppServices.quickTrack.writeMoodSummary(testSummary);
+    final readBack = await AppServices.quickTrack.readMoodSummary();
+    return '✓ QuickTrack mood summary write/read succeeded\n'
+        'Chars read: ${readBack.length}\n'
+        'Match: ${readBack.trim() == testSummary.trim()}';
   }
 
   Future<String> _testQuickTrackSymptom() async {
-    await AppServices.quickTrack.appendSymptomEntry(
-      SymptomLogEntry(
-        date: '2026-03-21',
-        symptoms: ['cough', 'fatigue'],
-        predictedAilment: 'Test Ailment',
-        status: 'active',
-      ),
-    );
-    final entries = await AppServices.quickTrack.readSymptomLog();
-    return '✓ QuickTrack symptom append succeeded\n'
-        'Total entries in file: ${entries.length}';
+    // Write a test symptom summary and read it back.
+    const testSummary = 'Symptoms: Cough (active, 1 day).\n\n[Dev test entry]';
+    await AppServices.quickTrack.writeSymptomSummary(testSummary);
+    final readBack = await AppServices.quickTrack.readSymptomSummary();
+    return '✓ QuickTrack symptom summary write/read succeeded\n'
+        'Chars read: ${readBack.length}\n'
+        'Match: ${readBack.trim() == testSummary.trim()}';
   }
 
   Future<String> _testQuickTrackContext() async {
@@ -349,18 +338,16 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testSyncCheck() async {
-    final lastMood = await AppServices.isar.lastMoodDate();
-    final lastSymptom = await AppServices.isar.lastSymptomDate();
-    final sync = await AppServices.quickTrack.checkAndRepairSync(
-      lastIsarMoodDate: lastMood,
-      lastIsarSymptomDate: lastSymptom,
-    );
-    return '✓ Sync check completed\n'
-        'Last ISAR mood date: $lastMood\n'
-        'Last ISAR symptom date: $lastSymptom\n'
-        'Mood needs repair: ${sync.moodNeedsRepair}\n'
-        'Symptom needs repair: ${sync.symptomNeedsRepair}\n'
-        'Is clean: ${sync.isClean}';
+    // Sync repair is now Jaccard-similarity based and runs inside
+    // EodPipelineService.runEndOfDay(). This test reads the current
+    // quick-track summaries to verify they are non-empty.
+    final moodCtx    = await AppServices.quickTrack.buildMoodContext();
+    final symptomCtx = await AppServices.quickTrack.buildSymptomContext();
+    final convCtx    = await AppServices.quickTrack.buildConversationContext();
+    return '✓ Quick-track summaries readable\n'
+        'Mood summary chars: ${moodCtx.length}\n'
+        'Symptom summary chars: ${symptomCtx.length}\n'
+        'Conversation summary chars: ${convCtx.length}';
   }
 
   Future<String> _testClearAll() async {

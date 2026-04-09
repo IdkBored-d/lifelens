@@ -273,11 +273,11 @@ class _AuthBackdrop extends StatelessWidget {
               colors: [
                 colorScheme.surface,
                 Color.alphaBlend(
-                  colorScheme.primary.withOpacity(0.09),
+                  colorScheme.primary.withValues(alpha:0.09),
                   colorScheme.surface,
                 ),
                 Color.alphaBlend(
-                  colorScheme.secondary.withOpacity(0.08),
+                  colorScheme.secondary.withValues(alpha:0.08),
                   colorScheme.surface,
                 ),
               ],
@@ -289,7 +289,7 @@ class _AuthBackdrop extends StatelessWidget {
           right: -40,
           child: _BackdropOrb(
             diameter: 210,
-            color: colorScheme.primary.withOpacity(0.22),
+            color: colorScheme.primary.withValues(alpha:0.22),
           ),
         ),
         Positioned(
@@ -297,7 +297,7 @@ class _AuthBackdrop extends StatelessWidget {
           left: -60,
           child: _BackdropOrb(
             diameter: 170,
-            color: colorScheme.secondary.withOpacity(0.18),
+            color: colorScheme.secondary.withValues(alpha:0.18),
           ),
         ),
         Positioned(
@@ -305,7 +305,7 @@ class _AuthBackdrop extends StatelessWidget {
           right: 20,
           child: _BackdropOrb(
             diameter: 230,
-            color: colorScheme.primaryContainer.withOpacity(0.32),
+            color: colorScheme.primaryContainer.withValues(alpha:0.32),
           ),
         ),
       ],
@@ -355,9 +355,9 @@ class _HeaderRibbon extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color.alphaBlend(cs.primary.withOpacity(0.60), cs.primaryContainer),
+            Color.alphaBlend(cs.primary.withValues(alpha:0.60), cs.primaryContainer),
             Color.alphaBlend(
-              cs.secondary.withOpacity(0.42),
+              cs.secondary.withValues(alpha:0.42),
               cs.primaryContainer,
             ),
           ],
@@ -392,7 +392,7 @@ class _HeaderRibbon extends StatelessWidget {
           Text(
             subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onPrimaryContainer.withOpacity(0.86),
+              color: cs.onPrimaryContainer.withValues(alpha:0.86),
               fontWeight: FontWeight.w600,
               height: 1.3,
             ),
@@ -413,10 +413,10 @@ class _BrandBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withOpacity(0.22),
+        color: colorScheme.surface.withValues(alpha:0.22),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: colorScheme.onPrimaryContainer.withOpacity(0.20),
+          color: colorScheme.onPrimaryContainer.withValues(alpha:0.20),
         ),
       ),
       child: Row(
@@ -456,7 +456,7 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: cs.surface.withOpacity(0.24),
+        color: cs.surface.withValues(alpha:0.24),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -504,7 +504,7 @@ class _ModeSwitchPanel extends StatelessWidget {
               if (states.contains(WidgetState.selected)) {
                 return cs.primaryContainer;
               }
-              return cs.surfaceContainerHighest.withOpacity(0.6);
+              return cs.surfaceContainerHighest.withValues(alpha:0.6);
             }),
             foregroundColor: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
@@ -514,9 +514,9 @@ class _ModeSwitchPanel extends StatelessWidget {
             }),
             side: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
-                return BorderSide(color: cs.primary.withOpacity(0.45));
+                return BorderSide(color: cs.primary.withValues(alpha:0.45));
               }
-              return BorderSide(color: cs.outlineVariant.withOpacity(0.45));
+              return BorderSide(color: cs.outlineVariant.withValues(alpha:0.45));
             }),
             shape: WidgetStateProperty.all(
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -894,9 +894,9 @@ class _InfoPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(0.65),
+        color: cs.surfaceContainerHighest.withValues(alpha:0.65),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.55)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.55)),
       ),
       child: Row(
         children: [

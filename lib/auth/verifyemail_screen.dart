@@ -138,8 +138,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   cs.surface,
-                  Color.alphaBlend(cs.primary.withOpacity(0.10), cs.surface),
-                  Color.alphaBlend(cs.secondary.withOpacity(0.08), cs.surface),
+                  Color.alphaBlend(cs.primary.withValues(alpha:0.10), cs.surface),
+                  Color.alphaBlend(cs.secondary.withValues(alpha:0.08), cs.surface),
                 ],
               ),
             ),
@@ -150,7 +150,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
             right: -20,
             child: _GlowBubble(
               diameter: 190,
-              color: cs.primary.withOpacity(0.24),
+              color: cs.primary.withValues(alpha:0.24),
             ),
           ),
           Positioned(
@@ -158,7 +158,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
             left: -20,
             child: _GlowBubble(
               diameter: 210,
-              color: cs.primaryContainer.withOpacity(0.30),
+              color: cs.primaryContainer.withValues(alpha:0.30),
             ),
           ),
           SafeArea(
@@ -253,10 +253,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: cs.surfaceContainerHighest
-                                        .withOpacity(0.55),
+                                        .withValues(alpha:0.55),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: cs.outlineVariant.withOpacity(
+                                      color: cs.outlineVariant.withValues(alpha:
                                         0.55,
                                       ),
                                     ),
@@ -346,9 +346,9 @@ class _HeaderCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color.alphaBlend(cs.primary.withOpacity(0.58), cs.primaryContainer),
+            Color.alphaBlend(cs.primary.withValues(alpha:0.58), cs.primaryContainer),
             Color.alphaBlend(
-              cs.secondary.withOpacity(0.42),
+              cs.secondary.withValues(alpha:0.42),
               cs.primaryContainer,
             ),
           ],
@@ -363,7 +363,7 @@ class _HeaderCard extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: cs.surface.withOpacity(0.20),
+                  color: cs.surface.withValues(alpha:0.20),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -388,7 +388,7 @@ class _HeaderCard extends StatelessWidget {
           Text(
             'We sent a secure verification link to:',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onPrimaryContainer.withOpacity(0.86),
+              color: cs.onPrimaryContainer.withValues(alpha:0.86),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -397,10 +397,10 @@ class _HeaderCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: cs.surface.withOpacity(0.22),
+              color: cs.surface.withValues(alpha:0.22),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: cs.onPrimaryContainer.withOpacity(0.22),
+                color: cs.onPrimaryContainer.withValues(alpha:0.22),
               ),
             ),
             child: Text(

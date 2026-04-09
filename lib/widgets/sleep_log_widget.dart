@@ -17,7 +17,7 @@ class SleepLogWidget extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
         ),
         child: Column(
           children: [
@@ -75,7 +75,7 @@ class _SleepEntryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,7 +95,7 @@ class _SleepEntryCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _getQualityColor(sleep.quality, cs).withOpacity(0.2),
+                  color: _getQualityColor(sleep.quality, cs).withValues(alpha:0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -165,7 +165,7 @@ class _SleepEntryCard extends StatelessWidget {
 
     if (difference == 0) return 'Today';
     if (difference == 1) return 'Yesterday';
-    if (difference < 7) return '${difference} days ago';;
+    if (difference < 7) return '$difference days ago';
 
     return '${date.day}/${date.month}/${date.year}';
   }
@@ -175,7 +175,7 @@ class _SleepEntryCard extends StatelessWidget {
     final minute = dateTime.minute;
     final amPm = hour >= 12 ? 'PM' : 'AM';
     final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12: hour);
-    return '${displayHour}:${minute.toString().padLeft(2, '0')} $amPm';
+    return '$displayHour:${minute.toString().padLeft(2, '0')} $amPm';
   }
 
   Color _getQualityColor(SleepQuality quality, ColorScheme cs) {

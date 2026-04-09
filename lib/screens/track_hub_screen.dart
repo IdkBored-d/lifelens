@@ -100,7 +100,7 @@ class TrackHubScreen extends StatelessWidget {
                         color: cs.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: cs.outlineVariant.withOpacity(0.55),
+                          color: cs.outlineVariant.withValues(alpha:0.55),
                         ),
                       ),
                       child: Text(
@@ -126,7 +126,7 @@ class TrackHubScreen extends StatelessWidget {
                               color: cs.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: cs.outlineVariant.withOpacity(0.5),
+                                color: cs.outlineVariant.withValues(alpha:0.5),
                               ),
                             ),
                             child: Row(

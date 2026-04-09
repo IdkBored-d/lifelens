@@ -192,9 +192,9 @@ Always recommend professional medical evaluation. This is a screening tool only.
     required String todayMoodEntry,
     required String activeSymptomEntries,
     required double todayFitnessScore,
-    required double weekAvgFitnessScore,
+    required double periodAvgFitnessScore,
     required String fitnessTrend,
-    required String last7MoodEntries,
+    required String last14MoodEntries,
     required String ragContext,
   }) async {
     return generate('''
@@ -208,11 +208,11 @@ $activeSymptomEntries
 
 --- FITNESS ---
 Today: ${todayFitnessScore.toStringAsFixed(1)} / 100
-7-day average: ${weekAvgFitnessScore.toStringAsFixed(1)} / 100
+14-day average: ${periodAvgFitnessScore.toStringAsFixed(1)} / 100
 Trend: $fitnessTrend
 
---- MOOD HISTORY (last 7 days) ---
-$last7MoodEntries
+--- MOOD HISTORY (last 14 days) ---
+$last14MoodEntries
 
 --- MEDICAL KNOWLEDGE BASE (RAG) ---
 $ragContext

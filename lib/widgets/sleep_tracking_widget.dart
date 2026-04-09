@@ -28,7 +28,7 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -84,7 +84,7 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
                     selected: _quality == quality,
                     onSelected: (_) => setState(() => _quality = quality),
                     backgroundColor: cs.primaryContainer,
-                    side: BorderSide(color: cs.outlineVariant.withOpacity(0.4)),
+                    side: BorderSide(color: cs.outlineVariant.withValues(alpha:0.4)),
                     labelStyle: TextStyle(
                       color: _quality == quality
                           ? cs.onPrimaryContainer
@@ -111,7 +111,7 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: cs.outlineVariant.withOpacity(0.4),
+                  color: cs.outlineVariant.withValues(alpha:0.4),
                 ),
               ),
               focusedBorder: OutlineInputBorder(
@@ -242,7 +242,7 @@ class _TimeSelector extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha:0.4)),
         ),
         child: Row(
           children: [

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class SuggestionTile extends StatelessWidget {
   const SuggestionTile({
+    super.key,
     required this.icon,
     required this.text,
     required this.onTap,
@@ -22,7 +23,7 @@ class SuggestionTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha:0.4)),
         ),
         child: Row(
           children: [

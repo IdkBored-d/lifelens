@@ -20,17 +20,25 @@ class FitnessMlpService {
 
   OrtSession? _session;
   bool _isLoaded = false;
+  String? _assetPath;
 
   bool get isLoaded => _isLoaded;
 
   /// Load the ONNX model from a Flutter asset path.
   Future<void> load(String assetPath) async {
+    _assetPath = assetPath;
     OrtEnv.instance.init();
     final rawAssetFile = await rootBundle.load(assetPath);
     final bytes        = rawAssetFile.buffer.asUint8List();
     final opts         = OrtSessionOptions();
     _session           = OrtSession.fromBuffer(bytes, opts);
     _isLoaded          = true;
+  }
+
+  /// Reload the model from the last-used asset path.
+  Future<void> reload() async {
+    if (_assetPath == null) throw StateError('FitnessMlpService: reload() called before load()');
+    await load(_assetPath!);
   }
 
   /// Run inference on [features].

@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gemma/flutter_gemma.dart' show PreferredBackend;
 import 'package:provider/provider.dart';
 import 'package:lifelens/app_services.dart';
 import 'moodlog_store.dart';
@@ -9,10 +10,11 @@ import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/minime_shop_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
-import 'package:lifelens/services/minime_chat_storage_service.dart';
+import 'package:lifelens/services/chat_session_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
 import 'package:lifelens/services/mini_me_suggestion_aggregator.dart';
 import 'package:lifelens/database/isar_service.dart';
+import 'package:lifelens/database/chat_message.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
 
@@ -38,17 +40,31 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   MiniMeIntelligenceReply? _intelligence;
   final ExerciseStore _exerciseStore = ExerciseStore();
 
+  // Chat session persistence (ISAR-backed, replaces flat-file MiniMeChatStorageService)
+  String? _sessionId;
+  int _messageSequence = 0;
+  late final ChatSessionService _chatSessionService;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _chatSessionService = ChatSessionService(AppServices.quickTrack, AppServices.gemma);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       _bootstrapMiniMe();
       _refreshIntelligence();
+      final moodStore = context.read<MoodLogStore>();
+      final moodCtx   = _buildMoodContext(moodStore);
+      _sessionId = await _chatSessionService.startSession(
+        moodLabel:     moodCtx.label,
+        moodIntensity: moodCtx.intensity,
+        moodNotes:     moodCtx.notes.isEmpty ? null : moodCtx.notes,
+      );
     });
   }
 
   @override
   void dispose() {
+    if (_sessionId != null) _chatSessionService.endSession(_sessionId!);
     _chatController.dispose();
     _scrollController.dispose();
     _chatFocusNode.dispose();
@@ -232,26 +248,29 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   Future<void> _bootstrapMiniMe() async {
-    final stored = await MiniMeChatStorageService.instance.loadMessages();
+    // Load recent messages from ISAR (last session) to restore history.
+    final recentSessions = await IsarService.instance.getRecentChatSessions(limit: 1);
     if (!mounted) return;
 
-    if (stored.isNotEmpty) {
-      setState(() {
-        _messages
-          ..clear()
-          ..addAll(
-            stored.map(
-              (message) => _MiniMeChatMessage(
-                role: message.role == 'user'
-                    ? _ChatRole.user
-                    : _ChatRole.assistant,
-                text: message.text,
+    if (recentSessions.isNotEmpty) {
+      final List<ChatMessage> stored = await IsarService.instance
+          .getMessagesForSession(recentSessions.first.sessionId);
+      if (stored.isNotEmpty) {
+        setState(() {
+          _messages
+            ..clear()
+            ..addAll(
+              stored.map(
+                (m) => _MiniMeChatMessage(
+                  role: m.role == 'user' ? _ChatRole.user : _ChatRole.assistant,
+                  text: m.text,
+                ),
               ),
-            ),
-          );
-      });
-      _scrollToBottom();
-      return;
+            );
+        });
+        _scrollToBottom();
+        return;
+      }
     }
 
     await _loadOpeningSuggestion();
@@ -513,17 +532,41 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       }
     }
 
+    // Tier 2: Gemma on-device (no network required)
+    // Skip when running on CPU backend and Gemini is reachable — CPU inference
+    // on emulators / unsupported GPUs is too slow for interactive chat.
     if (AppServices.isGemmaLoaded) {
-      try {
-        return await AppServices.gemma.generateMiniMeReply(
-          userMessage: userText,
-          moodLabel: moodContext.label,
-        );
-      } catch (_) {
-        // fall through to template fallback
+      final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
+      final online = await _isOnline();
+      if (isGpu || !online) {
+        try {
+          return await AppServices.gemma.generateMiniMeReply(
+            userMessage: userText,
+            moodLabel: moodContext.label,
+          ).timeout(const Duration(seconds: 20));
+        } catch (_) {
+          // fall through to direct Gemini
+        }
       }
     }
 
+    // Tier 3: Direct Gemini (network, no backend server required)
+    if (await _isOnline()) {
+      try {
+        final directReply = await AppServices.gemini.generateMiniMeReply(
+          userMessage: userText,
+          moodLabel: moodContext.label,
+        );
+        if (directReply.trim().isNotEmpty &&
+            !directReply.startsWith('Unable to reach Gemini')) {
+          return directReply;
+        }
+      } catch (_) {
+        // fall through to offline template
+      }
+    }
+
+    // Tier 4: Offline template
     return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
   }
 
@@ -548,16 +591,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return 'Model connection is not live yet. Based on your latest mood ($moodLabel), tell me your focus area (mood, sleep, symptoms, or exercise) and I will draft a short plan.';
   }
 
-  Future<void> _persistMessages() {
-    return MiniMeChatStorageService.instance.saveMessages(
-      _messages
-          .map(
-            (message) => MiniMeStoredMessage(
-              role: message.role == _ChatRole.user ? 'user' : 'assistant',
-              text: message.text,
-            ),
-          )
-          .toList(growable: false),
+  /// Persist the most recently added message to ISAR via ChatSessionService.
+  /// Called immediately after pushing a new message onto [_messages].
+  /// Each message is written individually — crash-safe, no batch on navigate-away.
+  Future<void> _persistMessages() async {
+    if (_sessionId == null || _messages.isEmpty) return;
+    final last = _messages.last;
+    await _chatSessionService.addMessage(
+      sessionId:      _sessionId!,
+      role:           last.role == _ChatRole.user ? 'user' : 'assistant',
+      text:           last.text,
+      sequenceNumber: _messageSequence++,
     );
   }
 
@@ -698,13 +742,24 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
                     if (shouldClear != true || !context.mounted) return;
 
+                    // End current session and start a fresh one.
+                    if (_sessionId != null) {
+                      _chatSessionService.endSession(_sessionId!);
+                    }
                     setState(() {
                       _messages.clear();
                       _isCoachExpanded = false;
                       _isReplying = false;
                       _didLoadOpeningSuggestion = false;
+                      _messageSequence = 0;
                     });
-                    await MiniMeChatStorageService.instance.clear();
+                    final moodStore2 = context.read<MoodLogStore>();
+                    final moodCtx2   = _buildMoodContext(moodStore2);
+                    _sessionId = await _chatSessionService.startSession(
+                      moodLabel:     moodCtx2.label,
+                      moodIntensity: moodCtx2.intensity,
+                      moodNotes:     moodCtx2.notes.isEmpty ? null : moodCtx2.notes,
+                    );
                     if (!context.mounted) return;
                     await _loadOpeningSuggestion();
                   },

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class PlaceholderPage extends StatelessWidget {
-  const PlaceholderPage({required this.title});
+  const PlaceholderPage({super.key, required this.title});
   final String title;
 
   @override

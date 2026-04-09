@@ -3,7 +3,7 @@ import 'package:lifelens/models/suggestion.dart';
 import 'package:lifelens/shared_widgets/suggestion_tile.dart';
 
 class ContextualSuggestions extends StatelessWidget {
-  const ContextualSuggestions({required this.moodLabel});
+  const ContextualSuggestions({super.key, required this.moodLabel});
   final String moodLabel;
 
   @override
@@ -18,7 +18,7 @@ class ContextualSuggestions extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

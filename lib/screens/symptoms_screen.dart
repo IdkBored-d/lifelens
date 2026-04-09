@@ -115,7 +115,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       setState(() => _saveButtonState = LogButtonVisualState.idle);
     } catch (error) {
       if (!mounted) return;
-      print('[SymptomsScreen] Save failed: $error');
+      debugPrint('[SymptomsScreen] Save failed: $error');
       final errorMsg = error.toString();
       final truncated = errorMsg.length > 70
           ? '${errorMsg.substring(0, 70)}...'
@@ -206,11 +206,11 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
     final totalRecentMentions = recentCounts.values.fold<int>(
       0,
-      (sum, value) => sum + value,
+      (acc, value) => acc + value,
     );
     final totalPreviousMentions = previousCounts.values.fold<int>(
       0,
-      (sum, value) => sum + value,
+      (acc, value) => acc + value,
     );
 
     final worsening = <_WorseningItem>[];
@@ -553,7 +553,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: cs.primaryContainer.withOpacity(0.45),
+                      color: cs.primaryContainer.withValues(alpha:0.45),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Column(
@@ -570,14 +570,14 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         Text(
                           '${summary.windowLabel} • ${_formatDate(summary.fromDate)} to ${_formatDate(summary.toDate)}',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onPrimaryContainer.withOpacity(0.9),
+                            color: cs.onPrimaryContainer.withValues(alpha:0.9),
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           _burdenLabel(summary),
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: cs.onPrimaryContainer.withOpacity(0.95),
+                            color: cs.onPrimaryContainer.withValues(alpha:0.95),
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -775,7 +775,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: cs.primaryContainer.withOpacity(0.45),
+                          color: cs.primaryContainer.withValues(alpha:0.45),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Text(
@@ -872,7 +872,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: cs.primaryContainer.withOpacity(0.6),
+                              color: cs.primaryContainer.withValues(alpha:0.6),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Icon(
@@ -1018,7 +1018,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                             color: cs.surface,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: cs.outlineVariant.withOpacity(0.5),
+                              color: cs.outlineVariant.withValues(alpha:0.5),
                             ),
                           ),
                           child: Column(
@@ -1105,7 +1105,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
       ),
       child: child,
     );
@@ -1197,7 +1197,7 @@ class _TrendBarChart extends StatelessWidget {
                           minHeight: 10,
                           backgroundColor: Theme.of(
                             context,
-                          ).colorScheme.outlineVariant.withOpacity(0.35),
+                          ).colorScheme.outlineVariant.withValues(alpha:0.35),
                         ),
                       ),
                     ),
@@ -1251,7 +1251,7 @@ class _DailyTrendMiniChart extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: value > 0
                       ? cs.primary
-                      : cs.outlineVariant.withOpacity(0.4),
+                      : cs.outlineVariant.withValues(alpha:0.4),
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
@@ -1277,7 +1277,7 @@ class _MetricChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: cs.primaryContainer.withOpacity(0.5),
+        color: cs.primaryContainer.withValues(alpha:0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1325,7 +1325,7 @@ class _ReportSectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

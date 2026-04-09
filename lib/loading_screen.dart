@@ -82,12 +82,12 @@ class _LogoCard extends StatelessWidget {
       width: 120,
       height: 120,
       decoration: BoxDecoration (
-        color: Colors.white.withOpacity(0.9),
+        color: Colors.white.withValues(alpha:0.9),
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow (
             blurRadius: 30,
-            color: theme.colorScheme.primary.withOpacity(0.18),
+            color: theme.colorScheme.primary.withValues(alpha:0.18),
             offset: const Offset(0, 12),
           ),
         ],

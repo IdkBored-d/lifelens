@@ -8,6 +8,7 @@ class PremiumExerciseCard extends StatelessWidget {
   final Widget? chooseButton;
 
   const PremiumExerciseCard({
+    super.key,
     required this.exercise,
     required this.onTap,
     this.chooseButton,
@@ -27,7 +28,7 @@ class PremiumExerciseCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha:0.06),
               blurRadius: 18,
               offset: const Offset(0, 10),
             ),
@@ -41,7 +42,7 @@ class PremiumExerciseCard extends StatelessWidget {
               width: 54,
               height: 54,
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.12),
+                color: cs.primary.withValues(alpha:0.12),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Icon(

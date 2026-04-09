@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:lifelens/models/mood.dart';
 
 class MoodRow extends StatelessWidget {
-  const MoodRow({required this.selected, required this.onSelect});
+  const MoodRow({super.key, required this.selected, required this.onSelect});
 
   final int selected;
   final ValueChanged<int> onSelect;
@@ -18,7 +18,7 @@ class MoodRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.6)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -36,19 +36,19 @@ class MoodRow extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 160),
                 transform: isSelected
-                    ? (Matrix4.identity()..scale(1.05))
+                    ? (Matrix4.diagonal3Values(1.05, 1.05, 1.0))
                     : Matrix4.identity(),
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 margin: const EdgeInsets.symmetric(horizontal: 5),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? cs.primaryContainer.withOpacity(0.75)
-                      : cs.surface.withOpacity(0.75),
+                      ? cs.primaryContainer.withValues(alpha:0.75)
+                      : cs.surface.withValues(alpha:0.75),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: isSelected
-                        ? cs.primary.withOpacity(0.55)
-                        : cs.outlineVariant.withOpacity(0.6),
+                        ? cs.primary.withValues(alpha:0.55)
+                        : cs.outlineVariant.withValues(alpha:0.6),
                   ),
                 ),
                 child: Column(

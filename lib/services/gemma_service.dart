@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_gemma/flutter_gemma.dart';
 
 /// Wraps flutter_gemma for on-device Gemma 2 2B IT inference.
@@ -11,24 +14,76 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 /// LOADING NOTE:
 ///   The model file is ~1.4 GB. Store on device after OTA download.
 ///   Pass the on-device path to load().
+///
+/// CONCURRENCY:
+///   MediaPipe's LLM engine only supports one active prompt at a time.
+///   A [Completer]-based mutex serialises all inference calls so that
+///   concurrent callers (Mini-Me chat, pipelines, background EOD) queue
+///   instead of crashing with "AddQueryChunk before PredictDone".
 class GemmaService {
   InferenceModel? _model;
   bool _isLoaded = false;
+  PreferredBackend? _activeBackend;
+
+  /// Completer acting as a mutex — null when idle, non-null when busy.
+  Completer<void>? _inferenceLock;
 
   bool get isLoaded => _isLoaded;
+
+  /// Whether an inference call is currently in progress.
+  bool get isGenerating => _inferenceLock != null;
+
+  /// The backend (GPU or CPU) that was successfully initialised.
+  /// Null until [load] has completed.
+  PreferredBackend? get activeBackend => _activeBackend;
 
   // ── Initialisation ──────────────────────────────────────────────────────────
 
   /// Install and activate the Gemma 2 2B IT model from [modelPath].
   /// Must be called before any generate() calls.
+  ///
+  /// Tries GPU first; falls back to CPU automatically if the device does not
+  /// support MediaPipe's GPU delegate (e.g. x86 emulators, old GPUs).
   Future<void> load(String modelPath) async {
     await FlutterGemma.installModel(
       modelType: ModelType.gemmaIt,
     ).fromFile(modelPath).install();
 
-    _model = await FlutterGemma.getActiveModel(maxTokens: 2048);
+    try {
+      _model = await FlutterGemma.getActiveModel(
+        maxTokens: 2048,
+        preferredBackend: PreferredBackend.gpu,
+      );
+      _activeBackend = PreferredBackend.gpu;
+      debugPrint('[GemmaService] Loaded on GPU');
+    } catch (e) {
+      debugPrint('[GemmaService] GPU init failed ($e), falling back to CPU');
+      _model = await FlutterGemma.getActiveModel(
+        maxTokens: 2048,
+        preferredBackend: PreferredBackend.cpu,
+      );
+      _activeBackend = PreferredBackend.cpu;
+      debugPrint('[GemmaService] Loaded on CPU');
+    }
     if (_model == null) throw StateError('FlutterGemma.getActiveModel returned null');
     _isLoaded = true;
+  }
+
+  // ── Inference mutex ──────────────────────────────────────────────────────────
+
+  /// Wait until any in-flight inference finishes, then claim the lock.
+  Future<void> _acquireLock() async {
+    while (_inferenceLock != null) {
+      await _inferenceLock!.future;
+    }
+    _inferenceLock = Completer<void>();
+  }
+
+  /// Release the lock so the next queued caller can proceed.
+  void _releaseLock() {
+    final lock = _inferenceLock;
+    _inferenceLock = null;
+    lock?.complete();
   }
 
   // ── Core inference ──────────────────────────────────────────────────────────
@@ -39,6 +94,9 @@ class GemmaService {
   /// The session is always closed in a finally block — if [getResponse]
   /// throws, the MediaPipe session handle is not leaked.
   ///
+  /// Concurrent callers are serialised via an internal mutex — the second
+  /// call waits until the first completes instead of crashing MediaPipe.
+  ///
   /// Token budget notes (Gemma 2 2B IT, 8192-token context window):
   ///   Mood response:    ~300 prompt + ~400 output  =  ~700  tokens
   ///   Symptom expand:   ~700 prompt + ~900 output  = ~1600  tokens
@@ -47,20 +105,24 @@ class GemmaService {
   Future<String> generate(String prompt) async {
     if (!_isLoaded) throw StateError('GemmaService not loaded. Call load() first.');
 
-    final session = await _model!.createSession(
-      temperature: 0.4,   // lower = more predictable, less rambling
-      randomSeed:  42,
-      topK:        20,    // tighter sampling for structured health output
-    );
-
+    await _acquireLock();
     try {
-      await session.addQueryChunk(
-        Message.text(text: prompt, isUser: true),
+      final session = await _model!.createSession(
+        temperature: 0.4,   // lower = more predictable, less rambling
+        randomSeed:  42,
+        topK:        20,    // tighter sampling for structured health output
       );
-      return await session.getResponse();
+
+      try {
+        await session.addQueryChunk(
+          Message.text(text: prompt, isUser: true),
+        );
+        return await session.getResponse();
+      } finally {
+        await session.close();
+      }
     } finally {
-      // Always close, even if getResponse() throws — prevents handle leaks.
-      await session.close();
+      _releaseLock();
     }
   }
 
@@ -70,24 +132,28 @@ class GemmaService {
   /// The caller is responsible for concatenating tokens into the final string.
   ///
   /// The session is closed after the stream completes or if an error occurs.
-  /// Cancellation: cancel the StreamSubscription — the finally block will
-  /// still close the session on the next yield after cancellation.
+  /// The inference lock is held for the entire stream duration.
   Stream<String> generateStreaming(String prompt) async* {
     if (!_isLoaded) throw StateError('GemmaService not loaded. Call load() first.');
 
-    final session = await _model!.createSession(
-      temperature: 0.4,
-      randomSeed:  42,
-      topK:        20,
-    );
-
+    await _acquireLock();
     try {
-      await session.addQueryChunk(
-        Message.text(text: prompt, isUser: true),
+      final session = await _model!.createSession(
+        temperature: 0.4,
+        randomSeed:  42,
+        topK:        20,
       );
-      yield* session.getResponseAsync();
+
+      try {
+        await session.addQueryChunk(
+          Message.text(text: prompt, isUser: true),
+        );
+        yield* session.getResponseAsync();
+      } finally {
+        await session.close();
+      }
     } finally {
-      await session.close();
+      _releaseLock();
     }
   }
 
@@ -166,19 +232,36 @@ class GemmaService {
     required String todayMoodEntry,
     required String activeSymptomEntries,
     required double todayFitnessScore,
-    required double weekAvgFitnessScore,
+    required double periodAvgFitnessScore,
     required String fitnessTrend,
-    required String last7MoodEntries,
+    required String lastPeriodMoodEntries,
+    String? quickTrackSummaries,
   }) async {
     return generate(_eodPrompt(
-      todayMoodEntry:       todayMoodEntry,
-      activeSymptomEntries: activeSymptomEntries,
-      todayFitnessScore:    todayFitnessScore,
-      weekAvgFitnessScore:  weekAvgFitnessScore,
-      fitnessTrend:         fitnessTrend,
-      last7MoodEntries:     last7MoodEntries,
+      todayMoodEntry:        todayMoodEntry,
+      activeSymptomEntries:  activeSymptomEntries,
+      todayFitnessScore:     todayFitnessScore,
+      periodAvgFitnessScore: periodAvgFitnessScore,
+      fitnessTrend:          fitnessTrend,
+      lastPeriodMoodEntries: lastPeriodMoodEntries,
+      quickTrackSummaries:   quickTrackSummaries,
     ));
   }
+
+  // ── QUICK-TRACK SUMMARY INSIGHT ──────────────────────────────────────────────
+
+  /// Appends 2–3 sentences of natural language insight to a template block.
+  /// Called by each pipeline after writing the structured template section.
+  Future<String> generateSummaryInsight({required String template}) async {
+    return generate(_summaryInsightPrompt(template));
+  }
+
+  static String _summaryInsightPrompt(String template) =>
+      'You are a personal health assistant reviewing a health summary.\n\n'
+      '$template\n\n'
+      'In 2–3 sentences, interpret the trends and patterns shown above. '
+      'Be warm, supportive, and concise. '
+      'Do not repeat the data — add insight about what it means for the user.';
 
   // ── Prompt templates ─────────────────────────────────────────────────────────
   // flutter_gemma's session API handles chat formatting automatically.
@@ -252,31 +335,47 @@ class GemmaService {
     required String todayMoodEntry,
     required String activeSymptomEntries,
     required double todayFitnessScore,
-    required double weekAvgFitnessScore,
+    required double periodAvgFitnessScore,
     required String fitnessTrend,
-    required String last7MoodEntries,
+    required String lastPeriodMoodEntries,
+    String? quickTrackSummaries,
   }) =>
       'You are a personal health assistant performing an end-of-day review.\n\n'
       "--- TODAY'S MOOD ---\n$todayMoodEntry\n\n"
       '--- ACTIVE / RECENT SYMPTOMS ---\n$activeSymptomEntries\n\n'
       '--- FITNESS ---\n'
       'Today: ${todayFitnessScore.toStringAsFixed(1)} / 100\n'
-      '7-day average: ${weekAvgFitnessScore.toStringAsFixed(1)} / 100\n'
+      '14-day average: ${periodAvgFitnessScore.toStringAsFixed(1)} / 100\n'
       'Trend: $fitnessTrend\n\n'
-      '--- MOOD HISTORY (last 7 days) ---\n$last7MoodEntries\n\n'
+      '--- MOOD HISTORY (last 14 days) ---\n$lastPeriodMoodEntries\n\n'
       'Tasks:\n'
       '1. Identify correlations between mood, symptoms, and fitness trends.\n'
       '2. Flag anything warranting attention.\n'
       '3. Write a 2-3 sentence warm, non-alarmist user-facing summary.\n'
       '4. Recommend a doctor for anything potentially serious — do not diagnose.\n\n'
+      '${quickTrackSummaries != null ? "--- QUICK-TRACK SUMMARIES (last 7–14 days) ---\n$quickTrackSummaries\n\n" : ""}'
       'Write the user-facing summary first, then end with this JSON on its own line:\n'
       '{"correlation_summary": "...", "flag": false, "flag_reason": ""}\n\n'
       'Tone: supportive, concise, non-clinical.';
 
   // ── Teardown ────────────────────────────────────────────────────────────────
 
+  /// Gracefully unload Gemma from memory.
+  /// Waits for any in-progress inference to finish first, then releases the
+  /// model. Called by ModelLifecycleService under memory pressure.
+  Future<void> unload() async {
+    if (_inferenceLock != null) {
+      // Wait for the active inference to complete before unloading.
+      await _inferenceLock!.future;
+    }
+    _model         = null;
+    _isLoaded      = false;
+    _activeBackend = null;
+  }
+
   void dispose() {
-    _model = null;
-    _isLoaded = false;
+    _model         = null;
+    _isLoaded      = false;
+    _activeBackend = null;
   }
 }

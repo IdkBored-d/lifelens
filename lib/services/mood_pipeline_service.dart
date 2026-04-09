@@ -1,3 +1,8 @@
+// TODO(reconcile): SymptomAutoDetectorService.autoRegisterDetectedSymptoms()
+// was removed from this pipeline in backend-v4. The service still exists at
+// lib/services/symptom_auto_detector_service.dart and is called from UI screens
+// (moodlog_screen.dart, symptoms_screen.dart). Decide whether to re-wire it here
+// or keep it UI-only. See architecture notes in MERGE_NOTES.md.
 import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/mood_result.dart';
@@ -5,11 +10,11 @@ import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
 import 'quick_track_service.dart';
 import 'mobilebert_service.dart';
+import 'model_lifecycle_service.dart';
 import 'gemma_service.dart';
 import 'gemini_service.dart';
 import '../database/isar_service.dart';
 import '../database/mood_entry.dart';
-import 'symptom_auto_detector_service.dart';
 
 /// Orchestrates USE CASE 1: Mood logging pipeline.
 ///
@@ -65,6 +70,7 @@ class MoodPipelineService {
     String? rejectionContext,
   }) async {
     // ── STEP 1: MobileBERT fast classification ─────────────────────────────
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.mobileBert]);
     final probs   = await _mobileBert.classify(userLog, _tokenize);
     final mbResult = _confidence.evaluateMobileBert(probs);
 
@@ -232,39 +238,11 @@ class MoodPipelineService {
 
     await IsarService.instance.writeMoodEntry(moodEntry);
 
-    // ── 2. WRITE TO QUICK-TRACKING FILE ──────────────────────────────────
+    // ── 2. REGENERATE MOOD QUICK-TRACK SUMMARY ───────────────────────────
     // Unawaited: ISAR is the source of truth (already written above).
-    // Startup sync repair (checkAndRepairSync) rebuilds this file from ISAR
-    // if the app crashes between the two writes, so the risk is auto-healed.
-    //
-    // TODO(resilience): checkAndRepairSync compares dates only — if two entries
-    // are logged on the same day and the app crashes between ISAR write and file
-    // write, the second entry will be missing from the quick-tracking file.
-    // Fix: compare entry counts per date, not just the latest date.
-    unawaited(
-      _quickTrack.appendMoodEntry(MoodLogEntry(
-        date:          dateStr,
-        log:           condensed,
-        predictedMood: resolvedMood,
-        fitnessScore:  currentFitnessScore,
-      )).catchError((Object e) {
-        debugPrint('[MoodPipeline] QuickTrack write failed: $e');
-        return null;
-      }),
-    );
-
-    // ── 3. AUTO-DETECT SYMPTOMS FROM USER LOG ────────────────────────────────
-    // Unawaited: runs in background without blocking the main result.
-    // Failed detection doesn't affect mood pipeline success.
-    unawaited(
-      SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
-        userLog,
-        'mood_log',
-      ).catchError((Object e) {
-        debugPrint('[MoodPipeline] Symptom auto-detection failed: $e');
-        return false;
-      }),
-    );
+    // Queries ISAR for the last 14 days, builds a template + Gemma insight,
+    // then overwrites mood_summary.txt.
+    unawaited(_generateAndWriteMoodSummary());
 
     return MoodPipelineResult(
       resolvedMood:     resolvedMood,
@@ -276,10 +254,33 @@ class MoodPipelineService {
     );
   }
 
+  // ── Quick-track summary generation ──────────────────────────────────────────
+
+  /// Queries ISAR for the last 14 days of mood + 7 days of fitness, builds
+  /// the template block, appends a Gemma insight, and overwrites mood_summary.txt.
+  Future<void> _generateAndWriteMoodSummary() async {
+    try {
+      final entries       = await IsarService.instance.getRecentMoodEntries(days: 14);
+      final fitnessScores = await IsarService.instance.getLastNDaysFitnessScores(14);
+      final template      = QuickTrackService.buildMoodTemplate(entries, fitnessScores);
+
+      String summary = template;
+      try {
+        final insight = await _gemma.generateSummaryInsight(template: template);
+        summary = '$template\n\n$insight';
+      } on StateError catch (e) {
+        debugPrint('[MoodPipeline] Gemma not ready for summary insight: $e');
+      }
+
+      await _quickTrack.writeMoodSummary(summary);
+    } catch (e) {
+      debugPrint('[MoodPipeline] Mood summary write failed: $e');
+    }
+  }
+
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  /// Condense a raw log entry to a short summary for the quick-tracking file.
-  /// In production, replace with a Gemma2b summarisation call.
+  /// Condense a raw log entry to a short summary for the ISAR condensedLog field.
   String _condenseLog(String rawLog) {
     if (rawLog.length <= 100) return rawLog;
     return '${rawLog.substring(0, 97)}...';

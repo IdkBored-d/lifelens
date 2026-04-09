@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 class ContinueCard extends StatelessWidget {
   const ContinueCard({
+    super.key,
     required this.title,
     required this.subtitle,
     required this.onTap,
@@ -24,7 +25,7 @@ class ContinueCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha:0.6)),
         ),
         child: Row(
           children: [
@@ -32,9 +33,9 @@ class ContinueCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: cs.tertiaryContainer.withOpacity(0.55),
+                color: cs.tertiaryContainer.withValues(alpha:0.55),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+                border: Border.all(color: cs.outlineVariant.withValues(alpha:0.35)),
               ),
               child: Icon(Icons.timeline_rounded, color: cs.tertiary),
             ),

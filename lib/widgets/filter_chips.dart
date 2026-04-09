@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class FilterChips extends StatelessWidget {
+  const FilterChips({super.key});
+
   final List<String> muscles = const [
     'chest',
     'back',

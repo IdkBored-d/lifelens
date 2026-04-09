@@ -173,7 +173,7 @@ class _IntroScreenState extends State<IntroScreen> {
           decoration: BoxDecoration(
             color: active
                 ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant.withOpacity(0.7),
+                : theme.colorScheme.outlineVariant.withValues(alpha:0.7),
             borderRadius: BorderRadius.circular(99),
           ),
         );
@@ -196,8 +196,8 @@ class _IntroScreenState extends State<IntroScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   cs.surface,
-                  Color.alphaBlend(cs.primary.withOpacity(0.10), cs.surface),
-                  Color.alphaBlend(cs.secondary.withOpacity(0.08), cs.surface),
+                  Color.alphaBlend(cs.primary.withValues(alpha:0.10), cs.surface),
+                  Color.alphaBlend(cs.secondary.withValues(alpha:0.08), cs.surface),
                 ],
               ),
             ),
@@ -216,10 +216,10 @@ class _IntroScreenState extends State<IntroScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest.withOpacity(0.9),
+                          color: cs.surfaceContainerHighest.withValues(alpha:0.9),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: cs.outlineVariant.withOpacity(0.6),
+                            color: cs.outlineVariant.withValues(alpha:0.6),
                           ),
                         ),
                         child: Row(
@@ -349,11 +349,11 @@ class _WelcomeStep extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [
                 Color.alphaBlend(
-                  cs.primary.withOpacity(0.55),
+                  cs.primary.withValues(alpha:0.55),
                   cs.primaryContainer,
                 ),
                 Color.alphaBlend(
-                  cs.secondary.withOpacity(0.35),
+                  cs.secondary.withValues(alpha:0.35),
                   cs.primaryContainer,
                 ),
               ],
@@ -373,7 +373,7 @@ class _WelcomeStep extends StatelessWidget {
               Text(
                 'We will ask for your heart rate, weight, sleep hours, and workout frequency to personalize your insights.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: cs.onPrimaryContainer.withOpacity(0.9),
+                  color: cs.onPrimaryContainer.withValues(alpha:0.9),
                   height: 1.3,
                   fontWeight: FontWeight.w600,
                 ),
@@ -584,7 +584,7 @@ class _HealthFormStep extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: selectedWorkoutFrequency,
+                initialValue: selectedWorkoutFrequency,
                 decoration: const InputDecoration(
                   labelText: 'Workout frequency',
                   prefixIcon: Icon(Icons.fitness_center_rounded),
@@ -642,7 +642,7 @@ class _ReviewStep extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withOpacity(0.7),
+          color: cs.surfaceContainerHighest.withValues(alpha:0.7),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(

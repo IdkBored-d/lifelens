@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class ExerciseHero extends StatelessWidget {
+  const ExerciseHero({super.key});
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -14,7 +16,7 @@ class ExerciseHero extends StatelessWidget {
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha:0.05),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -28,7 +30,7 @@ class ExerciseHero extends StatelessWidget {
               width: 56,
               height: 56,
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.12),
+                color: cs.primary.withValues(alpha:0.12),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Icon(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class Pill extends StatelessWidget {
-  const Pill({required this.text, required this.icon});
+  const Pill({super.key, required this.text, required this.icon});
 
   final String text;
   final IconData icon;
@@ -12,9 +12,9 @@ class Pill extends StatelessWidget {
     return Container (
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration (
-        color: cs.surface.withOpacity(0.75),
+        color: cs.surface.withValues(alpha:0.75),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.55)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.55)),
       ),
       child: Row (
         mainAxisSize: MainAxisSize.min,

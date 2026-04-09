@@ -3,7 +3,7 @@ import 'package:lifelens/shared_widgets/soft_icon_button.dart';
 
 class GreetingHeader extends StatelessWidget {
 
-  const GreetingHeader({required this.name, required this.subtitle});
+  const GreetingHeader({super.key, required this.name, required this.subtitle});
 
   final String name;
   final String subtitle;

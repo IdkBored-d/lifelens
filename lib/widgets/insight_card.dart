@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class InsightCard extends StatelessWidget {
 
-  const InsightCard({required this.title, required this.body});
+  const InsightCard({super.key, required this.title, required this.body});
 
   final String title;
   final String body;
@@ -15,9 +15,9 @@ class InsightCard extends StatelessWidget {
     return Container (
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration (
-        color: cs.secondaryContainer.withOpacity(0.45),
+        color: cs.secondaryContainer.withValues(alpha:0.45),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.6)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.6)),
       ),
       
       child: Row (
@@ -27,9 +27,9 @@ class InsightCard extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration (
-              color: cs.primaryContainer.withOpacity(0.65),
+              color: cs.primaryContainer.withValues(alpha:0.65),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+              border: Border.all(color: cs.outlineVariant.withValues(alpha:0.35)),
             ),
             child: Icon(Icons.lightbulb_outline_rounded, color: cs.primary),
           ),
