@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import 'assets/minime/minime_avatar.dart';
 import 'avatar_store.dart';
 
 class AvatarCustomizationScreen extends StatefulWidget {
@@ -102,11 +104,11 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                   color: cs.surface,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: cs.outlineVariant.withOpacity(0.45),
+                    color: cs.outlineVariant.withValues(alpha: 0.45),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: cs.shadow.withOpacity(0.25),
+                      color: cs.shadow.withValues(alpha: 0.25),
                       blurRadius: 18,
                       offset: const Offset(0, 12),
                     ),
@@ -176,7 +178,7 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Customize Avatar")),
+      appBar: AppBar(title: const Text("Customize Mini-Me")),
       body: SafeArea(
         child: Consumer<AvatarStore>(
           builder: (context, store, _) {
@@ -193,12 +195,65 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 Container(
+                  padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        cs.primaryContainer.withValues(alpha: 0.88),
+                        cs.secondaryContainer.withValues(alpha: 0.9),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 220,
+                        child: Center(
+                          child: MiniMeAvatar(
+                            bodyModel: store.bodyModel,
+                            hairModel: store.hairModel,
+                            shirtModel: store.shirtModel,
+                            bodyWidthScale: store.bodyWidthScale,
+                            size: 210,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        store.miniMeName,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: cs.onSecondaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Pick a softer palette, a little crest, and an accessory that fits your Mini-Me.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: cs.onSecondaryContainer.withValues(
+                            alpha: 0.82,
+                          ),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: cs.outlineVariant.withOpacity(0.45),
+                      color: cs.outlineVariant.withValues(alpha: 0.45),
                     ),
                   ),
                   child: Column(
@@ -243,14 +298,14 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Appearance',
+                  'Style',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 10),
                 _AssetSelector(
-                  title: "Body",
+                  title: "Palette",
                   assets: bodyAssets,
                   selected: store.bodyModel,
                   onSelected: store.setBodyModel,
@@ -262,14 +317,14 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                 ),
                 const SizedBox(height: 20),
                 _AssetSelector(
-                  title: "Hair",
+                  title: "Crest",
                   assets: hairAssets,
                   selected: store.hairModel,
                   onSelected: store.setHairModel,
                 ),
                 const SizedBox(height: 20),
                 _AssetSelector(
-                  title: "Shirt",
+                  title: "Accessory",
                   assets: shirtAssets,
                   selected: store.shirtModel,
                   onSelected: store.setShirtModel,
@@ -324,9 +379,7 @@ class _AssetSelector extends StatelessWidget {
             runSpacing: 10,
             children: assets.map((asset) {
               final isSelected = asset == selected;
-              final name = asset.isEmpty
-                  ? 'None'
-                  : asset.split('/').last.replaceAll('.glb', '');
+              final name = _friendlyAssetName(title, asset);
               return SizedBox(
                 width: 120,
                 height: 50,
@@ -345,7 +398,7 @@ class _AssetSelector extends StatelessWidget {
                       border: Border.all(
                         color: isSelected
                             ? cs.primary
-                            : cs.outlineVariant.withOpacity(0.45),
+                            : cs.outlineVariant.withValues(alpha: 0.45),
                       ),
                     ),
                     child: Center(
@@ -366,6 +419,30 @@ class _AssetSelector extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+String _friendlyAssetName(String title, String asset) {
+  if (asset.isEmpty) {
+    return 'None';
+  }
+
+  final key = asset.toLowerCase();
+  switch (title) {
+    case 'Palette':
+      return 'Breeze';
+    case 'Crest':
+      if (key.contains('male')) {
+        return 'Sprout';
+      }
+      return 'Fluff';
+    case 'Accessory':
+      if (key.contains('tie')) {
+        return 'Ribbon';
+      }
+      return 'Band';
+    default:
+      return asset.split('/').last.replaceAll('.glb', '');
   }
 }
 
@@ -405,7 +482,7 @@ class _BodyWidthSlider extends StatelessWidget {
             onChanged: onChanged,
           ),
           Text(
-            'Left = slimmer, right = wider',
+            'Left = slimmer, right = rounder',
             style: theme.textTheme.bodySmall?.copyWith(
               color: cs.onSurfaceVariant,
             ),

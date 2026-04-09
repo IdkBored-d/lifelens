@@ -10,6 +10,7 @@ import 'gemma_service.dart';
 import 'gemini_service.dart';
 import '../database/isar_service.dart';
 import '../database/mood_entry.dart';
+import 'symptom_auto_detector_service.dart';
 
 /// Orchestrates USE CASE 1: Mood logging pipeline.
 ///
@@ -238,6 +239,37 @@ class MoodPipelineService {
     // Queries ISAR for the last 14 days, builds a template + Gemma insight,
     // then overwrites mood_summary.txt.
     unawaited(_generateAndWriteMoodSummary());
+    // Startup sync repair (checkAndRepairSync) rebuilds this file from ISAR
+    // if the app crashes between the two writes, so the risk is auto-healed.
+    //
+    // TODO(resilience): checkAndRepairSync compares dates only — if two entries
+    // are logged on the same day and the app crashes between ISAR write and file
+    // write, the second entry will be missing from the quick-tracking file.
+    // Fix: compare entry counts per date, not just the latest date.
+    unawaited(
+      _quickTrack.appendMoodEntry(MoodLogEntry(
+        date:          dateStr,
+        log:           condensed,
+        predictedMood: resolvedMood,
+        fitnessScore:  currentFitnessScore,
+      )).catchError((Object e) {
+        debugPrint('[MoodPipeline] QuickTrack write failed: $e');
+        return null;
+      }),
+    );
+
+    // ── 3. AUTO-DETECT SYMPTOMS FROM USER LOG ────────────────────────────────
+    // Unawaited: runs in background without blocking the main result.
+    // Failed detection doesn't affect mood pipeline success.
+    unawaited(
+      SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
+        userLog,
+        'mood_log',
+      ).catchError((Object e) {
+        debugPrint('[MoodPipeline] Symptom auto-detection failed: $e');
+        return false;
+      }),
+    );
 
     return MoodPipelineResult(
       resolvedMood:     resolvedMood,

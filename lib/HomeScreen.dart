@@ -38,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<Widget> _buildPages() {
     return [
-      const MiniMeScreen(),
+      MiniMeScreen(userName: widget.userName),
       LogHubScreen(userName: widget.userName),
       const CommunityScreen(),
       const ProfileScreen(),

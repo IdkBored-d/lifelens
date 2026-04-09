@@ -73,32 +73,35 @@ class SymptomPipelineService {
         isOnline:       isOnline,
         disEmbedResult: null,
       );
+    // Ensure ISAR is initialized before proceeding
+    try {
+      if (!IsarService.instance.isOpen) {
+        await IsarService.instance.init();
+      }
+    } catch (e) {
+      print('[SymptomPipeline] ISAR init failed: $e');
+      rethrow;
     }
 
-    // Dead path until index is ready — kept for structure.
-    // ignore: dead_code
-    const placeholderDiseaseName = 'Unknown';
-    // ignore: dead_code
-    final deConfidence = _confidence.evaluateDisEmbed(0.0);
-
-    // ── STEP 3: Confidence check ───────────────────────────────────────────
-    // ignore: dead_code
-    if (_confidence.shouldEscalate(deConfidence)) {
-      return _handleEscalation(
-        userSymptoms:   userSymptoms,
-        embedding:      embedding,
-        isOnline:       isOnline,
-        disEmbedResult: deConfidence,
-      );
+    // ── STEP 1: DisEmbed fast embedding ───────────────────────────────────
+    // Skip if DisEmbed not yet loaded (loads in background during AppServices.init)
+    // The escalation path will use Gemma2b/Gemini instead
+    List<double> embedding = [];
+    if (_disEmbed.isLoaded) {
+      embedding = await _disEmbed.embed(userSymptoms, _tokenize);
     }
 
-    // ignore: dead_code
-    return _expandWithGemma(
-      userSymptoms:       userSymptoms,
-      embedding:          embedding,
-      isOnline:           isOnline,
-      disEmbedPrediction: placeholderDiseaseName,
-      disEmbedResult:     deConfidence,
+    // ── STEP 2: Disease index lookup ───────────────────────────────────────
+    // TODO(index): Replace with a real on-device disease embedding index once
+    // built. Until then this path routes all queries to Gemma2b via escalation
+    // (same quality, no wasted embedding compare).
+    
+    // Always escalate for now (DisEmbed index not ready, model loads in background)
+    return _handleEscalation(
+      userSymptoms:   userSymptoms,
+      embedding:      embedding,
+      isOnline:       isOnline,
+      disEmbedResult: null,
     );
   }
 
@@ -109,7 +112,9 @@ class SymptomPipelineService {
     required List<double>         embedding,
     required SymptomPipelineResult previousResult,
   }) async {
-    final ragResults  = await _weaviate.queryByVector(embedding, topK: 5);
+    final ragResults  = embedding.isNotEmpty
+        ? await _weaviate.queryByVector(embedding, topK: 5)
+        : <WeaviateDisease>[];
     final ragContext  = _weaviate.buildRagContext(ragResults);
     final context     = await _quickTrack.buildSymptomContext();
     final prevDiseases = previousResult.diagnoses
@@ -146,7 +151,7 @@ class SymptomPipelineService {
     required DisEmbedResult disEmbedResult,
   }) async {
     List<WeaviateDisease> ragResults = [];
-    if (isOnline) {
+    if (isOnline && embedding.isNotEmpty) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
     final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
@@ -218,8 +223,12 @@ class SymptomPipelineService {
     required DisEmbedResult? disEmbedResult,
   }) async {
     List<WeaviateDisease> ragResults = [];
-    if (isOnline) {
-      ragResults = await _weaviate.queryByVector(embedding, topK: 5);
+    if (isOnline && embedding.isNotEmpty) {
+      try {
+        ragResults = await _weaviate.queryByVector(embedding, topK: 5);
+      } catch (e) {
+        print('[SymptomPipeline] Weaviate query failed (continuing without RAG): $e');
+      }
     }
     final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
     final context   = await _quickTrack.buildSymptomContext();
@@ -228,6 +237,8 @@ class SymptomPipelineService {
     String? gemmaRaw;
     try {
       gemmaRaw = await _gemma.analyzeSymptomDirectly(
+    try {
+      final gemmaRaw = await _gemma.analyzeSymptomDirectly(
         userSymptoms: userSymptoms,
         context:      context,
         ragContext:   ragContext,
@@ -237,6 +248,7 @@ class SymptomPipelineService {
     }
 
     if (gemmaRaw != null) {
+
       return _buildAndStore(
         userSymptoms:       userSymptoms,
         diagnoses:          _parseGemmaDiagnoses(gemmaRaw),
@@ -256,6 +268,19 @@ class SymptomPipelineService {
           context:      context,
           ragContext:   ragContext ?? '',
         );
+    } catch (gemmaError) {
+      print('[SymptomPipeline] Gemma analysis failed: $gemmaError');
+    }
+
+    if (isOnline) {
+      try {
+        final geminiRaw = await _gemini.analyzeSymptoms(
+          userSymptoms:      userSymptoms,
+          context:           context,
+          ragContext:        ragContext ?? '',
+          previousDiagnoses: '',
+        );
+
         return _buildAndStore(
           userSymptoms:       userSymptoms,
           diagnoses:          _parseGemmaDiagnoses(geminiRaw),
@@ -267,6 +292,8 @@ class SymptomPipelineService {
         );
       } catch (e) {
         debugPrint('[SymptomPipeline] Gemini failed, using fallback: $e');
+      } catch (geminiError) {
+        print('[SymptomPipeline] Gemini fallback failed: $geminiError');
       }
     }
 
@@ -275,6 +302,8 @@ class SymptomPipelineService {
       userSymptoms:       userSymptoms,
       diagnoses:          _fallbackDiagnoses(''),
       ragUsed:            false,
+      diagnoses:          _fallbackDiagnoses('AI analysis unavailable. Symptoms were still saved.'),
+      ragUsed:            ragResults.isNotEmpty,
       isOffline:          !isOnline,
       resolvedBy:         EscalationLevel.gemini,
       disEmbedPrediction: null,
@@ -327,6 +356,18 @@ class SymptomPipelineService {
     // Queries ISAR for the last 14 days, builds a template + Gemma insight,
     // then overwrites symptom_summary.txt.
     unawaited(_generateAndWriteSymptomSummary());
+    // ── 2. WRITE TO QUICK-TRACKING FILE ──────────────────────────────────
+    try {
+      await _quickTrack.appendSymptomEntry(SymptomLogEntry(
+        date:             dateStr,
+        symptoms:         symptomList,
+        predictedAilment: topDisease,
+        status:           'active',
+      ));
+    } catch (e) {
+      // Keep save successful if quick-track write fails; ISAR remains source of truth.
+      print('[SymptomPipeline] Quick-track write failed (non-fatal): $e');
+    }
 
     return SymptomPipelineResult(
       userSymptoms:       userSymptoms,

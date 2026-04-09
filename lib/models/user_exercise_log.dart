@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class UserExerciseLog {
   final String exerciseId;
   final DateTime timestamp;

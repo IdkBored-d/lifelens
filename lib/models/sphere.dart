@@ -8,6 +8,13 @@ class Sphere {
   final String? description;
   final String? creatorId;
   final bool isPremade;
+  final String? pinnedTitle;
+  final String? pinnedBody;
+  final String? lastActivityText;
+  final DateTime? lastActivityAt;
+  final String? dailyPrompt;
+  final String? dailyPromptDateKey;
+  final String? pinnedPostId;
 
   Sphere({
     required this.id,
@@ -17,6 +24,13 @@ class Sphere {
     this.description,
     this.creatorId,
     this.isPremade = false,
+    this.pinnedTitle,
+    this.pinnedBody,
+    this.lastActivityText,
+    this.lastActivityAt,
+    this.dailyPrompt,
+    this.dailyPromptDateKey,
+    this.pinnedPostId,
   });
 
   factory Sphere.fromFirestore(DocumentSnapshot doc) {
@@ -29,6 +43,13 @@ class Sphere {
       description: data['description'],
       creatorId: data['creatorId'],
       isPremade: data['isPremade'] ?? false,
+      pinnedTitle: data['pinnedTitle'],
+      pinnedBody: data['pinnedBody'],
+      lastActivityText: data['lastActivityText'],
+      lastActivityAt: (data['lastActivityAt'] as Timestamp?)?.toDate(),
+      dailyPrompt: data['dailyPrompt'],
+      dailyPromptDateKey: data['dailyPromptDateKey'],
+      pinnedPostId: data['pinnedPostId'],
     );
   }
 
@@ -40,6 +61,15 @@ class Sphere {
       'description': description,
       'creatorId': creatorId,
       'isPremade': isPremade,
+      'pinnedTitle': pinnedTitle,
+      'pinnedBody': pinnedBody,
+      'lastActivityText': lastActivityText,
+      'lastActivityAt': lastActivityAt == null
+          ? null
+          : Timestamp.fromDate(lastActivityAt!),
+      'dailyPrompt': dailyPrompt,
+      'dailyPromptDateKey': dailyPromptDateKey,
+      'pinnedPostId': pinnedPostId,
     };
   }
 }
@@ -49,12 +79,18 @@ class SphereMember {
   final String nickname;
   final DateTime joinedAt;
   final int warningCount;
+  final DateTime? lastReadAt;
+  final DateTime? lastActiveAt;
+  final String? role;
 
   SphereMember({
     required this.userId,
     required this.nickname,
     required this.joinedAt,
     this.warningCount = 0,
+    this.lastReadAt,
+    this.lastActiveAt,
+    this.role,
   });
 
   factory SphereMember.fromFirestore(DocumentSnapshot doc) {
@@ -64,6 +100,9 @@ class SphereMember {
       nickname: data['nickname'] ?? '',
       joinedAt: (data['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       warningCount: data['warningCount'] ?? 0,
+      lastReadAt: (data['lastReadAt'] as Timestamp?)?.toDate(),
+      lastActiveAt: (data['lastActiveAt'] as Timestamp?)?.toDate(),
+      role: data['role'],
     );
   }
 
@@ -72,6 +111,11 @@ class SphereMember {
       'nickname': nickname,
       'joinedAt': Timestamp.fromDate(joinedAt),
       'warningCount': warningCount,
+      'lastReadAt': lastReadAt == null ? null : Timestamp.fromDate(lastReadAt!),
+      'lastActiveAt': lastActiveAt == null
+          ? null
+          : Timestamp.fromDate(lastActiveAt!),
+      'role': role,
     };
   }
 }

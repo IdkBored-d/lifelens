@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 import logging
 from typing import List, Any
 import time
+import json
+import asyncio
 
 from models.schemas import (
     SymptomInput,
@@ -19,8 +21,18 @@ from models.schemas import (
     ErrorResponse,
     MiniMeChatRequest,
     MiniMeChatResponse,
+    MiniMeSuggestionsRequest,
+    MiniMeSuggestionsResponse,
+    MiniMeSuggestionItem,
+    MiniMeExerciseRecommendationRequest,
+    MiniMeExerciseRecommendationResponse,
+    MiniMeExerciseRecommendationItem,
+    IntelligenceAnalyzeRequest,
+    IntelligenceAnalyzeResponse,
 )
 from services.gemini_service import get_analysis_service, GeminiAnalysisService
+from services.intelligence import analyze_logs_in_order
+from services.intelligence_policy import get_intelligence_policy
 from config.settings import get_settings
 from google.genai import types
 
@@ -54,30 +66,26 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Lifelens API...")
     logger.info(f"Gemini API configured: {bool(settings.gemini_api_key)}")
     logger.info(f"Weaviate URL: {settings.weaviate_url}")
-    
-    # Initialize services
-    analysis_service = None
-    rag_service = None
-    try:
-        analysis_service = get_analysis_service()
-    except Exception as e:
-        logger.error(f"Gemini analysis service initialization failed: {e}")
 
+    # Keep startup fast: heavy services initialize lazily on first request.
     try:
-        from services.rag_service import get_rag_service
-        rag_service = get_rag_service()
+        policy = get_intelligence_policy()
+        logger.info(f"Intelligence policy loaded: version={policy.get('version', 'unknown')}")
     except Exception as e:
-        logger.error(f"RAG service initialization failed: {e}")
+        logger.error(f"Intelligence policy initialization failed: {e}")
 
-    if analysis_service or rag_service:
-        logger.info("Core services initialized with graceful fallbacks")
+    logger.info("Core services set to lazy initialization with graceful fallbacks")
     
     yield
     
     # Shutdown
     logger.info("Shutting down Lifelens API...")
-    if rag_service is not None:
-        rag_service.close()
+    try:
+        from services.rag_service import _rag_service
+        if _rag_service is not None:
+            _rag_service.close()
+    except Exception:
+        pass
 
 
 # Create FastAPI app
@@ -102,12 +110,13 @@ app.add_middleware(
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """Handle HTTP exceptions"""
+    payload = ErrorResponse(
+        error=exc.detail,
+        detail=str(exc)
+    )
     return JSONResponse(
         status_code=exc.status_code,
-        content=ErrorResponse(
-            error=exc.detail,
-            detail=str(exc)
-        ).dict()
+        content=payload.model_dump(mode="json")
     )
 
 
@@ -115,12 +124,13 @@ async def http_exception_handler(request, exc):
 async def general_exception_handler(request, exc):
     """Handle general exceptions"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    payload = ErrorResponse(
+        error="Internal server error",
+        detail=str(exc)
+    )
     return JSONResponse(
         status_code=500,
-        content=ErrorResponse(
-            error="Internal server error",
-            detail=str(exc)
-        ).dict()
+        content=payload.model_dump(mode="json")
     )
 
 
@@ -134,8 +144,13 @@ async def health_check():
 
     try:
         from services.rag_service import get_rag_service
-        rag_service = get_rag_service()
-        doc_count = await rag_service.get_document_count()
+        rag_service = await asyncio.wait_for(
+            asyncio.to_thread(get_rag_service), timeout=5.0
+        )
+        doc_count = await asyncio.wait_for(rag_service.get_document_count(), timeout=5.0)
+    except TimeoutError:
+        rag_error = "RAG health check timed out"
+        weaviate_status = "degraded"
     except Exception as e:
         rag_error = str(e)
         weaviate_status = "degraded"
@@ -165,7 +180,9 @@ async def root():
             "health": "/health",
             "analyze": "/api/v1/symptoms/analyze",
             "batch_analyze": "/api/v1/symptoms/batch-analyze",
+            "intelligence_analyze": "/api/v1/intelligence/analyze",
             "minime_chat": "/api/v1/minime/chat",
+            "minime_suggestions": "/api/v1/minime/suggestions",
             "disclaimer": "/api/v1/disclaimer",
             "knowledge": "/api/v1/knowledge/*"
         }
@@ -346,6 +363,233 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
     )
 
 
+def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str:
+    latest_mood = suggestion_input.latest_mood_label or 'Unknown'
+    intensity = suggestion_input.latest_mood_intensity
+    mood_notes = suggestion_input.latest_mood_notes or 'None'
+    recent_moods = suggestion_input.recent_moods or ['No recent mood logs']
+    recent_logs = suggestion_input.recent_logs or ['No recent notes']
+    active_symptoms = suggestion_input.active_symptoms or ['No active symptoms logged']
+
+    history_lines = []
+    for item in suggestion_input.chat_history[-12:]:
+        speaker = 'User' if item.role == 'user' else 'Mini-Me'
+        history_lines.append(f"{speaker}: {item.text}")
+    history_text = '\n'.join(history_lines) if history_lines else 'No previous messages.'
+
+    return f"""You are Mini-Me, a supportive wellness coach in the LifeLens app.
+
+Write 3 UNIQUE daily suggestions for this specific user based on their recent moods, notes, symptoms, and chat history.
+
+Requirements:
+- Each suggestion must feel freshly written for this user's context.
+- Do not repeat or quote prior Mini-Me replies verbatim.
+- Use clear, casual, easy-to-understand language.
+- Each suggestion should be practical, specific, and warm.
+- Avoid medical claims or diagnosis.
+- Do not use markdown.
+- Return valid JSON only.
+
+Return exactly this JSON shape:
+{{
+  "suggestions": [
+    {{"action": "One clear next-step sentence.", "reason": "One short reason tied to the user's pattern."}},
+    {{"action": "One clear next-step sentence.", "reason": "One short reason tied to the user's pattern."}},
+    {{"action": "One clear next-step sentence.", "reason": "One short reason tied to the user's pattern."}}
+  ]
+}}
+
+Current context:
+- Latest mood: {latest_mood}
+- Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
+- Mood notes: {mood_notes}
+- Recent moods: {' | '.join(recent_moods)}
+- Recent log notes: {' | '.join(recent_logs)}
+- Active symptoms: {' | '.join(active_symptoms)}
+
+Mini-Me conversation history:
+{history_text}
+"""
+
+
+def _build_suggestions_fallback(
+    suggestion_input: MiniMeSuggestionsRequest,
+) -> MiniMeSuggestionsResponse:
+    mood = (suggestion_input.latest_mood_label or 'neutral').lower()
+    symptoms = ', '.join(suggestion_input.active_symptoms[:2])
+
+    suggestions = [
+        MiniMeSuggestionItem(
+            action=f"Keep today simple and choose one small habit that supports your {mood} baseline.",
+            reason="Your recent logs suggest consistency will help more than doing a lot at once.",
+        ),
+        MiniMeSuggestionItem(
+            action="Notice what happens right before your next mood shift and log one short detail.",
+            reason="A clearer trigger makes Mini-Me's next suggestion more personal.",
+        ),
+        MiniMeSuggestionItem(
+            action=(
+                "Give yourself one short reset block today."
+                if not symptoms
+                else f"Work around your current symptoms ({symptoms}) with one low-effort reset today."
+            ),
+            reason="Recent context suggests a gentle next step is more useful than a big plan.",
+        ),
+    ]
+
+    return MiniMeSuggestionsResponse(
+        suggestions=suggestions,
+        source='fallback',
+    )
+
+
+def _build_exercise_recommendations_prompt(
+    recommendation_input: MiniMeExerciseRecommendationRequest,
+) -> str:
+    latest_mood = recommendation_input.latest_mood_label or 'Unknown'
+    intensity = recommendation_input.latest_mood_intensity
+    mood_notes = recommendation_input.latest_mood_notes or 'None'
+    recent_moods = recommendation_input.recent_moods or ['No recent mood logs']
+    recent_logs = recommendation_input.recent_logs or ['No recent notes']
+    active_symptoms = recommendation_input.active_symptoms or ['No active symptoms logged']
+
+    history_lines = []
+    for item in recommendation_input.chat_history[-12:]:
+        speaker = 'User' if item.role == 'user' else 'Mini-Me'
+        history_lines.append(f"{speaker}: {item.text}")
+    history_text = '\n'.join(history_lines) if history_lines else 'No previous messages.'
+
+    exercise_lines = []
+    for exercise in recommendation_input.exercises:
+        summary = f"{exercise.id} | {exercise.name} | {exercise.type} | {exercise.muscle} | {exercise.difficulty}"
+        if exercise.description:
+            summary += f" | {exercise.description}"
+        exercise_lines.append(summary)
+
+    return f"""You are Mini-Me, a supportive wellness coach in the LifeLens app.
+
+Choose the BEST 3 exercises for this user right now from the provided catalog.
+
+Requirements:
+- Only recommend exercises from the provided catalog.
+- Match the user's mood, intensity, recent logs, symptoms, and Mini-Me context.
+- Prefer realistic, low-friction choices when the user seems stressed, low-energy, or physically uncomfortable.
+- Avoid recommending intense exercise when symptoms suggest caution.
+- Use clear, casual, easy-to-understand language.
+- Do not use markdown.
+- Return valid JSON only.
+
+Return exactly this JSON shape:
+{{
+  "headline": "One short sentence describing the overall recommendation angle.",
+  "recommendations": [
+    {{"exercise_id": "catalog id", "focus": "Short why-this-now label", "reason": "One short reason tied to the user's context."}},
+    {{"exercise_id": "catalog id", "focus": "Short why-this-now label", "reason": "One short reason tied to the user's context."}},
+    {{"exercise_id": "catalog id", "focus": "Short why-this-now label", "reason": "One short reason tied to the user's context."}}
+  ]
+}}
+
+Current context:
+- Latest mood: {latest_mood}
+- Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
+- Mood notes: {mood_notes}
+- Recent moods: {' | '.join(recent_moods)}
+- Recent log notes: {' | '.join(recent_logs)}
+- Active symptoms: {' | '.join(active_symptoms)}
+
+Mini-Me conversation history:
+{history_text}
+
+Available exercise catalog:
+{chr(10).join(exercise_lines)}
+"""
+
+
+def _build_exercise_recommendations_fallback(
+    recommendation_input: MiniMeExerciseRecommendationRequest,
+) -> MiniMeExerciseRecommendationResponse:
+    exercises = recommendation_input.exercises
+    mood = (recommendation_input.latest_mood_label or 'neutral').lower()
+    symptoms_text = ' '.join(recommendation_input.active_symptoms).lower()
+    cautious = any(
+        word in symptoms_text
+        for word in ['pain', 'injury', 'dizzy', 'fatigue', 'tired', 'headache']
+    ) or (recommendation_input.latest_mood_intensity or 0) >= 4
+
+    def score(exercise):
+        score_value = 0
+        exercise_type = exercise.type.lower()
+        difficulty = exercise.difficulty.lower()
+
+        if cautious:
+            if exercise_type in {'mobility', 'stretching', 'yoga', 'walking'}:
+                score_value += 4
+            if difficulty == 'beginner':
+                score_value += 3
+        elif mood in {'anxious', 'stressed', 'overwhelmed'}:
+            if exercise_type in {'mobility', 'stretching', 'yoga', 'pilates'}:
+                score_value += 4
+            if difficulty == 'beginner':
+                score_value += 2
+        elif mood in {'sad', 'low', 'down'}:
+            if exercise_type in {'cardio', 'walking', 'dance', 'strength'}:
+                score_value += 4
+        else:
+            if exercise_type in {'strength', 'cardio', 'mobility'}:
+                score_value += 3
+        return score_value
+
+    ranked = sorted(exercises, key=score, reverse=True)[:3]
+    if not ranked:
+        ranked = exercises[:3]
+
+    recommendations = [
+        MiniMeExerciseRecommendationItem(
+            exercise_id=exercise.id,
+            focus='Gentle fit' if cautious else 'Good next step',
+            reason=(
+                'This looks easier to start right now and should feel manageable.'
+                if cautious
+                else 'This matches your recent mood pattern without making the next step feel too big.'
+            ),
+        )
+        for exercise in ranked
+    ]
+
+    return MiniMeExerciseRecommendationResponse(
+        headline='Mini-Me picked a few exercises that look realistic for how you have been feeling.',
+        recommendations=recommendations,
+        source='fallback',
+    )
+
+
+@app.post(
+    "/api/v1/intelligence/analyze",
+    response_model=IntelligenceAnalyzeResponse,
+    tags=["Intelligence"],
+    summary="Analyze behavior logs into state, insights, and actions"
+)
+async def intelligence_analyze(payload: IntelligenceAnalyzeRequest):
+    """Compute state locally and optionally let Gemini write a supportive message."""
+    logs = {
+        "sleep": payload.sleep,
+        "mood": payload.mood,
+        "exercise": payload.exercise,
+        "symptom_count": payload.symptom_count,
+    }
+    try:
+        return await analyze_logs_in_order(
+            logs,
+            include_gemini_message=payload.include_gemini_message,
+        )
+    except Exception as e:
+        logger.error(f"Intelligence analyze failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Intelligence analysis failed: {str(e)}"
+        )
+
+
 @app.post(
     "/api/v1/minime/chat",
     response_model=MiniMeChatResponse,
@@ -390,6 +634,121 @@ async def minime_chat(
             reply=_build_reply_fallback(chat_input),
             source='fallback',
         )
+
+
+@app.post(
+    "/api/v1/minime/suggestions",
+    response_model=MiniMeSuggestionsResponse,
+    tags=["Mini-Me"],
+    summary="Generate unique Mini-Me daily suggestions"
+)
+async def minime_suggestions(
+    suggestion_input: MiniMeSuggestionsRequest,
+    analysis_service: GeminiAnalysisService = Depends(get_analysis_service)
+):
+    """Generate user-specific Mini-Me suggestions from logs and chat history."""
+    try:
+        prompt = _build_suggestions_prompt(suggestion_input)
+        response = analysis_service.client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.9,
+                top_p=0.95,
+                top_k=40,
+                max_output_tokens=700,
+                candidate_count=1,
+                response_mime_type='application/json',
+            ),
+        )
+
+        text = (response.text or '').strip()
+        if not text:
+            raise ValueError('Empty response from Gemini')
+
+        decoded = json.loads(text)
+        raw_suggestions = decoded.get('suggestions', [])
+        suggestions = [
+            MiniMeSuggestionItem(
+                action=(item.get('action') or '').strip(),
+                reason=(item.get('reason') or '').strip(),
+            )
+            for item in raw_suggestions[:3]
+            if (item.get('action') or '').strip() and (item.get('reason') or '').strip()
+        ]
+
+        if not suggestions:
+            raise ValueError('No valid suggestions returned from Gemini')
+
+        return MiniMeSuggestionsResponse(
+            suggestions=suggestions,
+            source='gemini',
+        )
+    except Exception as e:
+        logger.warning(f"Mini-Me suggestions fallback used: {e}")
+        return _build_suggestions_fallback(suggestion_input)
+
+
+@app.post(
+    "/api/v1/minime/exercise-recommendations",
+    response_model=MiniMeExerciseRecommendationResponse,
+    tags=["Mini-Me"],
+    summary="Generate Mini-Me exercise recommendations"
+)
+async def minime_exercise_recommendations(
+    recommendation_input: MiniMeExerciseRecommendationRequest,
+    analysis_service: GeminiAnalysisService = Depends(get_analysis_service)
+):
+    """Generate exercise picks grounded in mood logs, symptoms, and chat history."""
+    try:
+        prompt = _build_exercise_recommendations_prompt(recommendation_input)
+        response = analysis_service.client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.75,
+                top_p=0.95,
+                top_k=40,
+                max_output_tokens=800,
+                candidate_count=1,
+                response_mime_type='application/json',
+            ),
+        )
+
+        text = (response.text or '').strip()
+        if not text:
+            raise ValueError('Empty response from Gemini')
+
+        decoded = json.loads(text)
+        raw_recommendations = decoded.get('recommendations', [])
+        catalog_ids = {exercise.id for exercise in recommendation_input.exercises}
+        recommendations = [
+            MiniMeExerciseRecommendationItem(
+                exercise_id=(item.get('exercise_id') or '').strip(),
+                focus=(item.get('focus') or '').strip(),
+                reason=(item.get('reason') or '').strip(),
+            )
+            for item in raw_recommendations[:3]
+            if (item.get('exercise_id') or '').strip() in catalog_ids
+            and (item.get('focus') or '').strip()
+            and (item.get('reason') or '').strip()
+        ]
+
+        if not recommendations:
+            raise ValueError('No valid exercise recommendations returned from Gemini')
+
+        headline = (decoded.get('headline') or '').strip()
+        if not headline:
+            headline = 'Mini-Me picked a few exercises based on how you have been feeling lately.'
+
+        return MiniMeExerciseRecommendationResponse(
+            headline=headline,
+            recommendations=recommendations,
+            source='gemini',
+        )
+    except Exception as e:
+        logger.warning(f"Mini-Me exercise recommendation fallback used: {e}")
+        return _build_exercise_recommendations_fallback(recommendation_input)
 
 
 # Knowledge Base Management Endpoints

@@ -1,10 +1,15 @@
+import 'dart:async' show unawaited;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:lifelens/app_services.dart';
-// TODO: remove — unused after pipeline wiring
+import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:lifelens/database/isar_service.dart';
-// TODO: remove — unused after pipeline wiring
 import 'package:lifelens/database/mood_entry.dart';
+import 'package:lifelens/moodlog_store.dart';
+import 'package:lifelens/shared_widgets/log_button_content.dart';
+import 'package:lifelens/services/symptom_auto_detector_service.dart';
+import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
 
@@ -19,9 +24,10 @@ class MoodLogScreen extends StatefulWidget {
 class _MoodLogScreenState extends State<MoodLogScreen> {
   int selectedMood = -1;
   double intensity = 3;
-  bool _isSaving = false;
+  LogButtonVisualState _buttonState = LogButtonVisualState.idle;
   final notesCtrl = TextEditingController();
   final Set<String> tags = {};
+  bool _restoringDraft = true;
 
   final moods = const [
     _MoodOption("Happy", "😊"),
@@ -43,9 +49,56 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    notesCtrl.addListener(_persistDraft);
+    _restoreDraft();
+  }
+
+  @override
   void dispose() {
+    notesCtrl.removeListener(_persistDraft);
     notesCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _restoreDraft() async {
+    final draft = await MoodLogDraftStorageService.instance.load();
+    if (!mounted) return;
+
+    if (draft != null && draft.hasContent) {
+      setState(() {
+        selectedMood = draft.selectedMood;
+        intensity = draft.intensity.clamp(1, 5);
+        notesCtrl.text = draft.notes;
+        tags
+          ..clear()
+          ..addAll(draft.tags);
+        _restoringDraft = false;
+      });
+      return;
+    }
+
+    setState(() => _restoringDraft = false);
+  }
+
+  Future<void> _persistDraft() {
+    if (_restoringDraft) {
+      return Future.value();
+    }
+
+    return MoodLogDraftStorageService.instance.save(
+      MoodLogDraft(
+        selectedMood: selectedMood,
+        intensity: intensity,
+        notes: notesCtrl.text.trim(),
+        tags: tags.toList(growable: false),
+      ),
+    );
+  }
+
+  Future<void> _clearDraft() async {
+    await MoodLogDraftStorageService.instance.clear();
   }
 
   String get intensityLabel {
@@ -99,6 +152,21 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
         title: const Text("Mood Log"),
+        actions: [
+          IconButton(
+            tooltip: 'Clear draft',
+            onPressed: () async {
+              setState(() {
+                selectedMood = -1;
+                intensity = 3;
+                notesCtrl.clear();
+                tags.clear();
+              });
+              await _clearDraft();
+            },
+            icon: const Icon(Icons.restart_alt_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: GestureDetector(
@@ -122,6 +190,19 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                     color: cs.onSurfaceVariant,
                   ),
                 ),
+                if (!_restoringDraft &&
+                    (selectedMood != -1 ||
+                        notesCtrl.text.trim().isNotEmpty ||
+                        tags.isNotEmpty ||
+                        intensity != 3)) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    "Draft saved automatically",
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
 
                 _SectionCard(
@@ -155,6 +236,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             onTap: () {
                               Feedback.forTap(context);
                               setState(() => selectedMood = i);
+                              _persistDraft();
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 160),
@@ -259,6 +341,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                         onChanged: (v) {
                           HapticFeedback.selectionClick();
                           setState(() => intensity = v);
+                          _persistDraft();
                         },
                       ),
                       Row(
@@ -297,6 +380,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                   tags.remove(t);
                                 }
                               });
+                              _persistDraft();
                             },
                           );
                         }).toList(),
@@ -328,20 +412,26 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: (selectedMood == -1 || _isSaving) ? null : () async {
+                    onPressed:
+                        (selectedMood == -1 ||
+                            _buttonState == LogButtonVisualState.loading)
+                        ? null
+                        : () async {
                             HapticFeedback.mediumImpact();
-                            setState(() => _isSaving = true);
+                            setState(
+                              () => _buttonState = LogButtonVisualState.loading,
+                            );
+                            String? syncWarning;
 
                             final m = moods[selectedMood];
                             final notes = notesCtrl.text.trim();
 
                             // Compose log text: notes are primary, tags + intensity appended for ML context.
-                            final tagPart = tags.isNotEmpty ? ' [context: ${tags.join(', ')}]' : '';
-                            final userLog = '${notes.isNotEmpty ? notes : m.label}$tagPart [intensity: ${intensity.toInt()}/5]';
-
-                            // Capture context-dependent objects before the async gap.
-                            final messenger = ScaffoldMessenger.of(context);
-                            final nav       = Navigator.of(context);
+                            final tagPart = tags.isNotEmpty
+                                ? ' [context: ${tags.join(', ')}]'
+                                : '';
+                            final userLog =
+                                '${notes.isNotEmpty ? notes : m.label}$tagPart [intensity: ${intensity.toInt()}/5]';
 
                             try {
                               await AppServices.ensureInitialized();
@@ -351,53 +441,107 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 userLog:             userLog,
                                 isOnline:            online,
                                 currentFitnessScore: fitnessScore,
+                              final now = DateTime.now();
+                              final persistedSummary = notes.isEmpty
+                                  ? 'Intensity ${intensity.toInt()}/5'
+                                  : 'Intensity ${intensity.toInt()}/5 · $notes';
+                              final moodEntry = MoodEntry()
+                                ..date = now.toIso8601String().substring(0, 10)
+                                ..rawLog = userLog
+                                ..condensedLog = persistedSummary
+                                ..resolvedMood = m.label
+                                ..resolvedBy = "user"
+                                ..mobileBertPrediction = null
+                                ..mobileBertTopProb = null
+                                ..userConfirmed = null
+                                ..responseText = ""
+                                ..fitnessScoreSnapshot = 0.0
+                                ..timestamp = now;
+                              await IsarService.instance.init();
+                              await IsarService.instance.writeMoodEntry(
+                                moodEntry,
                               );
-
-                              if (!mounted) return;
-                              setState(() => _isSaving = false);
-
-                              messenger.showSnackBar(
-                                SnackBar(
-                                  content: Text(result.responseText.isNotEmpty
-                                      ? result.responseText
-                                      : 'Mood saved (${result.resolvedMood})'),
-                                  behavior: SnackBarBehavior.floating,
-                                  duration: const Duration(seconds: 4),
+                              context.read<MoodLogStore>().add(
+                                MoodCheckIn(
+                                  moodLabel: m.label,
+                                  emoji: m.emoji,
+                                  intensity: intensity.toInt(),
+                                  tags: tags.toList(growable: false),
+                                  notes: notes,
+                                  createdAt: now,
                                 ),
                               );
-
-                              if (widget.source == LogSource.quickAction) {
-                                nav.pop();
-                              } else {
-                                setState(() {
-                                  selectedMood = -1;
-                                  notesCtrl.clear();
-                                  tags.clear();
-                                  intensity = 3;
-                                });
+                              try {
+                                await _syncMoodToCloud(
+                                  entry: moodEntry,
+                                  intensityValue: intensity.toInt(),
+                                  selectedTags: tags.toList(growable: false),
+                                );
+                              } catch (_) {
+                                syncWarning =
+                                    'Saved on this device. Cloud sync failed for this mood log.';
                               }
+
+                              // Auto-detect and register symptoms from user notes
+                              unawaited(
+                                SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
+                                  userLog,
+                                  'mood_log',
+                                ),
+                              );
                             } catch (e) {
-                              if (!mounted) return;
-                              setState(() => _isSaving = false);
-                              messenger.showSnackBar(
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Failed to save mood: $e'),
+                                  content: Text('Could not save mood log: $e'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                              setState(
+                                () => _buttonState = LogButtonVisualState.idle,
+                              );
+                              return;
+                            }
+
+                            await _clearDraft();
+
+                            if (!context.mounted) return;
+                            setState(
+                              () => _buttonState = LogButtonVisualState.success,
+                            );
+                            if (syncWarning != null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(syncWarning),
                                   behavior: SnackBarBehavior.floating,
                                 ),
                               );
                             }
+                            await Future<void>.delayed(
+                              const Duration(milliseconds: 800),
+                            );
+                            if (!context.mounted) return;
+                            if (widget.source == LogSource.quickAction) {
+                              Navigator.of(context).pop();
+                            } else {
+                              setState(() {
+                                selectedMood = -1;
+                                notesCtrl.clear();
+                                tags.clear();
+                                intensity = 3;
+                                _restoringDraft = false;
+                                _buttonState = LogButtonVisualState.idle;
+                              });
+                            }
                           },
-                    child: _isSaving
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            widget.source == LogSource.tab
-                                ? "Save and log another time"
-                                : "Save check-in",
-                          ),
+                    child: LogButtonContent(
+                      state: _buttonState,
+                      idleLabel: widget.source == LogSource.tab
+                          ? "Save and log another time"
+                          : "Save check-in",
+                      loadingLabel: 'Saving check-in',
+                      successLabel: 'Saved',
+                    ),
                   ),
                 ),
               ],
@@ -406,6 +550,37 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _syncMoodToCloud({
+    required MoodEntry entry,
+    required int intensityValue,
+    required List<String> selectedTags,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return;
+    }
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('mood_logs')
+        .add({
+          'date': entry.date,
+          'rawLog': entry.rawLog,
+          'condensedLog': entry.condensedLog,
+          'resolvedMood': entry.resolvedMood,
+          'resolvedBy': entry.resolvedBy,
+          'mobileBertPrediction': entry.mobileBertPrediction,
+          'mobileBertTopProb': entry.mobileBertTopProb,
+          'userConfirmed': entry.userConfirmed,
+          'responseText': entry.responseText,
+          'fitnessScoreSnapshot': entry.fitnessScoreSnapshot,
+          'intensity': intensityValue,
+          'tags': selectedTags,
+          'createdAt': Timestamp.fromDate(entry.timestamp),
+        });
   }
 }
 
