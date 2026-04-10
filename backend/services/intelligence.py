@@ -12,6 +12,16 @@ from models.schemas import IntelligenceAnalyzeResponse
 
 logger = logging.getLogger(__name__)
 
+SLEEP_IDEAL_HOURS = 8.0
+ACTIVITY_IDEAL_SCORE = 1.0
+MOOD_IDEAL_SCORE = 5.0
+SYMPTOM_IDEAL_SCORE = 5.0
+COMPOSITE_WEIGHTS = {
+    "sleep": 0.4,
+    "activity": 0.3,
+    "mood": 0.3,
+}
+
 
 def _build_weaviate_query_text(logs: Dict[str, List[int]]) -> str:
     """Build a compact retrieval query from recent user logs."""
@@ -106,6 +116,152 @@ def _sigmoid(x: float) -> float:
     return 1.0 / (1.0 + math.exp(-x))
 
 
+def _clamp(value: float, lower: float = 0.0, upper: float = 100.0) -> float:
+    return max(lower, min(upper, value))
+
+
+def _normalize_to_score(value: float, ideal_value: float) -> float:
+    if ideal_value <= 0:
+        return 0.0
+    return _clamp((value / ideal_value) * 100.0)
+
+
+def _comparison_windows(values: List[float]) -> Tuple[List[float], List[float]]:
+    if len(values) >= 14:
+        return values[-7:], values[-14:-7]
+    if len(values) >= 6:
+        return values[-3:], values[-6:-3]
+    if len(values) >= 4:
+        midpoint = len(values) // 2
+        return values[midpoint:], values[:midpoint]
+    return [], []
+
+
+def _trend_rate(recent_avg: float, past_avg: float) -> float:
+    if past_avg == 0:
+        if recent_avg == 0:
+            return 0.0
+        return 1.0
+    return (recent_avg - past_avg) / abs(past_avg)
+
+
+def _window_score(values: List[float], ideal_value: float) -> float:
+    return _normalize_to_score(_mean(values), ideal_value) if values else 0.0
+
+
+def _build_scores(logs: Dict[str, List[int]]) -> Dict[str, float]:
+    sleep_recent, _ = _comparison_windows([float(v) for v in logs.get("sleep", [])])
+    mood_recent, _ = _comparison_windows([float(v) for v in logs.get("mood", [])])
+    exercise_recent, _ = _comparison_windows([float(v) for v in logs.get("exercise", [])])
+    symptom_recent, _ = _comparison_windows([float(v) for v in logs.get("symptom_count", [])])
+
+    sleep_score = _window_score(sleep_recent, SLEEP_IDEAL_HOURS)
+    activity_score = _window_score(exercise_recent, ACTIVITY_IDEAL_SCORE)
+    mood_score = _window_score(mood_recent, MOOD_IDEAL_SCORE)
+    symptom_burden_score = 100.0 - _window_score(symptom_recent, SYMPTOM_IDEAL_SCORE)
+
+    health_score = (
+        COMPOSITE_WEIGHTS["sleep"] * sleep_score
+        + COMPOSITE_WEIGHTS["activity"] * activity_score
+        + COMPOSITE_WEIGHTS["mood"] * mood_score
+    )
+
+    return {
+        "sleep": round(sleep_score, 4),
+        "activity": round(activity_score, 4),
+        "mood": round(mood_score, 4),
+        "symptom_burden": round(_clamp(symptom_burden_score), 4),
+        "health_score": round(_clamp(health_score), 4),
+    }
+
+
+def _build_trends(logs: Dict[str, List[int]], scores: Dict[str, float]) -> Dict[str, Any]:
+    trend_map: Dict[str, Any] = {}
+    for metric_name, ideal_value in (
+        ("sleep", SLEEP_IDEAL_HOURS),
+        ("activity", ACTIVITY_IDEAL_SCORE),
+        ("mood", MOOD_IDEAL_SCORE),
+        ("symptom_count", SYMPTOM_IDEAL_SCORE),
+    ):
+        recent_values, past_values = _comparison_windows([float(v) for v in logs.get(metric_name, [])])
+        recent_avg = _mean(recent_values)
+        past_avg = _mean(past_values)
+        trend_rate = _trend_rate(recent_avg, past_avg)
+        trend_map[f"{metric_name}_recent_avg"] = round(recent_avg, 4)
+        trend_map[f"{metric_name}_past_avg"] = round(past_avg, 4)
+        trend_map[f"{metric_name}_trend_rate"] = round(trend_rate, 4)
+        trend_map[f"{metric_name}_trend_delta"] = round(_normalize_to_score(recent_avg, ideal_value) - _normalize_to_score(past_avg, ideal_value), 4)
+
+    trend_map["sleep_recent_score"] = round(_normalize_to_score(trend_map["sleep_recent_avg"], SLEEP_IDEAL_HOURS), 4)
+    trend_map["sleep_past_score"] = round(_normalize_to_score(trend_map["sleep_past_avg"], SLEEP_IDEAL_HOURS), 4)
+    trend_map["activity_recent_score"] = round(_normalize_to_score(trend_map["activity_recent_avg"], ACTIVITY_IDEAL_SCORE), 4)
+    trend_map["activity_past_score"] = round(_normalize_to_score(trend_map["activity_past_avg"], ACTIVITY_IDEAL_SCORE), 4)
+    trend_map["mood_recent_score"] = round(_normalize_to_score(trend_map["mood_recent_avg"], MOOD_IDEAL_SCORE), 4)
+    trend_map["mood_past_score"] = round(_normalize_to_score(trend_map["mood_past_avg"], MOOD_IDEAL_SCORE), 4)
+    trend_map["health_score_recent_avg"] = round(
+        (
+            COMPOSITE_WEIGHTS["sleep"] * trend_map["sleep_recent_score"]
+            + COMPOSITE_WEIGHTS["activity"] * trend_map["activity_recent_score"]
+            + COMPOSITE_WEIGHTS["mood"] * trend_map["mood_recent_score"]
+        ),
+        4,
+    )
+    trend_map["health_score_past_avg"] = round(
+        (
+            COMPOSITE_WEIGHTS["sleep"] * trend_map["sleep_past_score"]
+            + COMPOSITE_WEIGHTS["activity"] * trend_map["activity_past_score"]
+            + COMPOSITE_WEIGHTS["mood"] * trend_map["mood_past_score"]
+        ),
+        4,
+    )
+    trend_map["health_score_trend_rate"] = round(
+        _trend_rate(trend_map["health_score_recent_avg"], trend_map["health_score_past_avg"]),
+        4,
+    )
+    trend_map["health_score_trend_delta"] = round(trend_map["health_score_recent_avg"] - trend_map["health_score_past_avg"], 4)
+    return trend_map
+
+
+def _build_projection(scores: Dict[str, float], trends: Dict[str, Any]) -> Dict[str, Any]:
+    projection = {
+        "health_score_next_window": round(_clamp(scores["health_score"] + trends["health_score_trend_delta"]), 4),
+        "sleep_next_window": round(_clamp(scores["sleep"] + trends["sleep_trend_delta"]), 4),
+        "activity_next_window": round(_clamp(scores["activity"] + trends["activity_trend_delta"]), 4),
+        "mood_next_window": round(_clamp(scores["mood"] + trends["mood_trend_delta"]), 4),
+    }
+    projection["direction"] = 1 if projection["health_score_next_window"] >= scores["health_score"] else -1
+    return projection
+
+
+def _build_flags(state: Dict[str, bool], scores: Dict[str, float], trends: Dict[str, float], tier: str, confidence_score: float, alert: Optional[str]) -> List[str]:
+    flags: List[str] = []
+    if scores["sleep"] < 60.0:
+        flags.append("low_sleep")
+    if scores["activity"] < 60.0:
+        flags.append("low_activity")
+    if scores["mood"] < 60.0:
+        flags.append("low_mood")
+    if trends["sleep_trend_rate"] < -0.1:
+        flags.append("sleep_declining")
+    if trends["activity_trend_rate"] < -0.1:
+        flags.append("activity_declining")
+    if trends["mood_trend_rate"] < -0.1:
+        flags.append("mood_declining")
+    if trends["symptom_count_trend_rate"] > 0.1:
+        flags.append("symptoms_increasing")
+    if state["low_sleep"] and state["low_mood"]:
+        flags.append("sleep_mood_compound_risk")
+    if tier == "high":
+        flags.append("high_risk")
+    elif tier == "medium":
+        flags.append("elevated_risk")
+    if confidence_score < 0.45:
+        flags.append("needs_more_data")
+    if alert:
+        flags.append("follow_up_today")
+    return flags[:8]
+
+
 def compute_features(logs: Dict[str, List[int]]) -> Dict[str, float]:
     sleep = [float(v) for v in logs.get("sleep", [])]
     mood = [float(v) for v in logs.get("mood", [])]
@@ -115,7 +271,7 @@ def compute_features(logs: Dict[str, List[int]]) -> Dict[str, float]:
     sleep3, sleep7, sleep14 = _window([int(v) for v in sleep], 3), _window([int(v) for v in sleep], 7), _window([int(v) for v in sleep], 14)
     mood3, mood7, mood14 = _window([int(v) for v in mood], 3), _window([int(v) for v in mood], 7), _window([int(v) for v in mood], 14)
     ex3, ex7, ex14 = _window([int(v) for v in exercise], 3), _window([int(v) for v in exercise], 7), _window([int(v) for v in exercise], 14)
-    sym7 = _window([int(v) for v in symptom], 7)
+    sym3, sym7, sym14 = _window([int(v) for v in symptom], 3), _window([int(v) for v in symptom], 7), _window([int(v) for v in symptom], 14)
 
     features = {
         "sleep_avg_3": _mean(sleep3),
@@ -127,6 +283,9 @@ def compute_features(logs: Dict[str, List[int]]) -> Dict[str, float]:
         "exercise_avg_3": _mean(ex3),
         "exercise_avg_7": _mean(ex7),
         "exercise_avg_14": _mean(ex14),
+        "symptom_avg_3": _mean(sym3),
+        "symptom_avg_7": _mean(sym7),
+        "symptom_avg_14": _mean(sym14),
         "inactive_ratio_7": 1.0 - _mean(ex7) if ex7 else 0.0,
         "sleep_slope_7": _slope(sleep7),
         "mood_slope_7": _slope(mood7),
@@ -290,7 +449,7 @@ def _decision_reasoning(state: Dict[str, bool], selected_actions: List[str], tie
     return reasons, evidence, constraints
 
 
-def detect_patterns(features: Dict[str, float], state: Dict[str, bool]) -> List[str]:
+def detect_patterns(features: Dict[str, float], state: Dict[str, bool], trends: Optional[Dict[str, Any]] = None, scores: Optional[Dict[str, float]] = None) -> List[str]:
     insights: List[str] = []
     if state["low_sleep"] and state["low_mood"]:
         insights.append("Low sleep and low mood are co-occurring in the current window.")
@@ -298,6 +457,13 @@ def detect_patterns(features: Dict[str, float], state: Dict[str, bool]) -> List[
         insights.append("Activity has stayed low during the 7-day trend.")
     if features["recovery_rate"] > 0:
         insights.append("Short-window mood trend shows early recovery signal.")
+    if trends:
+        if trends.get("health_score_trend_rate", 0.0) > 0:
+            insights.append("Composite health score is improving over the comparison window.")
+        elif trends.get("health_score_trend_rate", 0.0) < 0:
+            insights.append("Composite health score is declining over the comparison window.")
+    if scores and scores.get("health_score", 0.0) < 60.0:
+        insights.append("Composite health score remains below the preferred baseline.")
     return insights[:2] if len(insights) > 2 else insights
 
 
@@ -308,11 +474,21 @@ def check_alerts(risk_score: float, confidence_score: float, tier: str, policy: 
     return None
 
 
+def _format_mapping_lines(mapping: Dict[str, Any]) -> str:
+    if not mapping:
+        return "- None"
+    return chr(10).join(f"- {key}: {value}" for key, value in mapping.items())
+
+
 def build_prompt(
     state: Dict[str, bool],
     selected_actions: List[str],
     reasons: List[str],
     constraints: List[str],
+    scores: Dict[str, float],
+    trends: Dict[str, float],
+    projection: Dict[str, float],
+    flags: List[str],
     tier: str,
     phase: str,
     risk_score: float,
@@ -329,6 +505,18 @@ State:
 - Low Sleep: {state['low_sleep']}
 - Low Mood: {state['low_mood']}
 - Inactive: {state['inactive']}
+
+Scores:
+{_format_mapping_lines(scores)}
+
+Trends:
+{_format_mapping_lines(trends)}
+
+Projection:
+{_format_mapping_lines(projection)}
+
+Flags:
+{chr(10).join(f'- {flag}' for flag in flags) if flags else '- None'}
 
 Selected Actions:
 {chr(10).join(f"- {a}" for a in selected_actions)}
@@ -349,13 +537,13 @@ Follow the selected actions exactly.
 
 def _fallback_message(selected_actions: List[str], confidence_score: float) -> str:
     if confidence_score < 0.45:
-     return "Add one more log so I can tailor this better."
+        return "Add one more log so I can tailor this better."
     if "recommend_clinician_followup" in selected_actions:
-     return "This pattern is high-risk; a clinician check-in is the safest next step."
+        return "This pattern is high-risk; a clinician check-in is the safest next step."
     if "recommend_rest" in selected_actions:
-     return "Rest today and keep the load light."
+        return "Rest today and keep the load light."
     if "recommend_exercise" in selected_actions:
-     return "A short low-intensity walk should help reset momentum."
+        return "A short low-intensity walk should help reset momentum."
     return "Keep your routine steady and keep logging."
 
 
@@ -364,6 +552,10 @@ def generate_supportive_message(
     selected_actions: List[str],
     reasons: List[str],
     constraints: List[str],
+    scores: Dict[str, float],
+    trends: Dict[str, float],
+    projection: Dict[str, float],
+    flags: List[str],
     tier: str,
     phase: str,
     risk_score: float,
@@ -382,6 +574,10 @@ def generate_supportive_message(
             selected_actions=selected_actions,
             reasons=reasons,
             constraints=constraints,
+            scores=scores,
+            trends=trends,
+            projection=projection,
+            flags=flags,
             tier=tier,
             phase=phase,
             risk_score=risk_score,
@@ -408,6 +604,9 @@ def analyze_logs(
     retrieved_patterns = retrieved_patterns or []
     policy = get_intelligence_policy()
     features = compute_features(logs)
+    scores = _build_scores(logs)
+    trends = _build_trends(logs, scores=scores)
+    projection = _build_projection(scores=scores, trends=trends)
     state = compute_user_state(logs=logs, features=features, policy=policy)
     risk_score, trace = _risk_components(state=state, features=features, policy=policy)
     confidence_score = _confidence_score(logs=logs, features=features, policy=policy)
@@ -420,13 +619,12 @@ def analyze_logs(
         selected_actions=selected_actions,
         tier=tier,
     )
-
     # Guardrail: if confidence is low, request one missing signal instead of broad guidance.
     if confidence_score < policy["thresholds"]["low_confidence_score"]:
         selected_actions = ["ask_for_missing_data"]
         constraints.append("Low confidence guardrail activated.")
 
-    insights = detect_patterns(features=features, state=state)
+    insights = detect_patterns(features=features, state=state, trends=trends, scores=scores)
     if retrieved_patterns:
         top_matches = ", ".join(
             str(item.get("condition", "unknown"))
@@ -451,12 +649,25 @@ def analyze_logs(
         policy=policy,
     )
 
+    flags = _build_flags(
+        state=state,
+        scores=scores,
+        trends=trends,
+        tier=tier,
+        confidence_score=confidence_score,
+        alert=alert,
+    )
+
     message = (
         generate_supportive_message(
             state=state,
             selected_actions=selected_actions,
             reasons=reasons,
             constraints=constraints,
+            scores=scores,
+            trends=trends,
+            projection=projection,
+            flags=flags,
             tier=tier,
             phase=phase,
             risk_score=risk_score,
@@ -478,9 +689,11 @@ def analyze_logs(
     )
     pipeline_trace = [
         "pipeline.step1.logs_ingested",
+        "pipeline.step1.normalization_completed",
         retrieval_step,
-        "pipeline.step3.python_logic_analyzed",
-        "pipeline.step4.actions_selected",
+        "pipeline.step3.trend_projection_completed",
+        "pipeline.step4.rule_engine_applied",
+        "pipeline.step5.actions_selected",
         llm_step,
     ]
 
@@ -488,6 +701,11 @@ def analyze_logs(
         contract_version=str(policy.get("version", "2.0")),
         state=state,
         features={k: round(float(v), 4) for k, v in features.items()},
+        health_score=round(scores["health_score"], 2),
+        scores={k: round(float(v), 4) for k, v in scores.items()},
+        trends={k: round(float(v), 4) if isinstance(v, (int, float)) else v for k, v in trends.items()},
+        projection={k: round(float(v), 4) if isinstance(v, (int, float)) else v for k, v in projection.items()},
+        flags=flags,
         risk_score=round(risk_score, 2),
         confidence_score=round(confidence_score, 4),
         intervention_tier=tier,
@@ -507,6 +725,10 @@ def analyze_logs(
             selected_actions=selected_actions,
             reasons=reasons,
             constraints=constraints,
+            scores=scores,
+            trends=trends,
+            projection=projection,
+            flags=flags,
             tier=tier,
             phase=phase,
             risk_score=risk_score,

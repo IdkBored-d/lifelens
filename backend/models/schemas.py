@@ -261,6 +261,11 @@ class IntelligenceAnalyzeResponse(BaseModel):
     contract_version: str = Field(default="2.0")
     state: Dict[str, bool]
     features: Dict[str, float] = Field(default_factory=dict)
+    health_score: Optional[float] = Field(None, ge=0.0, le=100.0)
+    scores: Dict[str, float] = Field(default_factory=dict)
+    trends: Dict[str, float] = Field(default_factory=dict)
+    projection: Dict[str, float] = Field(default_factory=dict)
+    flags: List[str] = Field(default_factory=list)
     risk_score: float = Field(..., ge=0.0, le=100.0)
     confidence_score: float = Field(..., ge=0.0, le=1.0)
     intervention_tier: str = Field(..., description="low, medium, or high")
