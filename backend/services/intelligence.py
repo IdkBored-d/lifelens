@@ -9,6 +9,7 @@ import re
 
 from services.intelligence_policy import get_intelligence_policy
 from models.schemas import IntelligenceAnalyzeResponse
+from ml.summarization.inference import format_for_model, generate_summary
 
 logger = logging.getLogger(__name__)
 
@@ -544,6 +545,48 @@ def _deterministic_summary(risk_score: float, tier: str, trend_classification: D
         f"forecast_sleep={next_day.get('sleep', 0.0):.1f}, forecast_mood={next_day.get('mood', 0.0):.1f}, "
         f"forecast_activity={next_day.get('activity', 0.0):.1f}."
     )
+
+
+def _fallback_message(
+    selected_actions: List[str],
+    confidence_score: float,
+    risk_score: float,
+    tier: str,
+    trend_classification: Dict[str, str],
+    next_day: Dict[str, Any],
+) -> str:
+    base = _deterministic_summary(
+        risk_score=risk_score,
+        tier=tier,
+        trend_classification=trend_classification,
+        next_day=next_day,
+    )
+    primary_action = selected_actions[0] if selected_actions else "maintain_routine"
+    return f"{base} Recommended action: {primary_action}. Confidence={confidence_score:.2f}."
+
+
+def _is_summary_usable(summary: str) -> bool:
+    normalized = summary.strip()
+    lowered = normalized.lower()
+
+    if len(normalized) < 10:
+        return False
+    if len(normalized) > 280:
+        return False
+    if "unknown" in lowered:
+        return False
+    if lowered.count("=") >= 2:
+        return False
+    if any(token in lowered for token in ("sleep_avg_3", "mood_avg_3", "sleep_slope", "mood_slope", "risk=", "trend=")):
+        return False
+    if re.search(r"\b(\w+)(\s+\1){2,}\b", lowered):
+        return False
+
+    word_count = len([part for part in re.split(r"\s+", normalized) if part])
+    if word_count < 4:
+        return False
+
+    return True
 
 
 def _window(values: List[int], n: int) -> List[float]:
@@ -1085,6 +1128,31 @@ def analyze_logs(
     pipeline_trace.append(f"pipeline.evaluation.samples={evaluation.get('samples', 0)}")
     pipeline_trace.append(f"pipeline.anomalies.count={len(anomalies)}")
 
+    input_text = format_for_model(features, scores, trends)
+    logger.info(f"[Summarization Input] {input_text}")
+    try:
+        summary_message = generate_summary(input_text)
+        if not _is_summary_usable(summary_message):
+            summary_message = _fallback_message(
+                selected_actions=selected_actions,
+                confidence_score=confidence_score,
+                risk_score=risk_score,
+                tier=tier,
+                trend_classification=trend_classification,
+                next_day=forecast.get("next_day", {}),
+            )
+    except Exception as e:
+        logger.warning(f"Summarization model generation failed, using deterministic fallback: {e}")
+        summary_message = _fallback_message(
+            selected_actions=selected_actions,
+            confidence_score=confidence_score,
+            risk_score=risk_score,
+            tier=tier,
+            trend_classification=trend_classification,
+            next_day=forecast.get("next_day", {}),
+        )
+    logger.info(f"[Summarization Output] {summary_message}")
+
     return IntelligenceAnalyzeResponse(
         contract_version=str(policy.get("version", "2.0")),
         state=state,
@@ -1117,7 +1185,7 @@ def analyze_logs(
         action_probabilities=probs,
         insights=insights,
         actions=selected_actions,
-        message=_deterministic_summary(risk_score=risk_score, tier=tier, trend_classification=trend_classification, next_day=forecast.get("next_day", {})),
+        message=summary_message,
         alert=alert,
         calibration=calibration,
         evaluation=evaluation,

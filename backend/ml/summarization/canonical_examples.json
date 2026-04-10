@@ -1,0 +1,54 @@
+{
+  "valid": [
+    {
+      "input": "sleep_avg_3=4.80 mood_avg_3=1.90 sleep_slope=-0.410 mood_slope=-0.280 risk=82.00 trend=-0.330",
+      "target": "Sleep and mood are trending downward, suggesting rising fatigue risk."
+    },
+    {
+      "input": "sleep_avg_3=7.10 mood_avg_3=4.10 sleep_slope=0.020 mood_slope=0.010 risk=52.00 trend=0.000",
+      "target": "Current sleep and mood signals are stable overall."
+    },
+    {
+      "input": "sleep_avg_3=6.40 mood_avg_3=3.60 sleep_slope=0.270 mood_slope=0.230 risk=41.30 trend=0.210",
+      "target": "Recent trends indicate recovery, with improving sleep and mood."
+    },
+    {
+      "input": "sleep_avg_3=4.60 mood_avg_3=3.90 sleep_slope=-0.100 mood_slope=-0.050 risk=69.10 trend=-0.120",
+      "target": "Low sleep remains the main concern in the latest window."
+    },
+    {
+      "input": "sleep_avg_3=6.90 mood_avg_3=1.80 sleep_slope=-0.040 mood_slope=-0.160 risk=73.20 trend=-0.140",
+      "target": "Mood has stayed low and may require supportive follow-up."
+    },
+    {
+      "input": "sleep_avg_3=4.40 mood_avg_3=1.40 sleep_slope=-0.520 mood_slope=-0.470 risk=91.00 trend=-0.410",
+      "target": "Multiple indicators suggest high short-term risk and worsening wellbeing."
+    }
+  ],
+  "invalid": [
+    {
+      "input": "",
+      "target": "Sleep is getting worse."
+    },
+    {
+      "input": "sleep_avg_3=5.00 mood_avg_3=2.00 risk=68.00",
+      "target": "Missing required feature tokens."
+    },
+    {
+      "input": "sleep_avg_3=19.00 mood_avg_3=2.00 sleep_slope=0.00 mood_slope=0.00 risk=40.00 trend=0.00",
+      "target": "Sleep value is out of range."
+    },
+    {
+      "input": "sleep_avg_3=5.00 mood_avg_3=2.00 sleep_slope=-0.20 mood_slope=-0.20 risk=80.00 trend=-0.20",
+      "target": "sleep_avg_3=5.00 mood_avg_3=2.00 risk=80.00"
+    },
+    {
+      "input": "sleep_avg_3=5.00 mood_avg_3=2.00 sleep_slope=-0.20 mood_slope=-0.20 risk=80.00 trend=-0.20",
+      "target": ""
+    },
+    {
+      "input": "sleep_avg_3=5.00 mood_avg_3=2.00 sleep_slope=-0.20 mood_slope=-0.20 risk=80.00 trend=-0.20",
+      "target": "sleep and sleep and sleep and sleep and sleep"
+    }
+  ]
+}

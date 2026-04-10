@@ -51,3 +51,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .venv/
+
+# ML experiment outputs
+backend/ml/summarization/reports/
+backend/ml/summarization/results/
+backend/ml/summarization/summarization_model/
+backend/ml/summarization/summarization_dataset.json
+ml_pipeline/summarization/summarization_dataset.json
+backend/ml/summarization/quality_check_output.txt

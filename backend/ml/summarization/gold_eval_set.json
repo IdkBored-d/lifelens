@@ -1,0 +1,102 @@
+[
+  {
+    "id": "declining_high_risk",
+    "logs": {
+      "sleep": [6, 6, 5, 5, 4, 4, 4],
+      "mood": [3, 3, 2, 2, 1, 1, 1],
+      "exercise": [1, 1, 0, 0, 0, 0, 0],
+      "symptom_count": [0, 1, 1, 1, 2, 2, 3]
+    },
+    "expected_bucket": "declining"
+  },
+  {
+    "id": "declining_moderate",
+    "logs": {
+      "sleep": [7, 7, 6, 6, 6, 6, 6],
+      "mood": [4, 4, 4, 4, 3, 3, 3],
+      "exercise": [1, 1, 1, 1, 1, 1, 1],
+      "symptom_count": [0, 0, 1, 1, 1, 1, 2]
+    },
+    "expected_bucket": "declining"
+  },
+  {
+    "id": "stable_good",
+    "logs": {
+      "sleep": [7, 7, 7, 7, 7, 7, 7],
+      "mood": [4, 4, 4, 4, 4, 4, 4],
+      "exercise": [1, 1, 1, 1, 1, 1, 1],
+      "symptom_count": [0, 0, 0, 0, 0, 0, 0]
+    },
+    "expected_bucket": "stable"
+  },
+  {
+    "id": "improving_recovery",
+    "logs": {
+      "sleep": [5, 5, 5, 6, 6, 6, 7],
+      "mood": [2, 2, 2, 3, 3, 3, 4],
+      "exercise": [0, 0, 0, 1, 1, 1, 1],
+      "symptom_count": [3, 3, 2, 2, 1, 1, 0]
+    },
+    "expected_bucket": "improving"
+  },
+  {
+    "id": "sleep_low_only",
+    "logs": {
+      "sleep": [5, 5, 5, 5, 5, 5, 5],
+      "mood": [4, 4, 4, 4, 4, 4, 4],
+      "exercise": [1, 1, 1, 1, 1, 1, 1],
+      "symptom_count": [1, 1, 1, 1, 1, 1, 1]
+    },
+    "expected_bucket": "low_sleep"
+  },
+  {
+    "id": "mood_low_only",
+    "logs": {
+      "sleep": [7, 7, 7, 7, 7, 7, 7],
+      "mood": [2, 2, 2, 2, 2, 2, 2],
+      "exercise": [1, 1, 1, 1, 1, 1, 1],
+      "symptom_count": [1, 1, 1, 1, 1, 1, 1]
+    },
+    "expected_bucket": "low_mood"
+  },
+  {
+    "id": "inactive_only",
+    "logs": {
+      "sleep": [7, 7, 7, 7, 7, 7, 7],
+      "mood": [4, 4, 4, 4, 4, 4, 4],
+      "exercise": [0, 0, 0, 0, 0, 0, 0],
+      "symptom_count": [0, 0, 0, 0, 1, 1, 1]
+    },
+    "expected_bucket": "stable"
+  },
+  {
+    "id": "volatile_mood",
+    "logs": {
+      "sleep": [6, 7, 6, 7, 6, 7, 6],
+      "mood": [1, 5, 1, 5, 1, 5, 1],
+      "exercise": [1, 1, 1, 1, 1, 1, 1],
+      "symptom_count": [1, 1, 1, 1, 1, 1, 1]
+    },
+    "expected_bucket": "declining"
+  },
+  {
+    "id": "high_symptoms",
+    "logs": {
+      "sleep": [7, 6, 6, 6, 6, 6, 6],
+      "mood": [3, 3, 3, 3, 3, 3, 3],
+      "exercise": [1, 1, 1, 1, 1, 1, 1],
+      "symptom_count": [1, 2, 3, 3, 3, 3, 3]
+    },
+    "expected_bucket": "high_risk"
+  },
+  {
+    "id": "best_case",
+    "logs": {
+      "sleep": [8, 8, 8, 8, 8, 8, 8],
+      "mood": [5, 5, 5, 5, 5, 5, 5],
+      "exercise": [1, 1, 1, 1, 1, 1, 1],
+      "symptom_count": [0, 0, 0, 0, 0, 0, 0]
+    },
+    "expected_bucket": "stable"
+  }
+]
