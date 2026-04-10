@@ -593,7 +593,7 @@ def _build_exercise_recommendations_fallback(
     summary="Analyze behavior logs into state, insights, and actions"
 )
 async def intelligence_analyze(payload: IntelligenceAnalyzeRequest):
-    """Compute state locally and optionally let Gemini write a supportive message."""
+    """Compute deterministic statistical state, forecasts, anomalies, and actions."""
     logs = {
         "sleep": payload.sleep,
         "mood": payload.mood,

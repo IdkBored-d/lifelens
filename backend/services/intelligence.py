@@ -7,7 +7,6 @@ import logging
 import math
 import re
 
-from services.gemini_service import get_analysis_service
 from services.intelligence_policy import get_intelligence_policy
 from models.schemas import IntelligenceAnalyzeResponse
 
@@ -299,6 +298,252 @@ def _build_mini_me_linkage(flags: List[str], projection: Dict[str, Any], tier: s
         },
         "flag_visual_map": {flag: FLAG_VISUAL_MAP.get(flag, "neutral") for flag in flags},
     }
+
+
+def _z_score(value: float, values: List[float]) -> float:
+    mean_value = _mean(values)
+    std_value = _safe_stddev(values)
+    if std_value == 0:
+        return 0.0
+    return (value - mean_value) / std_value
+
+
+def _trend_label(trend_rate: float, slope: float, threshold: float = 0.08) -> str:
+    if trend_rate > threshold or slope > threshold:
+        return "improving"
+    if trend_rate < -threshold or slope < -threshold:
+        return "declining"
+    return "stable"
+
+
+def _health_state_vector(features: Dict[str, float], trends: Dict[str, Any]) -> Dict[str, Any]:
+    labels = [
+        "sleep_avg",
+        "mood_avg",
+        "activity_avg",
+        "symptom_trend",
+        "variance_sleep",
+        "slope_mood",
+    ]
+    vector = [
+        round(float(features.get("sleep_avg_7", 0.0)), 4),
+        round(float(features.get("mood_avg_7", 0.0)), 4),
+        round(float(features.get("exercise_avg_7", 0.0)), 4),
+        round(float(trends.get("symptom_count_trend_rate", 0.0)), 4),
+        round(float(features.get("sleep_variance_7", 0.0)), 4),
+        round(float(features.get("mood_slope_7", 0.0)), 4),
+    ]
+    return {
+        "labels": labels,
+        "vector": vector,
+    }
+
+
+def _build_regression_features(logs: Dict[str, List[int]], end_index: int) -> Dict[str, float]:
+    slice_logs = {
+        key: values[: end_index + 1]
+        for key, values in logs.items()
+    }
+    return compute_features(slice_logs)
+
+
+def _linear_regression_fit(samples: List[List[float]], targets: List[float]) -> Dict[str, Any]:
+    if not samples or not targets or len(samples) != len(targets):
+        return {"coefficients": [], "intercept": 0.0, "r2": 0.0}
+
+    feature_count = len(samples[0])
+    x_rows = [[1.0, *row] for row in samples]
+    matrix_size = feature_count + 1
+    xtx = [[0.0 for _ in range(matrix_size)] for _ in range(matrix_size)]
+    xty = [0.0 for _ in range(matrix_size)]
+
+    for row, target in zip(x_rows, targets):
+        for i in range(matrix_size):
+            xty[i] += row[i] * target
+            for j in range(matrix_size):
+                xtx[i][j] += row[i] * row[j]
+
+    ridge = 0.01
+    for i in range(1, matrix_size):
+        xtx[i][i] += ridge
+
+    solution = _solve_linear_system(xtx, xty)
+    if not solution:
+        return {"coefficients": [], "intercept": 0.0, "r2": 0.0}
+
+    intercept = solution[0]
+    coefficients = solution[1:]
+    predictions = [intercept + sum(w * x for w, x in zip(coefficients, row)) for row in samples]
+    mean_target = _mean(targets)
+    ss_tot = sum((target - mean_target) ** 2 for target in targets)
+    ss_res = sum((target - pred) ** 2 for target, pred in zip(targets, predictions))
+    r2 = 1.0 - (ss_res / ss_tot) if ss_tot else 0.0
+
+    return {
+        "coefficients": [round(float(value), 6) for value in coefficients],
+        "intercept": round(float(intercept), 6),
+        "r2": round(float(r2), 4),
+    }
+
+
+def _solve_linear_system(matrix: List[List[float]], values: List[float]) -> List[float]:
+    size = len(values)
+    augmented = [row[:] + [values[index]] for index, row in enumerate(matrix)]
+
+    for pivot_index in range(size):
+        pivot_row = max(range(pivot_index, size), key=lambda row_index: abs(augmented[row_index][pivot_index]))
+        pivot_value = augmented[pivot_row][pivot_index]
+        if abs(pivot_value) < 1e-9:
+            continue
+        if pivot_row != pivot_index:
+            augmented[pivot_index], augmented[pivot_row] = augmented[pivot_row], augmented[pivot_index]
+
+        for row_index in range(pivot_index + 1, size):
+            factor = augmented[row_index][pivot_index] / augmented[pivot_index][pivot_index]
+            for column_index in range(pivot_index, size + 1):
+                augmented[row_index][column_index] -= factor * augmented[pivot_index][column_index]
+
+    solution = [0.0 for _ in range(size)]
+    for row_index in range(size - 1, -1, -1):
+        diagonal = augmented[row_index][row_index]
+        if abs(diagonal) < 1e-9:
+            solution[row_index] = 0.0
+            continue
+        remainder = sum(augmented[row_index][column_index] * solution[column_index] for column_index in range(row_index + 1, size))
+        solution[row_index] = (augmented[row_index][size] - remainder) / diagonal
+    return solution
+
+
+def _forecast_next_day(logs: Dict[str, List[int]]) -> Dict[str, Any]:
+    keys = ["sleep", "mood", "exercise"]
+    response: Dict[str, Any] = {}
+    sample_rows: List[List[float]] = []
+    targets_by_key: Dict[str, List[float]] = {key: [] for key in keys}
+
+    total_length = min(len(logs.get("sleep", [])), len(logs.get("mood", [])), len(logs.get("exercise", [])))
+    if total_length < 4:
+        return {
+            "method": "heuristic_fallback",
+            "r2": 0.0,
+            "next_day": {
+                "sleep": _mean([float(v) for v in logs.get("sleep", [])[-3:]]),
+                "mood": _mean([float(v) for v in logs.get("mood", [])[-3:]]),
+                "activity": _mean([float(v) for v in logs.get("exercise", [])[-3:]]),
+            },
+            "model": {"coefficients": [], "intercept": 0.0},
+        }
+
+    feature_names = [
+        "sleep_avg_3",
+        "sleep_avg_7",
+        "mood_avg_3",
+        "mood_avg_7",
+        "exercise_avg_3",
+        "exercise_avg_7",
+        "symptom_avg_7",
+        "sleep_slope_7",
+        "mood_slope_7",
+        "exercise_slope_7",
+        "symptom_slope_7",
+        "sleep_variance_7",
+        "mood_variance_7",
+    ]
+
+    for index in range(6, total_length - 1):
+        features = _build_regression_features(logs, index)
+        sample_rows.append([float(features.get(name, 0.0)) for name in feature_names])
+        targets_by_key["sleep"].append(float(logs["sleep"][index + 1]))
+        targets_by_key["mood"].append(float(logs["mood"][index + 1]))
+        targets_by_key["exercise"].append(float(logs["exercise"][index + 1]))
+
+    if not sample_rows:
+        return {
+            "method": "heuristic_fallback",
+            "r2": 0.0,
+            "next_day": {
+                "sleep": _mean([float(v) for v in logs.get("sleep", [])[-3:]]),
+                "mood": _mean([float(v) for v in logs.get("mood", [])[-3:]]),
+                "activity": _mean([float(v) for v in logs.get("exercise", [])[-3:]]),
+            },
+            "model": {"coefficients": [], "intercept": 0.0},
+        }
+
+    fitted_models: Dict[str, Any] = {}
+    for key, targets in targets_by_key.items():
+        fitted_models[key] = _linear_regression_fit(sample_rows, targets)
+
+    latest_features = compute_features(logs)
+    latest_row = [float(latest_features.get(name, 0.0)) for name in feature_names]
+
+    def predict(model: Dict[str, Any]) -> float:
+        coefficients = model.get("coefficients", [])
+        intercept = float(model.get("intercept", 0.0))
+        if not coefficients:
+            return 0.0
+        return intercept + sum(float(weight) * float(value) for weight, value in zip(coefficients, latest_row))
+
+    next_day = {
+        "sleep": _clamp(predict(fitted_models["sleep"]), lower=0.0, upper=12.0),
+        "mood": _clamp(predict(fitted_models["mood"]), lower=0.0, upper=5.0),
+        "activity": _clamp(predict(fitted_models["exercise"]), lower=0.0, upper=5.0),
+    }
+
+    response["method"] = "linear_regression"
+    response["feature_names"] = feature_names
+    response["models"] = fitted_models
+    response["next_day"] = {k: round(float(v), 4) for k, v in next_day.items()}
+    response["r2"] = round(_mean([float(model.get("r2", 0.0)) for model in fitted_models.values()]), 4)
+    return response
+
+
+def _detect_anomalies(logs: Dict[str, List[int]], features: Dict[str, float]) -> List[Dict[str, Any]]:
+    anomalies: List[Dict[str, Any]] = []
+    windows = {
+        "sleep": [float(v) for v in logs.get("sleep", [])[-14:]],
+        "mood": [float(v) for v in logs.get("mood", [])[-14:]],
+        "activity": [float(v) for v in logs.get("exercise", [])[-14:]],
+        "symptom_count": [float(v) for v in logs.get("symptom_count", [])[-14:]],
+    }
+    current_values = {
+        "sleep": float(features.get("sleep_avg_3", 0.0)),
+        "mood": float(features.get("mood_avg_3", 0.0)),
+        "activity": float(features.get("exercise_avg_3", 0.0)),
+        "symptom_count": float(features.get("symptom_avg_3", 0.0)),
+    }
+
+    for metric_name, values in windows.items():
+        if len(values) < 4:
+            continue
+        z_value = _z_score(current_values[metric_name], values)
+        if abs(z_value) >= 2.0:
+            anomalies.append(
+                {
+                    "metric": metric_name,
+                    "z_score": round(float(z_value), 4),
+                    "direction": "high" if z_value > 0 else "low",
+                    "threshold": 2.0,
+                }
+            )
+
+    return anomalies[:5]
+
+
+def _classify_trends(trends: Dict[str, Any], features: Dict[str, float]) -> Dict[str, str]:
+    return {
+        "sleep": _trend_label(float(trends.get("sleep_trend_rate", 0.0)), float(features.get("sleep_slope_7", 0.0))),
+        "mood": _trend_label(float(trends.get("mood_trend_rate", 0.0)), float(features.get("mood_slope_7", 0.0))),
+        "activity": _trend_label(float(trends.get("activity_trend_rate", 0.0)), float(features.get("exercise_slope_7", 0.0))),
+        "overall": _trend_label(float(trends.get("health_score_trend_rate", 0.0)), float(trends.get("health_score_trend_delta", 0.0))),
+    }
+
+
+def _deterministic_summary(risk_score: float, tier: str, trend_classification: Dict[str, str], next_day: Dict[str, Any]) -> str:
+    dominant_trend = trend_classification.get("overall", "stable")
+    return (
+        f"Deterministic analysis: tier={tier}, risk={risk_score:.1f}, trend={dominant_trend}, "
+        f"forecast_sleep={next_day.get('sleep', 0.0):.1f}, forecast_mood={next_day.get('mood', 0.0):.1f}, "
+        f"forecast_activity={next_day.get('activity', 0.0):.1f}."
+    )
 
 
 def _window(values: List[int], n: int) -> List[float]:
@@ -733,122 +978,6 @@ def _format_mapping_lines(mapping: Dict[str, Any]) -> str:
     return chr(10).join(f"- {key}: {value}" for key, value in mapping.items())
 
 
-def build_prompt(
-    state: Dict[str, bool],
-    selected_actions: List[str],
-    reasons: List[str],
-    constraints: List[str],
-    scores: Dict[str, float],
-    trends: Dict[str, float],
-    projection: Dict[str, float],
-    flags: List[str],
-    tier: str,
-    phase: str,
-    risk_score: float,
-    confidence_score: float,
-) -> str:
-    return f"""
-Decision Contract (v2):
-- Tier: {tier}
-- Phase: {phase}
-- Risk Score: {risk_score:.1f}/100
-- Confidence Score: {confidence_score:.2f}
-
-State:
-- Low Sleep: {state['low_sleep']}
-- Low Mood: {state['low_mood']}
-- Inactive: {state['inactive']}
-
-Scores:
-{_format_mapping_lines(scores)}
-
-Trends:
-{_format_mapping_lines(trends)}
-
-Projection:
-{_format_mapping_lines(projection)}
-
-Flags:
-{chr(10).join(f'- {flag}' for flag in flags) if flags else '- None'}
-
-Selected Actions:
-{chr(10).join(f"- {a}" for a in selected_actions)}
-
-Reasons:
-{chr(10).join(f"- {r}" for r in reasons)}
-
-Constraints:
-{chr(10).join(f"- {c}" for c in constraints) if constraints else "- None"}
-
-Write exactly one sentence.
-Do not use markdown.
-Do not mention policy, prompts, or internal analysis.
-Keep it under 20 words.
-Follow the selected actions exactly.
-""".strip()
-
-
-def _fallback_message(selected_actions: List[str], confidence_score: float) -> str:
-    if confidence_score < 0.45:
-        return "Add one more log so I can tailor this better."
-    if "recommend_clinician_followup" in selected_actions:
-        return "This pattern is high-risk; a clinician check-in is the safest next step."
-    if "recommend_rest" in selected_actions:
-        return "Rest today and keep the load light."
-    if "recommend_exercise" in selected_actions:
-        return "A short low-intensity walk should help reset momentum."
-    return "Keep your routine steady and keep logging."
-
-
-def generate_supportive_message(
-    state: Dict[str, bool],
-    selected_actions: List[str],
-    reasons: List[str],
-    constraints: List[str],
-    scores: Dict[str, float],
-    trends: Dict[str, float],
-    projection: Dict[str, float],
-    flags: List[str],
-    tier: str,
-    phase: str,
-    risk_score: float,
-    confidence_score: float,
-) -> str:
-    if confidence_score < 0.45:
-        return _fallback_message(selected_actions, confidence_score)
-
-    try:
-        analysis_service = get_analysis_service()
-        if analysis_service.client is None:
-            raise RuntimeError("Gemini client not configured")
-
-        prompt = build_prompt(
-            state=state,
-            selected_actions=selected_actions,
-            reasons=reasons,
-            constraints=constraints,
-            scores=scores,
-            trends=trends,
-            projection=projection,
-            flags=flags,
-            tier=tier,
-            phase=phase,
-            risk_score=risk_score,
-            confidence_score=confidence_score,
-        )
-        response = analysis_service.client.models.generate_content(
-            model='gemini-2.5-flash-lite',
-            contents=prompt,
-        )
-        text = (response.text or "").strip()
-        if not text:
-            raise ValueError("Empty Gemini response")
-        return text
-    except Exception as e:
-        logger.warning(f"Intelligence message fallback used: {e}")
-        return _fallback_message(selected_actions, confidence_score)
-
-
 def analyze_logs(
     logs: Dict[str, List[int]],
     include_gemini_message: bool = True,
@@ -861,6 +990,7 @@ def analyze_logs(
     scores = _build_scores(logs)
     trends = _build_trends(logs, scores=scores)
     projection = _build_projection(scores=scores, trends=trends)
+    forecast = _forecast_next_day(logs)
     state = compute_user_state(logs=logs, features=features, calibration=calibration)
     risk_score, trace = _risk_components(state=state, features=features, policy=policy)
     confidence_score = _confidence_score(logs=logs, features=features, policy=policy)
@@ -883,6 +1013,9 @@ def analyze_logs(
         selected_actions=selected_actions,
         tier=tier,
     )
+    health_state_vector = _health_state_vector(features=features, trends=trends)
+    trend_classification = _classify_trends(trends=trends, features=features)
+    anomalies = _detect_anomalies(logs=logs, features=features)
     # Guardrail: if confidence is low, request one missing signal instead of broad guidance.
     if confidence_score < policy["thresholds"]["low_confidence_score"]:
         selected_actions = ["ask_for_missing_data"]
@@ -933,30 +1066,6 @@ def analyze_logs(
         phase=phase,
     )
 
-    message = (
-        generate_supportive_message(
-            state=state,
-            selected_actions=selected_actions,
-            reasons=reasons,
-            constraints=constraints,
-            scores=scores,
-            trends=trends,
-            projection=projection,
-            flags=flags,
-            tier=tier,
-            phase=phase,
-            risk_score=risk_score,
-            confidence_score=confidence_score,
-        )
-        if include_gemini_message
-        else _fallback_message(selected_actions=selected_actions, confidence_score=confidence_score)
-    )
-
-    llm_step = (
-        "pipeline.step5.llm_optional_enabled"
-        if include_gemini_message
-        else "pipeline.step5.llm_optional_skipped"
-    )
     retrieval_step = (
         "pipeline.step2.weaviate_retrieval_completed"
         if retrieved_patterns
@@ -970,19 +1079,31 @@ def analyze_logs(
         "pipeline.step4.calibration_applied",
         "pipeline.step5.rule_engine_applied",
         "pipeline.step6.actions_selected",
-        llm_step,
+        "pipeline.step7.statistical_forecast_completed",
     ]
     pipeline_trace.append(f"pipeline.weaviate.risk_adjustment={weaviate_signal['risk_adjustment']}")
     pipeline_trace.append(f"pipeline.evaluation.samples={evaluation.get('samples', 0)}")
+    pipeline_trace.append(f"pipeline.anomalies.count={len(anomalies)}")
 
     return IntelligenceAnalyzeResponse(
         contract_version=str(policy.get("version", "2.0")),
         state=state,
+        health_state_vector=health_state_vector["vector"],
+        health_state_vector_labels=health_state_vector["labels"],
         features={k: round(float(v), 4) for k, v in features.items()},
         health_score=round(scores["health_score"], 2),
         scores={k: round(float(v), 4) for k, v in scores.items()},
         trends={k: round(float(v), 4) if isinstance(v, (int, float)) else v for k, v in trends.items()},
+        trend_classification=trend_classification,
         projection={k: round(float(v), 4) if isinstance(v, (int, float)) else v for k, v in projection.items()},
+        next_day_predictions={k: round(float(v), 4) if isinstance(v, (int, float)) else v for k, v in forecast.get("next_day", {}).items()},
+        prediction_model={
+            "method": forecast.get("method", "linear_regression"),
+            "feature_names": forecast.get("feature_names", []),
+            "models": forecast.get("models", {}),
+            "r2": forecast.get("r2", 0.0),
+        },
+        anomalies=anomalies,
         flags=flags,
         risk_score=round(risk_score, 2),
         confidence_score=round(confidence_score, 4),
@@ -996,26 +1117,13 @@ def analyze_logs(
         action_probabilities=probs,
         insights=insights,
         actions=selected_actions,
-        message=message,
+        message=_deterministic_summary(risk_score=risk_score, tier=tier, trend_classification=trend_classification, next_day=forecast.get("next_day", {})),
         alert=alert,
         calibration=calibration,
         evaluation=evaluation,
         weaviate_signal=weaviate_signal,
         mini_me_linkage=mini_me_linkage,
-        prompt_preview=build_prompt(
-            state=state,
-            selected_actions=selected_actions,
-            reasons=reasons,
-            constraints=constraints,
-            scores=scores,
-            trends=trends,
-            projection=projection,
-            flags=flags,
-            tier=tier,
-            phase=phase,
-            risk_score=risk_score,
-            confidence_score=confidence_score,
-        ),
+        prompt_preview=None,
     )
 
 
@@ -1023,7 +1131,7 @@ async def analyze_logs_in_order(
     logs: Dict[str, List[int]],
     include_gemini_message: bool = True,
 ) -> IntelligenceAnalyzeResponse:
-    """Enforce ordered pipeline: logs -> Weaviate -> Python -> actions -> optional LLM."""
+    """Enforce ordered pipeline: logs -> Weaviate -> Python -> forecast -> actions."""
     retrieved_patterns = await _retrieve_weaviate_patterns(logs)
     return analyze_logs(
         logs=logs,

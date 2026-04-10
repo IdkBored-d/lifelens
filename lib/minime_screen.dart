@@ -963,6 +963,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           final avatarMoodLabel = _avatarMoodFromIntelligence(
             latest?.moodLabel,
           );
+          final avatarAnimationState =
+              _intelligence?.miniMeLinkage['animation_state'] as String?;
 
           return Container(
             width: double.infinity,
@@ -1127,6 +1129,7 @@ class _AvatarPanel extends StatelessWidget {
                         bodyWidthScale: avatarStore.bodyWidthScale,
                         moodLabel: moodLabel,
                         moodEmoji: moodEmoji,
+                        animationState: avatarAnimationState,
                         glow: glow,
                         size: avatarSize,
                       ),

@@ -260,11 +260,17 @@ class IntelligenceAnalyzeResponse(BaseModel):
     """Versioned intelligence contract with deterministic decision outputs."""
     contract_version: str = Field(default="2.0")
     state: Dict[str, bool]
+    health_state_vector: List[float] = Field(default_factory=list)
+    health_state_vector_labels: List[str] = Field(default_factory=list)
     features: Dict[str, float] = Field(default_factory=dict)
     health_score: Optional[float] = Field(None, ge=0.0, le=100.0)
     scores: Dict[str, float] = Field(default_factory=dict)
     trends: Dict[str, float] = Field(default_factory=dict)
+    trend_classification: Dict[str, str] = Field(default_factory=dict)
     projection: Dict[str, float] = Field(default_factory=dict)
+    next_day_predictions: Dict[str, float] = Field(default_factory=dict)
+    prediction_model: Dict[str, Any] = Field(default_factory=dict)
+    anomalies: List[Dict[str, Any]] = Field(default_factory=list)
     flags: List[str] = Field(default_factory=list)
     risk_score: float = Field(..., ge=0.0, le=100.0)
     confidence_score: float = Field(..., ge=0.0, le=1.0)

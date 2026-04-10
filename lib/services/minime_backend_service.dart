@@ -159,6 +159,8 @@ class MiniMeExerciseRecommendationsReply {
 class MiniMeIntelligenceReply {
   const MiniMeIntelligenceReply({
     required this.state,
+    required this.healthStateVector,
+    required this.healthStateVectorLabels,
     required this.features,
     required this.riskScore,
     required this.confidenceScore,
@@ -175,6 +177,10 @@ class MiniMeIntelligenceReply {
     required this.message,
     required this.flags,
     required this.projection,
+    required this.trendClassification,
+    required this.nextDayPredictions,
+    required this.predictionModel,
+    required this.anomalies,
     required this.miniMeLinkage,
     required this.calibration,
     required this.evaluation,
@@ -183,6 +189,8 @@ class MiniMeIntelligenceReply {
   });
 
   final Map<String, dynamic> state;
+  final List<double> healthStateVector;
+  final List<String> healthStateVectorLabels;
   final Map<String, double> features;
   final double riskScore;
   final double confidenceScore;
@@ -199,6 +207,10 @@ class MiniMeIntelligenceReply {
   final String message;
   final List<String> flags;
   final Map<String, double> projection;
+  final Map<String, String> trendClassification;
+  final Map<String, double> nextDayPredictions;
+  final Map<String, dynamic> predictionModel;
+  final List<Map<String, dynamic>> anomalies;
   final Map<String, dynamic> miniMeLinkage;
   final Map<String, dynamic> calibration;
   final Map<String, dynamic> evaluation;
@@ -242,6 +254,31 @@ class MiniMeIntelligenceReply {
     return const <String, dynamic>{};
   }
 
+  static List<double> _toDoubleList(Object? raw) {
+    if (raw is! List) return const <double>[];
+    return raw
+        .map((item) => (item as num?)?.toDouble() ?? 0.0)
+        .toList(growable: false);
+  }
+
+  static Map<String, String> _toStringMap(Object? raw) {
+    if (raw is Map<String, dynamic>) {
+      return raw.map((key, value) => MapEntry(key, value.toString().trim()));
+    }
+    if (raw is Map) {
+      return raw.map((key, value) => MapEntry(key.toString(), value.toString().trim()));
+    }
+    return const <String, String>{};
+  }
+
+  static List<Map<String, dynamic>> _toDynamicMapList(Object? raw) {
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    return raw
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
   factory MiniMeIntelligenceReply.fromJson(Map<String, dynamic> json) {
     final rawState = json['state'];
     final rawActions = json['actions'];
@@ -253,6 +290,9 @@ class MiniMeIntelligenceReply {
       state: rawState is Map<String, dynamic>
           ? rawState
           : (rawState is Map ? Map<String, dynamic>.from(rawState) : const {}),
+        healthStateVector: _toDoubleList(json['health_state_vector']),
+        healthStateVectorLabels:
+          _toStringList(json['health_state_vector_labels']),
       features: _toDoubleMap(json['features']),
       riskScore: (json['risk_score'] as num?)?.toDouble() ?? 0.0,
       confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 0.0,
@@ -269,6 +309,10 @@ class MiniMeIntelligenceReply {
       message: (json['message'] as String? ?? '').trim(),
       flags: _toStringList(json['flags']),
       projection: _toDoubleMap(json['projection']),
+      trendClassification: _toStringMap(json['trend_classification']),
+      nextDayPredictions: _toDoubleMap(json['next_day_predictions']),
+      predictionModel: _toDynamicMap(json['prediction_model']),
+      anomalies: _toDynamicMapList(json['anomalies']),
       miniMeLinkage: _toDynamicMap(json['mini_me_linkage']),
       calibration: _toDynamicMap(json['calibration']),
       evaluation: _toDynamicMap(json['evaluation']),

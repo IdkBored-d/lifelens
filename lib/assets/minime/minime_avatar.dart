@@ -13,6 +13,7 @@ class MiniMeAvatar extends StatefulWidget {
     required this.bodyWidthScale,
     this.moodLabel,
     this.moodEmoji,
+    this.animationState,
     this.glow,
     this.size = 320,
     this.onAvatarTap,
@@ -26,6 +27,7 @@ class MiniMeAvatar extends StatefulWidget {
   final double bodyWidthScale;
   final String? moodLabel;
   final String? moodEmoji;
+  final String? animationState;
   final Color? glow;
   final double size;
   final VoidCallback? onAvatarTap;
@@ -56,7 +58,7 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
       widget.hairModel,
       widget.shirtModel,
     );
-    final expression = _resolveExpression(widget.moodLabel);
+    final expression = _resolveExpression(widget.moodLabel, widget.animationState);
     final clampedSize = widget.size.clamp(160.0, 720.0);
 
     return GestureDetector(
@@ -1081,7 +1083,18 @@ MiniMeFacePalette _resolvePalette(
   return _palettes[index];
 }
 
-String _resolveExpression(String? moodLabel) {
+String _resolveExpression(String? moodLabel, String? animationState) {
+  switch ((animationState ?? '').trim().toLowerCase()) {
+    case 'alert_pulse':
+      return 'angry';
+    case 'recover_rise':
+      return 'happy';
+    case 'decline_fade':
+      return 'sad';
+    case 'steady_idle':
+      return 'calm';
+  }
+
   switch ((moodLabel ?? '').trim().toLowerCase()) {
     case 'happy':
     case 'excited':
