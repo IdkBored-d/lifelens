@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 import math
+import re
 
 from services.gemini_service import get_analysis_service
 from services.intelligence_policy import get_intelligence_policy
@@ -20,6 +21,30 @@ COMPOSITE_WEIGHTS = {
     "sleep": 0.4,
     "activity": 0.3,
     "mood": 0.3,
+}
+WEAVIATE_RISK_TERMS = {
+    "depression",
+    "anxiety",
+    "insomnia",
+    "burnout",
+    "chronic",
+    "fatigue",
+    "stress",
+}
+
+FLAG_VISUAL_MAP = {
+    "low_sleep": "sleepy",
+    "low_activity": "sluggish",
+    "low_mood": "sad",
+    "sleep_declining": "drowsy",
+    "activity_declining": "static",
+    "mood_declining": "concerned",
+    "symptoms_increasing": "alert",
+    "sleep_mood_compound_risk": "stressed",
+    "high_risk": "critical",
+    "elevated_risk": "elevated",
+    "needs_more_data": "uncertain",
+    "follow_up_today": "urgent",
 }
 
 
@@ -71,6 +96,209 @@ async def _retrieve_weaviate_patterns(logs: Dict[str, List[int]]) -> List[Dict[s
     except Exception as e:
         logger.warning(f"Weaviate retrieval unavailable for intelligence pipeline: {e}")
         return []
+
+
+def _safe_stddev(values: List[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    return math.sqrt(_variance(values))
+
+
+def _build_calibration(logs: Dict[str, List[int]], policy: Dict[str, Any]) -> Dict[str, Any]:
+    thresholds = policy["thresholds"]
+    sleep14 = _window(logs.get("sleep", []), 14)
+    mood14 = _window(logs.get("mood", []), 14)
+    exercise14 = _window(logs.get("exercise", []), 14)
+    symptom14 = _window(logs.get("symptom_count", []), 14)
+
+    sleep_baseline = _mean(sleep14) if sleep14 else SLEEP_IDEAL_HOURS
+    mood_baseline = _mean(mood14) if mood14 else MOOD_IDEAL_SCORE
+    activity_baseline = _mean(exercise14) if exercise14 else ACTIVITY_IDEAL_SCORE
+    symptom_baseline = _mean(symptom14) if symptom14 else 0.0
+
+    sleep_variability = _safe_stddev(sleep14)
+    mood_variability = _safe_stddev(mood14)
+    behavior_volatility = (sleep_variability + mood_variability) / 2.0
+
+    adaptive_low_sleep = _clamp(
+        max(
+            float(thresholds["low_sleep_hours"]),
+            sleep_baseline * 0.78,
+        ),
+        lower=4.5,
+        upper=8.0,
+    )
+    adaptive_low_mood = _clamp(
+        max(
+            float(thresholds["low_mood_score"]),
+            mood_baseline - max(0.6, mood_variability * 0.8),
+        ),
+        lower=1.0,
+        upper=4.0,
+    )
+    adaptive_inactive_sum = int(
+        round(
+            _clamp(
+                _mean(exercise14[-7:]) if exercise14 else 0.0,
+                lower=0.0,
+                upper=2.0,
+            )
+        )
+    )
+    adaptive_medium_risk = _clamp(
+        float(thresholds["medium_risk_score"]) - behavior_volatility * 2.5,
+        lower=30.0,
+        upper=65.0,
+    )
+    adaptive_high_risk = _clamp(
+        max(
+            adaptive_medium_risk + 12.0,
+            float(thresholds["high_risk_score"]) - behavior_volatility * 3.5,
+        ),
+        lower=50.0,
+        upper=90.0,
+    )
+
+    return {
+        "baselines": {
+            "sleep": round(sleep_baseline, 4),
+            "mood": round(mood_baseline, 4),
+            "activity": round(activity_baseline, 4),
+            "symptom_count": round(symptom_baseline, 4),
+        },
+        "adaptive_thresholds": {
+            "low_sleep_hours": round(adaptive_low_sleep, 4),
+            "low_mood_score": round(adaptive_low_mood, 4),
+            "inactive_sum_3d": adaptive_inactive_sum,
+            "medium_risk_score": round(adaptive_medium_risk, 4),
+            "high_risk_score": round(adaptive_high_risk, 4),
+            "decline_rate": -0.08 if behavior_volatility < 0.9 else -0.05,
+            "increase_rate": 0.08 if behavior_volatility < 0.9 else 0.05,
+        },
+        "volatility": round(behavior_volatility, 4),
+        "window_days": min(14, max(len(sleep14), len(mood14), len(exercise14))),
+        "strategy": "user_adaptive_v1",
+    }
+
+
+def _weaviate_influence(retrieved_patterns: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not retrieved_patterns:
+        return {
+            "risk_adjustment": 0.0,
+            "confidence_adjustment": 0.0,
+            "matched_conditions": [],
+            "action_hints": [],
+        }
+
+    top = retrieved_patterns[:3]
+    weighted_relevance = _mean([float(item.get("relevance_score", 0.0)) for item in top])
+    condition_blob = " ".join(str(item.get("condition", "")).lower() for item in top)
+    risk_term_hits = len({term for term in WEAVIATE_RISK_TERMS if re.search(rf"\\b{re.escape(term)}\\b", condition_blob)})
+
+    risk_adjustment = _clamp(weighted_relevance * 14.0 + (risk_term_hits * 3.5), lower=0.0, upper=20.0)
+    confidence_adjustment = _clamp(weighted_relevance * 0.16 + len(top) * 0.01, lower=0.0, upper=0.14)
+
+    action_hints: List[str] = []
+    if any(term in condition_blob for term in ("insomnia", "fatigue", "sleep")):
+        action_hints.append("recommend_rest")
+    if any(term in condition_blob for term in ("anxiety", "depression", "burnout", "stress")):
+        action_hints.append("recommend_social_support")
+    if "chronic" in condition_blob:
+        action_hints.append("recommend_clinician_followup")
+
+    return {
+        "risk_adjustment": round(risk_adjustment, 4),
+        "confidence_adjustment": round(confidence_adjustment, 4),
+        "matched_conditions": [str(item.get("condition", "unknown")) for item in top],
+        "action_hints": list(dict.fromkeys(action_hints)),
+        "weighted_relevance": round(weighted_relevance, 4),
+    }
+
+
+def _evaluate_predictive_quality(logs: Dict[str, List[int]], calibration: Dict[str, Any]) -> Dict[str, Any]:
+    size = min(len(logs.get("sleep", [])), len(logs.get("mood", [])), len(logs.get("exercise", [])))
+    if size < 8:
+        return {
+            "samples": 0,
+            "accuracy": None,
+            "precision": None,
+            "recall": None,
+            "low_sleep_flag_accuracy": None,
+            "low_mood_flag_accuracy": None,
+            "notes": "not_enough_history",
+        }
+
+    low_sleep_t = float(calibration["adaptive_thresholds"]["low_sleep_hours"])
+    low_mood_t = float(calibration["adaptive_thresholds"]["low_mood_score"])
+
+    tp = fp = tn = fn = 0
+    low_sleep_match = 0
+    low_mood_match = 0
+    evaluated = 0
+
+    for idx in range(5, size - 1):
+        sleep_now = [float(v) for v in logs["sleep"][max(0, idx - 2): idx + 1]]
+        mood_now = [float(v) for v in logs["mood"][max(0, idx - 2): idx + 1]]
+
+        predicted_low_sleep = _mean(sleep_now) < low_sleep_t
+        predicted_low_mood = _mean(mood_now) <= low_mood_t
+        predicted_risk = predicted_low_sleep or predicted_low_mood
+
+        observed_next_low_sleep = float(logs["sleep"][idx + 1]) < low_sleep_t
+        observed_next_low_mood = float(logs["mood"][idx + 1]) <= low_mood_t
+        observed_outcome = observed_next_low_sleep or observed_next_low_mood
+
+        low_sleep_match += int(predicted_low_sleep == observed_next_low_sleep)
+        low_mood_match += int(predicted_low_mood == observed_next_low_mood)
+        evaluated += 1
+
+        if predicted_risk and observed_outcome:
+            tp += 1
+        elif predicted_risk and not observed_outcome:
+            fp += 1
+        elif not predicted_risk and observed_outcome:
+            fn += 1
+        else:
+            tn += 1
+
+    accuracy = (tp + tn) / evaluated if evaluated else None
+    precision = tp / (tp + fp) if (tp + fp) else None
+    recall = tp / (tp + fn) if (tp + fn) else None
+
+    return {
+        "samples": evaluated,
+        "accuracy": round(accuracy, 4) if accuracy is not None else None,
+        "precision": round(precision, 4) if precision is not None else None,
+        "recall": round(recall, 4) if recall is not None else None,
+        "low_sleep_flag_accuracy": round(low_sleep_match / evaluated, 4) if evaluated else None,
+        "low_mood_flag_accuracy": round(low_mood_match / evaluated, 4) if evaluated else None,
+        "notes": "rolling_next_day_proxy",
+    }
+
+
+def _build_mini_me_linkage(flags: List[str], projection: Dict[str, Any], tier: str, phase: str) -> Dict[str, Any]:
+    visual_tags = [FLAG_VISUAL_MAP[flag] for flag in flags if flag in FLAG_VISUAL_MAP]
+    unique_visual_tags = list(dict.fromkeys(visual_tags))
+
+    if phase == "acute-risk" or tier == "high":
+        animation_state = "alert_pulse"
+    elif projection.get("direction", 0) > 0:
+        animation_state = "recover_rise"
+    elif projection.get("direction", 0) < 0:
+        animation_state = "decline_fade"
+    else:
+        animation_state = "steady_idle"
+
+    return {
+        "avatar_visual_state": unique_visual_tags[0] if unique_visual_tags else "neutral",
+        "avatar_visual_tags": unique_visual_tags,
+        "animation_state": animation_state,
+        "projection_animation_map": {
+            "health_score_next_window": animation_state,
+            "direction": "up" if projection.get("direction", 0) > 0 else "down" if projection.get("direction", 0) < 0 else "flat",
+        },
+        "flag_visual_map": {flag: FLAG_VISUAL_MAP.get(flag, "neutral") for flag in flags},
+    }
 
 
 def _window(values: List[int], n: int) -> List[float]:
@@ -233,21 +461,35 @@ def _build_projection(scores: Dict[str, float], trends: Dict[str, Any]) -> Dict[
     return projection
 
 
-def _build_flags(state: Dict[str, bool], scores: Dict[str, float], trends: Dict[str, float], tier: str, confidence_score: float, alert: Optional[str]) -> List[str]:
+def _build_flags(
+    state: Dict[str, bool],
+    scores: Dict[str, float],
+    trends: Dict[str, float],
+    tier: str,
+    confidence_score: float,
+    alert: Optional[str],
+    calibration: Dict[str, Any],
+) -> List[str]:
     flags: List[str] = []
-    if scores["sleep"] < 60.0:
+    adaptive = calibration.get("adaptive_thresholds", {})
+    decline_rate = float(adaptive.get("decline_rate", -0.1))
+    increase_rate = float(adaptive.get("increase_rate", 0.1))
+    sleep_score_floor = _normalize_to_score(float(adaptive.get("low_sleep_hours", 6.0)), SLEEP_IDEAL_HOURS)
+    mood_score_floor = _normalize_to_score(float(adaptive.get("low_mood_score", 2.0)), MOOD_IDEAL_SCORE)
+
+    if scores["sleep"] < sleep_score_floor:
         flags.append("low_sleep")
     if scores["activity"] < 60.0:
         flags.append("low_activity")
-    if scores["mood"] < 60.0:
+    if scores["mood"] < mood_score_floor:
         flags.append("low_mood")
-    if trends["sleep_trend_rate"] < -0.1:
+    if trends["sleep_trend_rate"] < decline_rate:
         flags.append("sleep_declining")
-    if trends["activity_trend_rate"] < -0.1:
+    if trends["activity_trend_rate"] < decline_rate:
         flags.append("activity_declining")
-    if trends["mood_trend_rate"] < -0.1:
+    if trends["mood_trend_rate"] < decline_rate:
         flags.append("mood_declining")
-    if trends["symptom_count_trend_rate"] > 0.1:
+    if trends["symptom_count_trend_rate"] > increase_rate:
         flags.append("symptoms_increasing")
     if state["low_sleep"] and state["low_mood"]:
         flags.append("sleep_mood_compound_risk")
@@ -313,12 +555,12 @@ def compute_features(logs: Dict[str, List[int]]) -> Dict[str, float]:
     return features
 
 
-def compute_user_state(logs: Dict[str, List[int]], features: Dict[str, float], policy: Dict) -> Dict[str, bool]:
-    t = policy["thresholds"]
+def compute_user_state(logs: Dict[str, List[int]], features: Dict[str, float], calibration: Dict[str, Any]) -> Dict[str, bool]:
+    t = calibration.get("adaptive_thresholds", {})
     state = {
-        "low_sleep": features["sleep_avg_3"] < t["low_sleep_hours"],
-        "low_mood": features["mood_avg_3"] <= t["low_mood_score"],
-        "inactive": sum(logs.get("exercise", [])[-3:]) <= t["inactive_sum_3d"],
+        "low_sleep": features["sleep_avg_3"] < float(t.get("low_sleep_hours", 6.0)),
+        "low_mood": features["mood_avg_3"] <= float(t.get("low_mood_score", 2.0)),
+        "inactive": sum(logs.get("exercise", [])[-3:]) <= int(t.get("inactive_sum_3d", 0)),
     }
     return state
 
@@ -372,11 +614,11 @@ def _confidence_score(logs: Dict[str, List[int]], features: Dict[str, float], po
     return max(0.0, min(1.0, confidence))
 
 
-def _intervention_tier(risk_score: float, policy: Dict) -> str:
-    t = policy["thresholds"]
-    if risk_score >= t["high_risk_score"]:
+def _intervention_tier(risk_score: float, calibration: Dict[str, Any]) -> str:
+    t = calibration.get("adaptive_thresholds", {})
+    if risk_score >= float(t.get("high_risk_score", 70.0)):
         return "high"
-    if risk_score >= t["medium_risk_score"]:
+    if risk_score >= float(t.get("medium_risk_score", 40.0)):
         return "medium"
     return "low"
 
@@ -407,7 +649,13 @@ def _action_probabilities(features: Dict[str, float], risk_score: float, policy:
     return probs
 
 
-def _select_actions(state: Dict[str, bool], risk_score: float, policy: Dict, probs: Dict[str, float]) -> List[str]:
+def _select_actions(
+    state: Dict[str, bool],
+    risk_score: float,
+    policy: Dict,
+    probs: Dict[str, float],
+    prioritized_actions: Optional[List[str]] = None,
+) -> List[str]:
     selected: List[str] = []
     for action_name, action_policy in policy["action_policies"].items():
         requirements = action_policy.get("requires", [])
@@ -421,6 +669,11 @@ def _select_actions(state: Dict[str, bool], risk_score: float, policy: Dict, pro
 
     if not selected:
         selected.append("maintain_routine")
+
+    if prioritized_actions:
+        for action in prioritized_actions:
+            if action not in selected and action in policy.get("action_policies", {}):
+                selected.insert(0, action)
     return selected
 
 
@@ -603,17 +856,28 @@ def analyze_logs(
 ) -> IntelligenceAnalyzeResponse:
     retrieved_patterns = retrieved_patterns or []
     policy = get_intelligence_policy()
+    calibration = _build_calibration(logs=logs, policy=policy)
     features = compute_features(logs)
     scores = _build_scores(logs)
     trends = _build_trends(logs, scores=scores)
     projection = _build_projection(scores=scores, trends=trends)
-    state = compute_user_state(logs=logs, features=features, policy=policy)
+    state = compute_user_state(logs=logs, features=features, calibration=calibration)
     risk_score, trace = _risk_components(state=state, features=features, policy=policy)
     confidence_score = _confidence_score(logs=logs, features=features, policy=policy)
-    tier = _intervention_tier(risk_score=risk_score, policy=policy)
+    weaviate_signal = _weaviate_influence(retrieved_patterns)
+    risk_score = _clamp(risk_score + float(weaviate_signal["risk_adjustment"]), lower=0.0, upper=100.0)
+    confidence_score = _clamp(confidence_score + float(weaviate_signal["confidence_adjustment"]), lower=0.0, upper=1.0)
+
+    tier = _intervention_tier(risk_score=risk_score, calibration=calibration)
     phase = _user_phase(risk_score=risk_score, features=features, tier=tier)
     probs = _action_probabilities(features=features, risk_score=risk_score, policy=policy)
-    selected_actions = _select_actions(state=state, risk_score=risk_score, policy=policy, probs=probs)
+    selected_actions = _select_actions(
+        state=state,
+        risk_score=risk_score,
+        policy=policy,
+        probs=probs,
+        prioritized_actions=weaviate_signal.get("action_hints", []),
+    )
     reasons, evidence, constraints = _decision_reasoning(
         state=state,
         selected_actions=selected_actions,
@@ -639,6 +903,8 @@ def analyze_logs(
                 f"{item.get('condition', 'unknown')}"
                 f" score={item.get('relevance_score', 0)}"
             )
+        evidence.append(f"weaviate.risk_adjustment={weaviate_signal['risk_adjustment']}")
+        evidence.append(f"weaviate.confidence_adjustment={weaviate_signal['confidence_adjustment']}")
     else:
         constraints.append("No Weaviate pattern matched above certainty threshold.")
 
@@ -656,6 +922,15 @@ def analyze_logs(
         tier=tier,
         confidence_score=confidence_score,
         alert=alert,
+        calibration=calibration,
+    )
+
+    evaluation = _evaluate_predictive_quality(logs=logs, calibration=calibration)
+    mini_me_linkage = _build_mini_me_linkage(
+        flags=flags,
+        projection=projection,
+        tier=tier,
+        phase=phase,
     )
 
     message = (
@@ -692,10 +967,13 @@ def analyze_logs(
         "pipeline.step1.normalization_completed",
         retrieval_step,
         "pipeline.step3.trend_projection_completed",
-        "pipeline.step4.rule_engine_applied",
-        "pipeline.step5.actions_selected",
+        "pipeline.step4.calibration_applied",
+        "pipeline.step5.rule_engine_applied",
+        "pipeline.step6.actions_selected",
         llm_step,
     ]
+    pipeline_trace.append(f"pipeline.weaviate.risk_adjustment={weaviate_signal['risk_adjustment']}")
+    pipeline_trace.append(f"pipeline.evaluation.samples={evaluation.get('samples', 0)}")
 
     return IntelligenceAnalyzeResponse(
         contract_version=str(policy.get("version", "2.0")),
@@ -720,6 +998,10 @@ def analyze_logs(
         actions=selected_actions,
         message=message,
         alert=alert,
+        calibration=calibration,
+        evaluation=evaluation,
+        weaviate_signal=weaviate_signal,
+        mini_me_linkage=mini_me_linkage,
         prompt_preview=build_prompt(
             state=state,
             selected_actions=selected_actions,

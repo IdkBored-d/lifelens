@@ -276,6 +276,10 @@ class IntelligenceAnalyzeResponse(BaseModel):
     constraints: List[str] = Field(default_factory=list)
     explanation_trace: List[str] = Field(default_factory=list)
     action_probabilities: Dict[str, float] = Field(default_factory=dict)
+    calibration: Dict[str, Any] = Field(default_factory=dict)
+    evaluation: Dict[str, Any] = Field(default_factory=dict)
+    weaviate_signal: Dict[str, Any] = Field(default_factory=dict)
+    mini_me_linkage: Dict[str, Any] = Field(default_factory=dict)
 
     # Backward compatibility with current frontend wiring.
     insights: List[str]

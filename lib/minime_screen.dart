@@ -315,6 +315,25 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   String? _avatarMoodFromIntelligence(String? baseMoodLabel) {
+    final linkage = _intelligence?.miniMeLinkage;
+    final visualState = (linkage?['avatar_visual_state'] as String?)?.trim();
+    if (visualState != null && visualState.isNotEmpty) {
+      const visualToMood = <String, String>{
+        'sleepy': 'tired',
+        'drowsy': 'tired',
+        'sad': 'sad',
+        'concerned': 'anxious',
+        'stressed': 'anxious',
+        'sluggish': 'neutral',
+        'critical': 'anxious',
+        'urgent': 'anxious',
+        'elevated': 'neutral',
+        'uncertain': 'neutral',
+        'neutral': 'neutral',
+      };
+      return visualToMood[visualState] ?? baseMoodLabel;
+    }
+
     final state = _intelligence?.state;
     if (state == null) {
       return baseMoodLabel;

@@ -173,6 +173,12 @@ class MiniMeIntelligenceReply {
     required this.insights,
     required this.actions,
     required this.message,
+    required this.flags,
+    required this.projection,
+    required this.miniMeLinkage,
+    required this.calibration,
+    required this.evaluation,
+    required this.weaviateSignal,
     this.alert,
   });
 
@@ -191,6 +197,12 @@ class MiniMeIntelligenceReply {
   final List<String> insights;
   final List<String> actions;
   final String message;
+  final List<String> flags;
+  final Map<String, double> projection;
+  final Map<String, dynamic> miniMeLinkage;
+  final Map<String, dynamic> calibration;
+  final Map<String, dynamic> evaluation;
+  final Map<String, dynamic> weaviateSignal;
   final String? alert;
 
   bool get lowSleep => state['low_sleep'] == true;
@@ -220,6 +232,16 @@ class MiniMeIntelligenceReply {
     return const <String, double>{};
   }
 
+  static Map<String, dynamic> _toDynamicMap(Object? raw) {
+    if (raw is Map<String, dynamic>) {
+      return raw;
+    }
+    if (raw is Map) {
+      return Map<String, dynamic>.from(raw);
+    }
+    return const <String, dynamic>{};
+  }
+
   factory MiniMeIntelligenceReply.fromJson(Map<String, dynamic> json) {
     final rawState = json['state'];
     final rawActions = json['actions'];
@@ -245,6 +267,12 @@ class MiniMeIntelligenceReply {
       insights: _toStringList(json['insights']),
       actions: parsedActions.isNotEmpty ? parsedActions : selectedActions,
       message: (json['message'] as String? ?? '').trim(),
+      flags: _toStringList(json['flags']),
+      projection: _toDoubleMap(json['projection']),
+      miniMeLinkage: _toDynamicMap(json['mini_me_linkage']),
+      calibration: _toDynamicMap(json['calibration']),
+      evaluation: _toDynamicMap(json['evaluation']),
+      weaviateSignal: _toDynamicMap(json['weaviate_signal']),
       alert: (json['alert'] as String?)?.trim(),
     );
   }
