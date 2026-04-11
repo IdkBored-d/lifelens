@@ -7,6 +7,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from artifact_paths import default_artifact_root, training_paths
+
 
 def _sha256(file_path: Path) -> str:
     digest = hashlib.sha256()
@@ -21,16 +23,30 @@ def _run(command, cwd: Path):
     return result.returncode, result.stdout, result.stderr
 
 
+def _current_git_branch(repo_root: Path) -> str:
+    code, stdout, _ = _run(["git", "branch", "--show-current"], repo_root)
+    return stdout.strip() if code == 0 else ""
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run tracked summarization training experiment")
     parser.add_argument("--human-quality-score", type=float, default=None)
+    parser.add_argument("--artifact-root", default=None)
+    parser.add_argument("--allow-main", action="store_true", help="Allow training on git main branch")
     args = parser.parse_args()
 
     base = Path(__file__).resolve().parent
+    repo_root = base.parents[2]
     python_cmd = sys.executable
+    artifact_root = Path(args.artifact_root).expanduser().resolve() if args.artifact_root else default_artifact_root()
+    paths = training_paths(artifact_root)
+
+    branch = _current_git_branch(repo_root)
+    if branch in {"main", "master"} and not args.allow_main:
+        raise SystemExit("Refusing to train on main/master. Use a feature branch or pass --allow-main.")
 
     dataset_path = base / "summarization_dataset.json"
-    reports_dir = base / "reports"
+    reports_dir = paths["reports_dir"]
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     v_code, v_out, v_err = _run([python_cmd, "validate_dataset.py", "--dataset", "summarization_dataset.json"], base)
@@ -39,13 +55,13 @@ def main():
         print(v_err)
         raise SystemExit("Dataset validation failed. Training aborted.")
 
-    t_code, t_out, t_err = _run([python_cmd, "train_model.py"], base)
+    t_code, t_out, t_err = _run([python_cmd, "train_model.py", "--artifact-root", str(paths["root"])], base)
     if t_code != 0:
         print(t_out)
         print(t_err)
         raise SystemExit("Training failed")
 
-    e_code, e_out, e_err = _run([python_cmd, "evaluate_model.py"], base)
+    e_code, e_out, e_err = _run([python_cmd, "evaluate_model.py", "--artifact-root", str(paths["root"])], base)
     if e_code != 0:
         print(e_out)
         print(e_err)
@@ -64,6 +80,8 @@ def main():
             "sha256": _sha256(dataset_path),
             "last_modified_utc": datetime.utcfromtimestamp(dataset_path.stat().st_mtime).isoformat() + "Z",
         },
+        "artifact_root": str(paths["root"]),
+        "git_branch": branch or "unknown",
         "training_args": {
             "LL_TRAIN_BATCH_SIZE": os.getenv("LL_TRAIN_BATCH_SIZE", "4"),
             "LL_TRAIN_EPOCHS": os.getenv("LL_TRAIN_EPOCHS", "3"),

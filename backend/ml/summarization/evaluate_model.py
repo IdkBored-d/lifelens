@@ -1,7 +1,10 @@
 import json
 import re
 import sys
+from argparse import ArgumentParser
 from pathlib import Path
+
+from artifact_paths import default_artifact_root, training_paths
 
 
 def _is_malformed(summary: str) -> bool:
@@ -89,11 +92,17 @@ def evaluate(gold_path: Path):
 
 
 def main():
+    parser = ArgumentParser(description="Evaluate LifeLens summarization outputs")
+    parser.add_argument("--gold", default="gold_eval_set.json")
+    parser.add_argument("--artifact-root", default=None)
+    args = parser.parse_args()
+
     base = Path(__file__).resolve().parent
-    gold_path = base / "gold_eval_set.json"
+    gold_path = (base / args.gold).resolve() if not Path(args.gold).is_absolute() else Path(args.gold)
     metrics, outputs = evaluate(gold_path)
 
-    reports_dir = base / "reports"
+    artifact_root = Path(args.artifact_root).expanduser().resolve() if args.artifact_root else default_artifact_root()
+    reports_dir = training_paths(artifact_root)["reports_dir"]
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     (reports_dir / "latest_eval_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
