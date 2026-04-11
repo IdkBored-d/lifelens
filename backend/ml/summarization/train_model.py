@@ -27,7 +27,12 @@ def main():
     args = parser.parse_args()
 
     base = Path(__file__).resolve().parent
-    dataset_path = (base / args.dataset).resolve() if not Path(args.dataset).is_absolute() else Path(args.dataset)
+    if Path(args.dataset).is_absolute():
+        dataset_path = Path(args.dataset)
+    elif (base / args.dataset).exists():
+        dataset_path = (base / args.dataset).resolve()
+    else:
+        dataset_path = Path(args.dataset).resolve()
 
     artifact_root = Path(args.artifact_root).expanduser().resolve() if args.artifact_root else default_artifact_root()
     paths = training_paths(artifact_root)
