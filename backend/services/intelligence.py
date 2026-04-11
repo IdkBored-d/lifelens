@@ -540,11 +540,34 @@ def _classify_trends(trends: Dict[str, Any], features: Dict[str, float]) -> Dict
 
 def _deterministic_summary(risk_score: float, tier: str, trend_classification: Dict[str, str], next_day: Dict[str, Any]) -> str:
     dominant_trend = trend_classification.get("overall", "stable")
-    return (
-        f"Deterministic analysis: tier={tier}, risk={risk_score:.1f}, trend={dominant_trend}, "
-        f"forecast_sleep={next_day.get('sleep', 0.0):.1f}, forecast_mood={next_day.get('mood', 0.0):.1f}, "
-        f"forecast_activity={next_day.get('activity', 0.0):.1f}."
-    )
+
+    if tier == "high":
+        opening = "Your current pattern suggests elevated short-term risk."
+    elif tier == "medium":
+        opening = "Your recent signals show moderate risk that should be watched closely."
+    else:
+        opening = "Your overall trend is currently in a manageable range."
+
+    if dominant_trend == "declining":
+        trend_note = "Sleep and mood trends are moving downward."
+    elif dominant_trend == "improving":
+        trend_note = "Recent signals show early recovery momentum."
+    else:
+        trend_note = "Your short-term trends look fairly stable."
+
+    return f"{opening} {trend_note}"
+
+
+def _action_to_user_text(action: str) -> str:
+    mapping = {
+        "ask_for_missing_data": "Log another day of sleep, mood, and activity for higher-confidence guidance.",
+        "recommend_rest": "Prioritize rest and lower stress load today.",
+        "recommend_exercise": "Add a short, low-pressure activity block to support momentum.",
+        "recommend_social_support": "Reach out to someone you trust and use supportive coping routines.",
+        "recommend_clinician_followup": "Consider timely clinician follow-up if these patterns continue.",
+        "maintain_routine": "Keep your current healthy routine consistent.",
+    }
+    return mapping.get(action, "Continue logging and maintain steady health habits.")
 
 
 def _fallback_message(
@@ -562,12 +585,22 @@ def _fallback_message(
         next_day=next_day,
     )
     primary_action = selected_actions[0] if selected_actions else "maintain_routine"
-    return f"{base} Recommended action: {primary_action}. Confidence={confidence_score:.2f}."
+    guidance = _action_to_user_text(primary_action)
+    if confidence_score < 0.45:
+        confidence_note = "Data confidence is limited right now."
+    elif confidence_score < 0.7:
+        confidence_note = "Confidence is moderate."
+    else:
+        confidence_note = "Confidence is high."
+    return f"{base} {guidance} {confidence_note}"
 
 
 def _is_summary_usable(summary: str) -> bool:
     normalized = summary.strip()
     lowered = normalized.lower()
+
+    if lowered.startswith("deterministic analysis:"):
+        return False
 
     if len(normalized) < 10:
         return False

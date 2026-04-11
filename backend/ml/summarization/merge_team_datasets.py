@@ -20,6 +20,22 @@ def merge_datasets(incoming_dir: Path, output_file: Path):
     merged = []
     seen = set()
 
+    if output_file.exists():
+        try:
+            existing_payload = json.loads(output_file.read_text(encoding="utf-8"))
+            if isinstance(existing_payload, list):
+                for row in existing_payload:
+                    normalized = _normalize_row(row)
+                    if not normalized:
+                        continue
+                    key = (normalized["input"].lower(), normalized["target"].lower())
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    merged.append(normalized)
+        except Exception:
+            pass
+
     for file_path in sorted(incoming_dir.glob("*.json")):
         try:
             payload = json.loads(file_path.read_text(encoding="utf-8"))

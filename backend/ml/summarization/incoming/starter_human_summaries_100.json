@@ -1,0 +1,402 @@
+[
+  {
+    "input": "sleep_avg_3=6.68 mood_avg_3=1.30 sleep_slope=0.007 mood_slope=-0.103 risk=70.08 trend=-0.020",
+    "target": "Low mood is the dominant concern in your current pattern."
+  },
+  {
+    "input": "sleep_avg_3=4.72 mood_avg_3=1.13 sleep_slope=-0.305 mood_slope=-0.593 risk=75.88 trend=-0.312",
+    "target": "Your current pattern reflects heightened risk with reinforcing declines."
+  },
+  {
+    "input": "sleep_avg_3=4.41 mood_avg_3=1.31 sleep_slope=-0.613 mood_slope=-0.353 risk=79.13 trend=-0.131",
+    "target": "Your current pattern reflects heightened risk with reinforcing declines."
+  },
+  {
+    "input": "sleep_avg_3=6.04 mood_avg_3=4.39 sleep_slope=0.503 mood_slope=0.218 risk=50.44 trend=0.295",
+    "target": "Sleep and mood are moving in a healthier direction over the latest window."
+  },
+  {
+    "input": "sleep_avg_3=4.15 mood_avg_3=1.42 sleep_slope=-0.341 mood_slope=-0.412 risk=87.50 trend=-0.288",
+    "target": "Risk remains high as key health signals continue trending in the wrong direction."
+  },
+  {
+    "input": "sleep_avg_3=7.53 mood_avg_3=1.70 sleep_slope=0.082 mood_slope=-0.023 risk=61.68 trend=-0.037",
+    "target": "Your emotional wellbeing trend is subdued and warrants supportive interventions."
+  },
+  {
+    "input": "sleep_avg_3=4.73 mood_avg_3=3.35 sleep_slope=-0.080 mood_slope=-0.096 risk=70.63 trend=0.023",
+    "target": "Low sleep is the main concern right now and should be prioritized."
+  },
+  {
+    "input": "sleep_avg_3=4.50 mood_avg_3=2.00 sleep_slope=-0.240 mood_slope=-0.322 risk=97.49 trend=-0.194",
+    "target": "Your current pattern reflects heightened risk with reinforcing declines."
+  },
+  {
+    "input": "sleep_avg_3=7.08 mood_avg_3=3.11 sleep_slope=0.029 mood_slope=-0.062 risk=44.02 trend=-0.066",
+    "target": "The latest pattern is stable and balanced across key wellbeing signals."
+  },
+  {
+    "input": "sleep_avg_3=5.58 mood_avg_3=2.19 sleep_slope=-0.482 mood_slope=-0.615 risk=96.65 trend=-0.522",
+    "target": "Risk remains high as key health signals continue trending in the wrong direction."
+  },
+  {
+    "input": "sleep_avg_3=5.21 mood_avg_3=1.59 sleep_slope=-0.417 mood_slope=-0.439 risk=85.54 trend=-0.251",
+    "target": "Recent signals show declining rest and mood, so fatigue risk is increasing."
+  },
+  {
+    "input": "sleep_avg_3=5.35 mood_avg_3=2.71 sleep_slope=-0.299 mood_slope=-0.330 risk=87.11 trend=-0.381",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=4.39 mood_avg_3=3.98 sleep_slope=0.052 mood_slope=-0.057 risk=73.33 trend=-0.079",
+    "target": "Your recent sleep level is below target, even though other signals are mixed."
+  },
+  {
+    "input": "sleep_avg_3=4.88 mood_avg_3=2.29 sleep_slope=-0.275 mood_slope=-0.297 risk=84.76 trend=-0.211",
+    "target": "Overall risk is elevated due to multiple negative trend signals."
+  },
+  {
+    "input": "sleep_avg_3=5.27 mood_avg_3=1.77 sleep_slope=-0.276 mood_slope=-0.158 risk=92.48 trend=-0.285",
+    "target": "Combined indicators suggest a high-risk short-term profile that needs close follow-up."
+  },
+  {
+    "input": "sleep_avg_3=5.84 mood_avg_3=4.31 sleep_slope=0.168 mood_slope=0.504 risk=57.19 trend=0.218",
+    "target": "You are showing early recovery signs, especially in short-term trend values."
+  },
+  {
+    "input": "sleep_avg_3=7.33 mood_avg_3=1.91 sleep_slope=-0.081 mood_slope=0.020 risk=54.78 trend=-0.104",
+    "target": "Mood remains below baseline despite otherwise moderate signals."
+  },
+  {
+    "input": "sleep_avg_3=7.16 mood_avg_3=2.04 sleep_slope=-0.056 mood_slope=-0.195 risk=51.49 trend=-0.188",
+    "target": "Mood has remained low in the recent window and may need added support."
+  },
+  {
+    "input": "sleep_avg_3=4.13 mood_avg_3=3.90 sleep_slope=-0.199 mood_slope=0.138 risk=66.15 trend=-0.020",
+    "target": "Your recent sleep level is below target, even though other signals are mixed."
+  },
+  {
+    "input": "sleep_avg_3=6.55 mood_avg_3=2.76 sleep_slope=0.536 mood_slope=0.424 risk=33.07 trend=0.136",
+    "target": "Sleep and mood are moving in a healthier direction over the latest window."
+  },
+  {
+    "input": "sleep_avg_3=5.32 mood_avg_3=1.16 sleep_slope=-0.579 mood_slope=-0.455 risk=74.87 trend=-0.304",
+    "target": "Current trends indicate reduced resilience as sleep and mood continue to drop."
+  },
+  {
+    "input": "sleep_avg_3=5.39 mood_avg_3=2.68 sleep_slope=-0.434 mood_slope=-0.524 risk=67.59 trend=-0.122",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=4.28 mood_avg_3=1.69 sleep_slope=-0.275 mood_slope=-0.385 risk=72.85 trend=-0.433",
+    "target": "Your current pattern reflects heightened risk with reinforcing declines."
+  },
+  {
+    "input": "sleep_avg_3=4.07 mood_avg_3=4.04 sleep_slope=-0.018 mood_slope=-0.043 risk=63.25 trend=-0.031",
+    "target": "Rest quality is currently the weakest signal and needs immediate attention."
+  },
+  {
+    "input": "sleep_avg_3=4.12 mood_avg_3=3.51 sleep_slope=0.055 mood_slope=-0.118 risk=62.43 trend=-0.043",
+    "target": "Your recent sleep level is below target, even though other signals are mixed."
+  },
+  {
+    "input": "sleep_avg_3=5.41 mood_avg_3=1.15 sleep_slope=-0.499 mood_slope=-0.458 risk=79.30 trend=-0.256",
+    "target": "Sleep and mood are both trending downward this week, suggesting rising strain."
+  },
+  {
+    "input": "sleep_avg_3=4.77 mood_avg_3=2.27 sleep_slope=-0.455 mood_slope=-0.269 risk=79.04 trend=-0.449",
+    "target": "Overall risk is elevated due to multiple negative trend signals."
+  },
+  {
+    "input": "sleep_avg_3=4.89 mood_avg_3=3.09 sleep_slope=-0.559 mood_slope=-0.348 risk=79.94 trend=-0.178",
+    "target": "Recent signals show declining rest and mood, so fatigue risk is increasing."
+  },
+  {
+    "input": "sleep_avg_3=6.31 mood_avg_3=3.46 sleep_slope=0.024 mood_slope=-0.040 risk=45.97 trend=0.061",
+    "target": "No strong change is visible in your recent trend, which suggests stability."
+  },
+  {
+    "input": "sleep_avg_3=7.20 mood_avg_3=1.18 sleep_slope=-0.032 mood_slope=-0.055 risk=79.44 trend=-0.076",
+    "target": "Mood remains below baseline despite otherwise moderate signals."
+  },
+  {
+    "input": "sleep_avg_3=6.60 mood_avg_3=2.84 sleep_slope=0.176 mood_slope=0.256 risk=58.57 trend=0.470",
+    "target": "Your trend is improving, with gradual gains in sleep and mood."
+  },
+  {
+    "input": "sleep_avg_3=6.05 mood_avg_3=2.62 sleep_slope=-0.397 mood_slope=-0.506 risk=75.63 trend=-0.186",
+    "target": "Recent signals show declining rest and mood, so fatigue risk is increasing."
+  },
+  {
+    "input": "sleep_avg_3=7.36 mood_avg_3=2.98 sleep_slope=0.230 mood_slope=0.165 risk=54.52 trend=0.509",
+    "target": "You are showing early recovery signs, especially in short-term trend values."
+  },
+  {
+    "input": "sleep_avg_3=7.27 mood_avg_3=4.72 sleep_slope=0.243 mood_slope=0.402 risk=41.59 trend=0.552",
+    "target": "Sleep and mood are moving in a healthier direction over the latest window."
+  },
+  {
+    "input": "sleep_avg_3=4.00 mood_avg_3=3.35 sleep_slope=-0.154 mood_slope=-0.076 risk=62.45 trend=-0.117",
+    "target": "Rest quality is currently the weakest signal and needs immediate attention."
+  },
+  {
+    "input": "sleep_avg_3=4.16 mood_avg_3=2.83 sleep_slope=-0.114 mood_slope=-0.058 risk=59.59 trend=-0.065",
+    "target": "Your recent sleep level is below target, even though other signals are mixed."
+  },
+  {
+    "input": "sleep_avg_3=6.21 mood_avg_3=3.84 sleep_slope=0.350 mood_slope=0.531 risk=34.94 trend=0.435",
+    "target": "Recent data shows recovery momentum across your key wellbeing indicators."
+  },
+  {
+    "input": "sleep_avg_3=6.56 mood_avg_3=3.81 sleep_slope=-0.013 mood_slope=-0.057 risk=61.77 trend=-0.020",
+    "target": "No strong change is visible in your recent trend, which suggests stability."
+  },
+  {
+    "input": "sleep_avg_3=5.26 mood_avg_3=1.21 sleep_slope=-0.186 mood_slope=-0.375 risk=94.69 trend=-0.307",
+    "target": "Risk remains high as key health signals continue trending in the wrong direction."
+  },
+  {
+    "input": "sleep_avg_3=6.99 mood_avg_3=1.08 sleep_slope=0.042 mood_slope=-0.197 risk=61.12 trend=-0.097",
+    "target": "Mood remains below baseline despite otherwise moderate signals."
+  },
+  {
+    "input": "sleep_avg_3=7.32 mood_avg_3=2.56 sleep_slope=0.444 mood_slope=0.266 risk=59.65 trend=0.473",
+    "target": "Recent data shows recovery momentum across your key wellbeing indicators."
+  },
+  {
+    "input": "sleep_avg_3=7.54 mood_avg_3=4.22 sleep_slope=0.527 mood_slope=0.224 risk=33.53 trend=0.472",
+    "target": "Recent data shows recovery momentum across your key wellbeing indicators."
+  },
+  {
+    "input": "sleep_avg_3=6.65 mood_avg_3=1.82 sleep_slope=-0.089 mood_slope=0.038 risk=54.07 trend=-0.203",
+    "target": "Mood has remained low in the recent window and may need added support."
+  },
+  {
+    "input": "sleep_avg_3=5.67 mood_avg_3=3.07 sleep_slope=-0.244 mood_slope=-0.195 risk=67.54 trend=-0.350",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=5.21 mood_avg_3=4.27 sleep_slope=0.400 mood_slope=0.235 risk=53.20 trend=0.363",
+    "target": "You are showing early recovery signs, especially in short-term trend values."
+  },
+  {
+    "input": "sleep_avg_3=6.39 mood_avg_3=3.81 sleep_slope=0.007 mood_slope=-0.033 risk=68.17 trend=-0.011",
+    "target": "Sleep and mood look steady overall; keep your current routine consistent."
+  },
+  {
+    "input": "sleep_avg_3=5.30 mood_avg_3=1.54 sleep_slope=-0.249 mood_slope=-0.145 risk=89.94 trend=-0.476",
+    "target": "Risk remains high as key health signals continue trending in the wrong direction."
+  },
+  {
+    "input": "sleep_avg_3=6.90 mood_avg_3=4.19 sleep_slope=0.024 mood_slope=0.068 risk=44.95 trend=-0.014",
+    "target": "The latest pattern is stable and balanced across key wellbeing signals."
+  },
+  {
+    "input": "sleep_avg_3=4.53 mood_avg_3=1.69 sleep_slope=-0.498 mood_slope=-0.288 risk=81.59 trend=-0.316",
+    "target": "Your current pattern reflects heightened risk with reinforcing declines."
+  },
+  {
+    "input": "sleep_avg_3=4.81 mood_avg_3=3.07 sleep_slope=0.041 mood_slope=0.069 risk=63.94 trend=-0.061",
+    "target": "Low sleep is the main concern right now and should be prioritized."
+  },
+  {
+    "input": "sleep_avg_3=6.51 mood_avg_3=1.79 sleep_slope=-0.083 mood_slope=-0.027 risk=68.58 trend=-0.195",
+    "target": "Your emotional wellbeing trend is subdued and warrants supportive interventions."
+  },
+  {
+    "input": "sleep_avg_3=6.83 mood_avg_3=4.54 sleep_slope=0.069 mood_slope=0.008 risk=63.55 trend=-0.048",
+    "target": "The latest pattern is stable and balanced across key wellbeing signals."
+  },
+  {
+    "input": "sleep_avg_3=4.58 mood_avg_3=3.29 sleep_slope=0.036 mood_slope=-0.009 risk=79.53 trend=-0.171",
+    "target": "Your recent sleep level is below target, even though other signals are mixed."
+  },
+  {
+    "input": "sleep_avg_3=6.98 mood_avg_3=2.86 sleep_slope=0.244 mood_slope=0.213 risk=39.66 trend=0.422",
+    "target": "Sleep and mood are moving in a healthier direction over the latest window."
+  },
+  {
+    "input": "sleep_avg_3=7.40 mood_avg_3=3.26 sleep_slope=-0.043 mood_slope=0.005 risk=46.21 trend=-0.044",
+    "target": "No strong change is visible in your recent trend, which suggests stability."
+  },
+  {
+    "input": "sleep_avg_3=6.30 mood_avg_3=4.80 sleep_slope=0.558 mood_slope=0.152 risk=35.25 trend=0.237",
+    "target": "Sleep and mood are moving in a healthier direction over the latest window."
+  },
+  {
+    "input": "sleep_avg_3=6.55 mood_avg_3=1.23 sleep_slope=-0.008 mood_slope=0.026 risk=67.03 trend=-0.046",
+    "target": "Mood remains below baseline despite otherwise moderate signals."
+  },
+  {
+    "input": "sleep_avg_3=6.43 mood_avg_3=4.24 sleep_slope=0.006 mood_slope=0.039 risk=57.91 trend=-0.070",
+    "target": "The latest pattern is stable and balanced across key wellbeing signals."
+  },
+  {
+    "input": "sleep_avg_3=4.83 mood_avg_3=4.33 sleep_slope=0.021 mood_slope=0.058 risk=58.51 trend=-0.034",
+    "target": "Sleep debt appears to be building, so recovery-focused habits are recommended."
+  },
+  {
+    "input": "sleep_avg_3=4.81 mood_avg_3=1.75 sleep_slope=-0.190 mood_slope=-0.125 risk=79.94 trend=-0.287",
+    "target": "Overall risk is elevated due to multiple negative trend signals."
+  },
+  {
+    "input": "sleep_avg_3=7.31 mood_avg_3=2.01 sleep_slope=0.116 mood_slope=-0.066 risk=78.65 trend=-0.072",
+    "target": "Mood has remained low in the recent window and may need added support."
+  },
+  {
+    "input": "sleep_avg_3=6.95 mood_avg_3=4.38 sleep_slope=-0.048 mood_slope=0.065 risk=44.40 trend=-0.044",
+    "target": "Your health signals are stable right now, with no major short-term decline."
+  },
+  {
+    "input": "sleep_avg_3=7.55 mood_avg_3=3.35 sleep_slope=-0.070 mood_slope=-0.015 risk=69.80 trend=0.040",
+    "target": "The latest pattern is stable and balanced across key wellbeing signals."
+  },
+  {
+    "input": "sleep_avg_3=6.86 mood_avg_3=3.88 sleep_slope=-0.053 mood_slope=-0.039 risk=52.14 trend=0.012",
+    "target": "Sleep and mood look steady overall; keep your current routine consistent."
+  },
+  {
+    "input": "sleep_avg_3=6.39 mood_avg_3=1.84 sleep_slope=-0.017 mood_slope=-0.012 risk=75.95 trend=-0.157",
+    "target": "Mood has remained low in the recent window and may need added support."
+  },
+  {
+    "input": "sleep_avg_3=7.33 mood_avg_3=1.66 sleep_slope=-0.073 mood_slope=0.046 risk=74.17 trend=-0.133",
+    "target": "Mood remains below baseline despite otherwise moderate signals."
+  },
+  {
+    "input": "sleep_avg_3=4.62 mood_avg_3=2.28 sleep_slope=-0.264 mood_slope=-0.547 risk=81.59 trend=-0.247",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=7.65 mood_avg_3=4.49 sleep_slope=0.049 mood_slope=-0.047 risk=56.57 trend=-0.040",
+    "target": "No strong change is visible in your recent trend, which suggests stability."
+  },
+  {
+    "input": "sleep_avg_3=4.47 mood_avg_3=1.38 sleep_slope=-0.292 mood_slope=-0.329 risk=79.65 trend=-0.360",
+    "target": "Current trends indicate reduced resilience as sleep and mood continue to drop."
+  },
+  {
+    "input": "sleep_avg_3=4.73 mood_avg_3=1.53 sleep_slope=-0.284 mood_slope=-0.508 risk=67.54 trend=-0.389",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=6.53 mood_avg_3=3.19 sleep_slope=0.033 mood_slope=-0.061 risk=51.41 trend=-0.063",
+    "target": "No strong change is visible in your recent trend, which suggests stability."
+  },
+  {
+    "input": "sleep_avg_3=6.41 mood_avg_3=3.08 sleep_slope=0.520 mood_slope=0.142 risk=49.57 trend=0.485",
+    "target": "Your trend is improving, with gradual gains in sleep and mood."
+  },
+  {
+    "input": "sleep_avg_3=4.46 mood_avg_3=3.83 sleep_slope=-0.102 mood_slope=0.069 risk=66.63 trend=-0.152",
+    "target": "Rest quality is currently the weakest signal and needs immediate attention."
+  },
+  {
+    "input": "sleep_avg_3=5.78 mood_avg_3=2.34 sleep_slope=-0.241 mood_slope=-0.313 risk=78.25 trend=-0.521",
+    "target": "Recent signals show declining rest and mood, so fatigue risk is increasing."
+  },
+  {
+    "input": "sleep_avg_3=4.33 mood_avg_3=2.93 sleep_slope=-0.370 mood_slope=-0.256 risk=62.02 trend=-0.330",
+    "target": "Current trends indicate reduced resilience as sleep and mood continue to drop."
+  },
+  {
+    "input": "sleep_avg_3=4.61 mood_avg_3=1.84 sleep_slope=-0.457 mood_slope=-0.376 risk=81.23 trend=-0.446",
+    "target": "Your current pattern reflects heightened risk with reinforcing declines."
+  },
+  {
+    "input": "sleep_avg_3=4.39 mood_avg_3=4.06 sleep_slope=0.000 mood_slope=0.156 risk=67.86 trend=0.038",
+    "target": "Rest quality is currently the weakest signal and needs immediate attention."
+  },
+  {
+    "input": "sleep_avg_3=5.71 mood_avg_3=1.35 sleep_slope=-0.514 mood_slope=-0.290 risk=76.08 trend=-0.484",
+    "target": "Overall risk is elevated due to multiple negative trend signals."
+  },
+  {
+    "input": "sleep_avg_3=4.60 mood_avg_3=3.92 sleep_slope=-0.049 mood_slope=0.109 risk=66.44 trend=0.024",
+    "target": "Rest quality is currently the weakest signal and needs immediate attention."
+  },
+  {
+    "input": "sleep_avg_3=4.86 mood_avg_3=1.58 sleep_slope=-0.137 mood_slope=-0.494 risk=94.40 trend=-0.510",
+    "target": "Overall risk is elevated due to multiple negative trend signals."
+  },
+  {
+    "input": "sleep_avg_3=5.02 mood_avg_3=2.90 sleep_slope=0.091 mood_slope=-0.086 risk=78.88 trend=-0.134",
+    "target": "Low sleep is the main concern right now and should be prioritized."
+  },
+  {
+    "input": "sleep_avg_3=7.31 mood_avg_3=4.52 sleep_slope=0.283 mood_slope=0.189 risk=56.35 trend=0.430",
+    "target": "Your trend is improving, with gradual gains in sleep and mood."
+  },
+  {
+    "input": "sleep_avg_3=3.92 mood_avg_3=4.32 sleep_slope=-0.130 mood_slope=-0.047 risk=74.20 trend=-0.163",
+    "target": "Low sleep is the main concern right now and should be prioritized."
+  },
+  {
+    "input": "sleep_avg_3=5.66 mood_avg_3=1.78 sleep_slope=-0.491 mood_slope=-0.485 risk=55.11 trend=-0.237",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=4.68 mood_avg_3=4.23 sleep_slope=-0.015 mood_slope=-0.050 risk=66.44 trend=-0.200",
+    "target": "Sleep debt appears to be building, so recovery-focused habits are recommended."
+  },
+  {
+    "input": "sleep_avg_3=5.84 mood_avg_3=2.80 sleep_slope=0.404 mood_slope=0.321 risk=59.59 trend=0.532",
+    "target": "Your trend is improving, with gradual gains in sleep and mood."
+  },
+  {
+    "input": "sleep_avg_3=5.95 mood_avg_3=1.47 sleep_slope=0.091 mood_slope=-0.155 risk=55.37 trend=-0.138",
+    "target": "Mood remains below baseline despite otherwise moderate signals."
+  },
+  {
+    "input": "sleep_avg_3=6.82 mood_avg_3=1.24 sleep_slope=0.054 mood_slope=-0.008 risk=52.04 trend=-0.068",
+    "target": "Mood has remained low in the recent window and may need added support."
+  },
+  {
+    "input": "sleep_avg_3=6.80 mood_avg_3=3.78 sleep_slope=0.530 mood_slope=0.166 risk=57.86 trend=0.236",
+    "target": "Your trend is improving, with gradual gains in sleep and mood."
+  },
+  {
+    "input": "sleep_avg_3=7.59 mood_avg_3=4.23 sleep_slope=0.027 mood_slope=0.030 risk=53.97 trend=0.024",
+    "target": "The latest pattern is stable and balanced across key wellbeing signals."
+  },
+  {
+    "input": "sleep_avg_3=4.51 mood_avg_3=1.81 sleep_slope=-0.325 mood_slope=-0.262 risk=77.56 trend=-0.510",
+    "target": "Recent signals show declining rest and mood, so fatigue risk is increasing."
+  },
+  {
+    "input": "sleep_avg_3=5.50 mood_avg_3=2.79 sleep_slope=-0.279 mood_slope=-0.456 risk=56.06 trend=-0.408",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=6.93 mood_avg_3=3.27 sleep_slope=-0.019 mood_slope=0.068 risk=66.20 trend=-0.036",
+    "target": "Sleep and mood look steady overall; keep your current routine consistent."
+  },
+  {
+    "input": "sleep_avg_3=6.82 mood_avg_3=3.04 sleep_slope=0.173 mood_slope=0.512 risk=36.37 trend=0.382",
+    "target": "Your trend is improving, with gradual gains in sleep and mood."
+  },
+  {
+    "input": "sleep_avg_3=7.52 mood_avg_3=4.52 sleep_slope=-0.058 mood_slope=-0.002 risk=44.08 trend=0.036",
+    "target": "Sleep and mood look steady overall; keep your current routine consistent."
+  },
+  {
+    "input": "sleep_avg_3=6.91 mood_avg_3=2.01 sleep_slope=0.070 mood_slope=-0.084 risk=75.73 trend=-0.072",
+    "target": "Your emotional wellbeing trend is subdued and warrants supportive interventions."
+  },
+  {
+    "input": "sleep_avg_3=6.57 mood_avg_3=4.48 sleep_slope=-0.008 mood_slope=0.051 risk=58.51 trend=-0.063",
+    "target": "Your health signals are stable right now, with no major short-term decline."
+  },
+  {
+    "input": "sleep_avg_3=6.66 mood_avg_3=2.04 sleep_slope=-0.034 mood_slope=-0.103 risk=78.10 trend=-0.011",
+    "target": "Low mood is the dominant concern in your current pattern."
+  },
+  {
+    "input": "sleep_avg_3=6.05 mood_avg_3=2.82 sleep_slope=-0.615 mood_slope=-0.255 risk=77.50 trend=-0.314",
+    "target": "Your short-term pattern is worsening, with lower sleep and mood over time."
+  },
+  {
+    "input": "sleep_avg_3=4.27 mood_avg_3=2.82 sleep_slope=-0.001 mood_slope=-0.041 risk=59.42 trend=0.012",
+    "target": "Sleep debt appears to be building, so recovery-focused habits are recommended."
+  }
+]
