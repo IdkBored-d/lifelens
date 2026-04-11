@@ -21,6 +21,9 @@ from models.schemas import (
     ErrorResponse,
     MiniMeChatRequest,
     MiniMeChatResponse,
+    MiniMeMemoryCompileResponse,
+    MiniMeMemoryDiff,
+    MiniMeMemoryState,
     MiniMeSuggestionsRequest,
     MiniMeSuggestionsResponse,
     MiniMeSuggestionItem,
@@ -33,6 +36,8 @@ from models.schemas import (
 from services.gemini_service import get_analysis_service, GeminiAnalysisService
 from services.intelligence import analyze_logs_in_order
 from services.intelligence_policy import get_intelligence_policy
+from services.memory_compiler import compile_minime_memory_with_diff
+from services.memory_logging import log_memory_event
 from config.settings import get_settings
 from google.genai import types
 
@@ -279,7 +284,7 @@ async def get_disclaimer():
     }
 
 
-def _build_minime_prompt(chat_input: MiniMeChatRequest) -> str:
+def _build_minime_prompt(chat_input: MiniMeChatRequest, memory_state: MiniMeMemoryState) -> str:
     latest_mood = chat_input.latest_mood_label or 'Unknown'
     intensity = chat_input.latest_mood_intensity
     mood_notes = chat_input.latest_mood_notes or 'None'
@@ -287,7 +292,7 @@ def _build_minime_prompt(chat_input: MiniMeChatRequest) -> str:
     active_symptoms = chat_input.active_symptoms or ['No active symptoms logged']
 
     history_lines = []
-    for item in chat_input.chat_history[-12:]:
+    for item in chat_input.chat_history[-4:]:
         speaker = 'User' if item.role == 'user' else 'Mini-Me'
         history_lines.append(f"{speaker}: {item.text}")
     history_text = '\n'.join(history_lines) if history_lines else 'No previous messages.'
@@ -328,6 +333,9 @@ Behavioral intelligence (PRIMARY — use this to shape your entire response. NEV
 
 {task}
 {intel_block}
+Structured memory context (PRIMARY truth for this turn):
+{_memory_state_to_natural_context(memory_state)}
+
 Supporting context:
 - Latest mood: {latest_mood}
 - Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
@@ -350,6 +358,38 @@ Rules:
 - Never output markdown lists unless asked.
 - Return plain text only.
 """
+
+
+def _memory_state_to_natural_context(memory_state: MiniMeMemoryState) -> str:
+    quick_track = memory_state.quick_track or {}
+
+    trend_label = str(quick_track.get("trend_label") or "unknown")
+    risk_score = quick_track.get("risk_score")
+    confidence = quick_track.get("confidence")
+    state_flags = quick_track.get("state_flags") or []
+    actions = quick_track.get("actions") or []
+
+    key_points_text = "; ".join(memory_state.key_points[:4]) if memory_state.key_points else "none"
+    flags_text = ", ".join(str(item) for item in state_flags) if state_flags else "none"
+    actions_text = ", ".join(str(item).replace("_", " ") for item in actions) if actions else "none"
+
+    if isinstance(risk_score, (int, float)):
+        risk_score_text = f"{risk_score:.1f}"
+    else:
+        risk_score_text = "unknown"
+
+    if isinstance(confidence, (int, float)):
+        confidence_text = f"{confidence:.2f}"
+    else:
+        confidence_text = "unknown"
+
+    return (
+        f"Summary: {memory_state.summary}\n"
+        f"Mood state: {memory_state.mood_state}. Risk level: {memory_state.risk}.\n"
+        f"Trend: {trend_label}. Risk score: {risk_score_text}. Confidence: {confidence_text}.\n"
+        f"Key points: {key_points_text}.\n"
+        f"Active state flags: {flags_text}. Suggested focus actions: {actions_text}."
+    )
 
 
 def _build_opening_fallback(chat_input: MiniMeChatRequest) -> str:
@@ -625,9 +665,14 @@ async def minime_chat(
 ):
     """Generate Mini-Me response grounded in logged mood and symptom context."""
     is_opening_request = not bool(chat_input.user_message.strip())
+    memory_state, memory_diff, _validation_passed = compile_minime_memory_with_diff(chat_input)
+    try:
+        log_memory_event(chat_input, memory_state, memory_diff, _validation_passed)
+    except Exception as e:
+        logger.warning(f"Mini-Me memory logging failed (chat): {e}")
 
     try:
-        prompt = _build_minime_prompt(chat_input)
+        prompt = _build_minime_prompt(chat_input, memory_state)
         response = analysis_service.client.models.generate_content(
             model='gemini-2.5-flash-lite',
             contents=prompt,
@@ -648,6 +693,8 @@ async def minime_chat(
             opening_suggestion=text if is_opening_request else '',
             reply=text,
             source='gemini',
+            memory_state=memory_state,
+            memory_diff=memory_diff,
         )
     except Exception as e:
         logger.warning(f"Mini-Me chat fallback used: {e}")
@@ -656,7 +703,29 @@ async def minime_chat(
             opening_suggestion=fallback_opening if is_opening_request else '',
             reply=_build_reply_fallback(chat_input),
             source='fallback',
+            memory_state=memory_state,
+            memory_diff=memory_diff,
         )
+
+
+@app.post(
+    "/api/v1/minime/memory",
+    response_model=MiniMeMemoryCompileResponse,
+    tags=["Mini-Me"],
+    summary="Compile Mini-Me structured memory"
+)
+async def compile_minime_memory_state(chat_input: MiniMeChatRequest):
+    """Compile deterministic memory JSON from chat history and quick-track context."""
+    memory_state, memory_diff, validation_passed = compile_minime_memory_with_diff(chat_input)
+    try:
+        log_memory_event(chat_input, memory_state, memory_diff, validation_passed)
+    except Exception as e:
+        logger.warning(f"Mini-Me memory logging failed (memory endpoint): {e}")
+    return MiniMeMemoryCompileResponse(
+        memory_state=memory_state,
+        memory_diff=memory_diff,
+        validation_passed=validation_passed,
+    )
 
 
 @app.post(

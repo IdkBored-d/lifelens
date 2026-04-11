@@ -6,7 +6,10 @@ from datasets import load_dataset
 from transformers import T5Tokenizer, T5ForConditionalGeneration, Trainer, TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
 
-from artifact_paths import default_artifact_root, training_paths
+try:
+    from .artifact_paths import default_artifact_root, training_paths
+except ImportError:
+    from artifact_paths import default_artifact_root, training_paths
 
 
 def preprocess(example, tokenizer):

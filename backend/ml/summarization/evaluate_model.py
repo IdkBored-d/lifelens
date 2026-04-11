@@ -4,7 +4,10 @@ import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
-from artifact_paths import default_artifact_root, training_paths
+try:
+    from .artifact_paths import default_artifact_root, training_paths
+except ImportError:
+    from artifact_paths import default_artifact_root, training_paths
 
 
 def _is_malformed(summary: str) -> bool:

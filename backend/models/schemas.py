@@ -2,7 +2,7 @@
 Data models for Lifelens API
 """
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -134,6 +134,7 @@ class MiniMeChatRequest(BaseModel):
     intelligence_risk_score: Optional[float] = Field(None, ge=0, le=100)
     intelligence_confidence: Optional[float] = Field(None, ge=0, le=1)
     intelligence_state: Optional[Dict[str, bool]] = Field(None)
+    previous_memory: Optional[Dict[str, Any]] = Field(None)
 
     @validator('user_message')
     def validate_user_message(cls, v):
@@ -148,11 +149,38 @@ class MiniMeChatRequest(BaseModel):
         return v.strip()
 
 
+class MiniMeMemoryState(BaseModel):
+    """Minimal structured memory block used by Mini-Me prompt pipeline."""
+    summary: str = Field('', max_length=320)
+    key_points: List[str] = Field(default_factory=list, max_items=10)
+    mood_state: Literal['positive', 'neutral', 'negative'] = 'neutral'
+    risk: Literal['low', 'medium', 'high'] = 'low'
+    quick_track: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MiniMeMemoryDiff(BaseModel):
+    """Deterministic change log for memory updates."""
+    changed_fields: List[str] = Field(default_factory=list, max_items=12)
+    reason: str = Field('', max_length=500)
+    contradiction_count: int = Field(0, ge=0)
+    contradiction_reasons: List[str] = Field(default_factory=list, max_items=8)
+    stability_score: float = Field(1.0, ge=0.0, le=1.0)
+
+
+class MiniMeMemoryCompileResponse(BaseModel):
+    """Structured memory compilation result with validation and diff info."""
+    memory_state: MiniMeMemoryState
+    memory_diff: MiniMeMemoryDiff
+    validation_passed: bool = True
+
+
 class MiniMeChatResponse(BaseModel):
     """Response model for Mini-Me chat."""
     opening_suggestion: str
     reply: str
     source: str = Field(..., description="gemini or fallback")
+    memory_state: Optional[MiniMeMemoryState] = None
+    memory_diff: Optional[MiniMeMemoryDiff] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
