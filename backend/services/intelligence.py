@@ -570,6 +570,11 @@ def _action_to_user_text(action: str) -> str:
     return mapping.get(action, "Continue logging and maintain steady health habits.")
 
 
+def _strip_recommended_action_clause(text: str) -> str:
+    cleaned = re.sub(r"\s*Recommended action: .*?Confidence=[0-9.]+\.?", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def _fallback_message(
     selected_actions: List[str],
     confidence_score: float,
@@ -584,15 +589,13 @@ def _fallback_message(
         trend_classification=trend_classification,
         next_day=next_day,
     )
-    primary_action = selected_actions[0] if selected_actions else "maintain_routine"
-    guidance = _action_to_user_text(primary_action)
     if confidence_score < 0.45:
         confidence_note = "Data confidence is limited right now."
     elif confidence_score < 0.7:
         confidence_note = "Confidence is moderate."
     else:
         confidence_note = "Confidence is high."
-    return f"{base} {guidance} {confidence_note}"
+    return f"{base} {confidence_note}"
 
 
 def _is_summary_usable(summary: str) -> bool:
@@ -1165,6 +1168,7 @@ def analyze_logs(
     logger.info(f"[Summarization Input] {input_text}")
     try:
         summary_message = generate_summary(input_text)
+        summary_message = _strip_recommended_action_clause(summary_message)
         if not _is_summary_usable(summary_message):
             summary_message = _fallback_message(
                 selected_actions=selected_actions,
