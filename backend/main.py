@@ -333,8 +333,8 @@ Behavioral intelligence (PRIMARY — use this to shape your entire response. NEV
 
 {task}
 {intel_block}
-Structured memory context (PRIMARY truth for this turn):
-{_memory_state_to_natural_context(memory_state)}
+Memory context (PRIMARY truth for this turn):
+{_memory_state_to_structured_context(memory_state)}
 
 Supporting context:
 - Latest mood: {latest_mood}
@@ -389,6 +389,50 @@ def _memory_state_to_natural_context(memory_state: MiniMeMemoryState) -> str:
         f"Trend: {trend_label}. Risk score: {risk_score_text}. Confidence: {confidence_text}.\n"
         f"Key points: {key_points_text}.\n"
         f"Active state flags: {flags_text}. Suggested focus actions: {actions_text}."
+    )
+
+
+def _memory_state_to_structured_context(memory_state: MiniMeMemoryState) -> str:
+    """Build a structured context card from memory state for chat prompt."""
+    quick_track = memory_state.quick_track or {}
+    
+    # Extract risk context
+    risk_level = memory_state.risk.upper()
+    trend_label = (quick_track.get("trend_label") or "").strip() or "unknown"
+    alert = (quick_track.get("alert") or "").strip()
+    actions = quick_track.get("actions") or []
+    
+    # Build context line with actionable guidance
+    if memory_state.risk == "high":
+        risk_context = f"RISK: {risk_level}. Trend: {trend_label}."
+        if alert:
+            risk_context += f" Alert: {alert}"
+        else:
+            risk_context += " Consider reaching out to someone you trust or a professional."
+    elif memory_state.risk == "medium":
+        risk_context = f"RISK: {risk_level}. Trend: {trend_label}. Stay mindful of patterns."
+    else:
+        risk_context = f"RISK: {risk_level}. Trend: {trend_label}."
+    
+    # Extract mood and symptoms from key_points
+    mood_label = "Unknown"
+    symptoms_list = []
+    
+    for key_point in (memory_state.key_points or []):
+        if key_point.startswith("mood label:"):
+            mood_label = key_point.replace("mood label:", "").strip().title()
+        if key_point.startswith("symptoms reported:"):
+            symptoms_str = key_point.replace("symptoms reported:", "").strip()
+            symptoms_list = [s.strip().title() for s in symptoms_str.split(",") if s.strip()]
+    
+    symptoms_text = ", ".join(symptoms_list) if symptoms_list else "None"
+    
+    # Build structured card
+    return (
+        f"[CONTEXT: {risk_context}\n"
+        f"SYMPTOMS: {symptoms_text}.\n"
+        f"MOOD: {mood_label}.\n"
+        f"SUMMARY: {memory_state.summary}]"
     )
 
 
