@@ -8,12 +8,12 @@
 
 ## Executive Summary
 
-The LifeLens scoring system has been validated against a comprehensive synthetic dataset covering all signal combinations and edge cases. Results demonstrate:
+The LifeLens scoring system has been validated against a comprehensive synthetic dataset covering the main signal combinations and edge cases. Results demonstrate:
 
-- **Trend Detection**: 43% accuracy on threshold-based predictor (baseline for comparison)
+- **Trend Detection**: 48% accuracy on threshold-based predictor (baseline for comparison)
 - **Risk Classification**: 100% accuracy on synthetic data, AUC 1.0 for high-risk detection
-- **Calibration**: Expected Calibration Error of 0.111 (good alignment between confidence and actual probability)
-- **Rank Correlation**: Spearman r = 0.886 (strong correlation with ground truth severity)
+- **Calibration**: Expected Calibration Error of 0.106 (good alignment between confidence and actual probability)
+- **Rank Correlation**: Spearman r = 0.894 (strong correlation with ground truth severity)
 
 **Conclusion**: Scoring methodology is internally consistent and defensible. Real performance depends on labeled real-world data.
 
@@ -67,8 +67,8 @@ All signals are normalized to 0-100 scale and combined via weighted addition.
 
 | Type | Count | Distribution |
 |------|-------|---|
-| Trend rows | 100 | 33 declining, 25 stable, 42 improving |
-| Risk rows | 100 | 33 low, 32 medium, 35 high |
+| Trend rows | 100 | 33 declining, 33 stable, 34 improving |
+| Risk rows | 100 | 33 low, 35 medium, 32 high |
 | **Total** | **200** | Balanced across all categories |
 
 **Data Quality Checks**:
@@ -85,25 +85,25 @@ All signals are normalized to 0-100 scale and combined via weighted addition.
 
 | Metric | Value |
 |--------|-------|
-| **Accuracy** | 43.0% |
-| **Macro-F1** | 0.411 |
+| **Accuracy** | 48.0% |
+| **Macro-F1** | 0.429 |
 
 ### Per-Class Performance
 
 | Label | Precision | Recall | F1 | Support |
 |-------|-----------|--------|-----|---------|
-| Declining | 1.000 | 0.212 | 0.350 | 33 |
-| Stable | 0.305 | 1.000 | 0.467 | 25 |
-| Improving | 1.000 | 0.262 | 0.415 | 42 |
+| Declining | 1.000 | 0.182 | 0.308 | 33 |
+| Stable | 0.388 | 1.000 | 0.559 | 33 |
+| Improving | 1.000 | 0.265 | 0.419 | 34 |
 
 ### Confusion Matrix
 
 ```
 Actual    Predicted
          Declining  Improving  Stable
-Declining      7         0        26
-Improving      0        11        31
-Stable         0         0        25
+Declining      6         0        27
+Improving      0         9        25
+Stable         0         0        33
 ```
 
 ### Interpretation
@@ -129,7 +129,7 @@ Stable         0         0        25
 | **Label Accuracy** | 100.0% |
 | **AUC (high-risk detection)** | 1.000 |
 | **Brier Score** | 0.031 |
-| **Spearman Correlation (rank)** | 0.886 |
+| **Spearman Correlation (rank)** | 0.894 |
 
 ### Per-Class Performance
 
@@ -145,21 +145,21 @@ Comparing predicted confidence vs actual outcomes in 5 bins:
 
 | Bin | Avg Confidence | Observed Accuracy | Count |
 |-----|---|---|---|
-| 0 (0-20%) | 0.152 | 0.000 | 21 |
-| 1 (20-40%) | 0.309 | 0.184 | 19 |
-| 2 (40-60%) | 0.503 | 0.500 | 19 |
-| 3 (60-80%) | 0.722 | 0.842 | 19 |
-| 4 (80-100%) | 0.857 | 1.000 | 22 |
+| 0 (0-20%) | 0.148 | 0.000 | 17 |
+| 1 (20-40%) | 0.308 | 0.167 | 24 |
+| 2 (40-60%) | 0.489 | 0.500 | 21 |
+| 3 (60-80%) | 0.721 | 0.824 | 17 |
+| 4 (80-100%) | 0.870 | 1.000 | 21 |
 
-**Expected Calibration Error**: 0.111
+**Expected Calibration Error**: 0.106
 
 ### Interpretation
 
 - **Perfect accuracy on synthetic data**: Score thresholds align perfectly with label definitions (expected)
-- **Strong ranking (Spearman r = 0.886)**: Relative risk ordering is reliable
+- **Strong ranking (Spearman r = 0.894)**: Relative risk ordering is reliable
 - **Good calibration**: Predicted confidence aligns well with observed outcomes, especially in high-confidence bins
 - **Slight underconfidence in medium bin**: Scores in 40-60% range slightly underestimate actual risk
-- **ECE 0.111**: Overall, model is slightly underconfident on average (acceptable range < 0.20)
+- **ECE 0.106**: Overall, model is slightly underconfident on average (acceptable range < 0.20)
 
 **Recommendation for improvement**:
 - Retrain thresholds on real user outcomes (what actually predicts escalation/severity?)

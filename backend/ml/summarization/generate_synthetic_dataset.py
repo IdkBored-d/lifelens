@@ -7,8 +7,8 @@ Output: evaluation_dataset.jsonl (ready to validate and evaluate)
 
 import json
 import random
+from pathlib import Path
 from typing import List, Dict, Any
-from datetime import datetime, timedelta
 
 # Random seed for reproducibility
 random.seed(42)
@@ -23,31 +23,39 @@ def generate_trend_rows(count: int = 100) -> List[Dict[str, Any]]:
     for i in range(count):
         signal_type = random.choice(signal_types)
 
-        # Realistic numeric ranges (matching your actual data distribution)
+        # Realistic numeric ranges (matching the expected signal scale)
         if signal_type == "sleep":
             past_avg = random.uniform(4.0, 9.0)
-            recent_avg = random.uniform(4.0, 9.0)
+            min_value = 0.0
+            max_value = 12.0
         elif signal_type == "mood":
             past_avg = random.uniform(1.0, 5.0)
-            recent_avg = random.uniform(1.0, 5.0)
+            min_value = 0.0
+            max_value = 5.0
         else:  # activity
             past_avg = random.uniform(0.0, 120.0)  # minutes
-            recent_avg = random.uniform(0.0, 120.0)
+            min_value = 0.0
+            max_value = 180.0
 
-        # Compute delta and rate to match the label
+        # Compute delta and rate to match the label after rounding.
         label = random.choice(trend_labels)
         if label == "improving":
-            actual_delta = abs(recent_avg - past_avg) * random.uniform(0.05, 0.15)
-            actual_rate = actual_delta / max(abs(past_avg), 0.1)
-            recent_avg = past_avg + actual_delta
+            delta = random.uniform(0.06, 0.25)
+            if signal_type == "activity":
+                delta = random.uniform(0.5, 8.0)
+            recent_avg = min(past_avg + delta, max_value)
         elif label == "declining":
-            actual_delta = abs(recent_avg - past_avg) * random.uniform(0.05, 0.15)
-            actual_rate = -actual_delta / max(abs(past_avg), 0.1)
-            recent_avg = past_avg - actual_delta
+            delta = random.uniform(0.06, 0.25)
+            if signal_type == "activity":
+                delta = random.uniform(0.5, 8.0)
+            recent_avg = max(past_avg - delta, min_value)
         else:  # stable
-            actual_delta = random.uniform(-0.02, 0.02) * past_avg
-            actual_rate = actual_delta / max(abs(past_avg), 0.1)
-            recent_avg = past_avg + actual_delta
+            recent_avg = past_avg + random.uniform(-0.02, 0.02) * max(past_avg, 1.0)
+
+        past_avg = round(past_avg, 2)
+        recent_avg = round(recent_avg, 2)
+        actual_delta = round(recent_avg - past_avg, 2)
+        actual_rate = round(actual_delta / max(abs(past_avg), 0.1), 2)
 
         row = {
             "id": f"trend_{i:04d}",
@@ -130,11 +138,9 @@ def main():
     random.shuffle(all_rows)
 
     # Write to JSONL
-    output_path = (
-        r"d:\Users\He846\OneDrive\Documents\GitHub\lifelens\backend\ml\summarization\evaluation_dataset.jsonl"
-    )
+    output_path = Path(__file__).resolve().parent / "evaluation_dataset.jsonl"
 
-    with open(output_path, "w") as f:
+    with output_path.open("w", encoding="utf-8") as f:
         for row in all_rows:
             f.write(json.dumps(row) + "\n")
 

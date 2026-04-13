@@ -195,6 +195,8 @@ def _validate_risk_row(row: Dict[str, Any], index: int) -> Tuple[List[str], Dict
         errors.append(f"{prefix}: invalid risk_bucket {risk_bucket!r}")
 
     score = row.get("predicted_risk_score")
+    if score is None:
+        score = row.get("score")
     if score is not None:
         metrics["bucket_from_score"] = _bucket_from_risk_score(score)
         metrics["bucket_agrees"] = metrics["bucket_from_score"] == risk_bucket

@@ -23,16 +23,16 @@
     }
   },
   "confusion_matrix": {
-    "declining": {
-      "declining": 6,
-      "stable": 27
-    },
     "improving": {
       "stable": 25,
       "improving": 9
     },
     "stable": {
       "stable": 33
+    },
+    "declining": {
+      "stable": 27,
+      "declining": 6
     }
   }
 }

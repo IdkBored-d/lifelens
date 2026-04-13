@@ -229,7 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
 
-                    onPressed: () {},
+                    onPressed: () async => _resetPreferences(context),
                   ),
                 ],
               ),
@@ -592,6 +592,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _resetPreferences(BuildContext context) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    try {
+      context.read<ThemeController>().setCalmMode(false);
+      await FirebaseFirestore.instance.collection('users').doc(userId).set({
+        'notificationsEnabled': true,
+      }, SetOptions(merge: true));
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Preferences reset to defaults')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not reset preferences: $e')),
+        );
       }
     }
   }

@@ -56,7 +56,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         const Duration(seconds: 3),
         onTimeout: () {},
       );
-      _bootstrapMiniMe();
       final moodStore = context.read<MoodLogStore>();
       final moodCtx   = _buildMoodContext(moodStore);
       _sessionId = await _chatSessionService.startSession(
@@ -64,6 +63,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         moodIntensity: moodCtx.intensity,
         moodNotes:     moodCtx.notes.isEmpty ? null : moodCtx.notes,
       );
+      _bootstrapMiniMe();
     });
   }
 

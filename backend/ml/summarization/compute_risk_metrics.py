@@ -7,9 +7,7 @@ Output: comprehensive risk assessment metrics
 
 import json
 import argparse
-import math
-from collections import defaultdict
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 
 
 def load_risk_rows(dataset_path: str) -> List[Dict[str, Any]]:
