@@ -1,5 +1,11 @@
 # Summarization Data Contract
 
+## Evaluation Artifacts
+- JSON Schema for labeled eval rows: [evaluation_dataset.schema.json](evaluation_dataset.schema.json)
+- Labeling rubric: [evaluation_rubric.md](evaluation_rubric.md)
+- Validator script: [validate_evaluation_dataset.py](validate_evaluation_dataset.py)
+- Validation protocol: [evaluation_protocol.md](evaluation_protocol.md)
+
 ## Row Schema
 Each training row must be a JSON object with this shape:
 
