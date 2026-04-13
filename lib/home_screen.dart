@@ -43,8 +43,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final pages = List<Widget>.generate(_pages.length, (index) {
+      return TickerMode(enabled: index == _navIndex, child: _pages[index]);
+    }, growable: false);
+
     return Scaffold(
-      body: IndexedStack(index: _navIndex, children: _pages),
+      body: IndexedStack(index: _navIndex, children: pages),
       bottomNavigationBar: BottomNav(
         currentIndex: _navIndex,
         onChanged: (i) => setState(() => _navIndex = i),

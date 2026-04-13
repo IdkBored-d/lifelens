@@ -6,10 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
-import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
-import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
 
@@ -135,7 +133,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     final t = (intensity - 1) / 4;
 
     return BoxShadow(
-      color: cs.primary.withValues(alpha:0.20 + t * 0.45),
+      color: cs.primary.withOpacity(0.20 + t * 0.45),
       blurRadius: 10 + t * 18,
       spreadRadius: 1 + t * 2.5,
     );
@@ -242,7 +240,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               duration: const Duration(milliseconds: 160),
                               curve: Curves.easeOut,
                               transform: isSelected
-                                  ? (Matrix4.diagonal3Values(1.05, 1.05, 1.0))
+                                  ? (Matrix4.identity()..scale(1.05))
                                   : Matrix4.identity(),
                               decoration: BoxDecoration(
                                 color: isSelected
@@ -251,8 +249,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: isSelected
-                                      ? cs.primary.withValues(alpha:0.40)
-                                      : cs.outlineVariant.withValues(alpha:0.55),
+                                      ? cs.primary.withOpacity(0.40)
+                                      : cs.outlineVariant.withOpacity(0.55),
                                 ),
                               ),
                               child: Center(
@@ -282,7 +280,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                       color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: cs.outlineVariant.withValues(alpha:0.45),
+                        color: cs.outlineVariant.withOpacity(0.45),
                       ),
                     ),
                     child: Row(
@@ -433,7 +431,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             final userLog =
                                 '${notes.isNotEmpty ? notes : m.label}$tagPart [intensity: ${intensity.toInt()}/5]';
 
-                            final moodLogStore = context.read<MoodLogStore>();
                             try {
                               final now = DateTime.now();
                               final persistedSummary = notes.isEmpty
@@ -454,17 +451,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               await IsarService.instance.init();
                               await IsarService.instance.writeMoodEntry(
                                 moodEntry,
-                              );
-                              if (!mounted) return;
-                              moodLogStore.add(
-                                MoodCheckIn(
-                                  moodLabel: m.label,
-                                  emoji: m.emoji,
-                                  intensity: intensity.toInt(),
-                                  tags: tags.toList(growable: false),
-                                  notes: notes,
-                                  createdAt: now,
-                                ),
                               );
                               try {
                                 await _syncMoodToCloud(
@@ -598,7 +584,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
       ),
       child: child,
     );
@@ -673,7 +659,7 @@ class _RecentCheckInRowState extends State<_RecentCheckInRow> {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
         ),
         child: Column(
           children: [
@@ -729,7 +715,7 @@ class _RecentCheckInRowState extends State<_RecentCheckInRow> {
                   color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: cs.outlineVariant.withValues(alpha:0.45),
+                    color: cs.outlineVariant.withOpacity(0.45),
                   ),
                 ),
                 child: Text(

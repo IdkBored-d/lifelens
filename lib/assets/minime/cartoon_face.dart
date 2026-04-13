@@ -20,10 +20,25 @@ class MiniMeFacePalette {
   final Color cheek;
   final Color eye;
   final Color accessory;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is MiniMeFacePalette &&
+            other.primary == primary &&
+            other.secondary == secondary &&
+            other.belly == belly &&
+            other.beak == beak &&
+            other.cheek == cheek &&
+            other.eye == eye &&
+            other.accessory == accessory;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(primary, secondary, belly, beak, cheek, eye, accessory);
 }
 
-/// Draws a mascot-style Mini-Me face that feels more like a companion than a
-/// human head. The surrounding body and accessories are rendered in the avatar.
 class CartoonFace extends StatelessWidget {
   const CartoonFace({
     super.key,
@@ -31,12 +46,20 @@ class CartoonFace extends StatelessWidget {
     required this.palette,
     this.size = 80,
     this.blink = 0,
+    this.degradationLevel = 0,
+    this.headDip = 0,
+    this.wateryEyes = false,
+    this.puffiness = 0,
   });
 
   final String expression;
   final MiniMeFacePalette palette;
   final double size;
   final double blink;
+  final double degradationLevel;
+  final double headDip;
+  final bool wateryEyes;
+  final double puffiness;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +71,10 @@ class CartoonFace extends StatelessWidget {
           expression: expression,
           palette: palette,
           blink: blink.clamp(0.0, 1.0),
+          degradationLevel: degradationLevel.clamp(0.0, 1.0),
+          headDip: headDip,
+          wateryEyes: wateryEyes,
+          puffiness: puffiness.clamp(0.0, 1.0),
         ),
       ),
     );
@@ -59,72 +86,119 @@ class _CartoonFacePainter extends CustomPainter {
     required this.expression,
     required this.palette,
     required this.blink,
+    required this.degradationLevel,
+    required this.headDip,
+    required this.wateryEyes,
+    required this.puffiness,
   });
 
   final String expression;
   final MiniMeFacePalette palette;
   final double blink;
+  final double degradationLevel;
+  final double headDip;
+  final bool wateryEyes;
+  final double puffiness;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final eyeY = size.height * 0.385;
-    final eyeSpread = size.width * 0.195;
-    final eyeWidth = size.width * 0.16;
-    final eyeRadius = size.width * 0.07;
-    final cheekRadius = size.width * 0.09;
     final blinkScale = 1 - (blink * 0.92);
+    final eyeSpread = size.width * 0.19;
+    final eyeY =
+        size.height * (0.39 + degradationLevel * 0.014) + headDip * 0.01;
+    final eyeWidth = size.width * 0.12;
     final eyeHeight = math.max(
-      size.height * 0.012,
-      eyeRadius * 2.05 * blinkScale,
+      size.height * 0.018,
+      size.height * 0.15 * blinkScale,
+    );
+    final underEyeStrength = math.min(
+      1.0,
+      degradationLevel * 1.08 + puffiness * 0.18,
     );
 
     final cheekPaint = Paint()
       ..shader =
           RadialGradient(
             colors: [
-              palette.cheek.withValues(alpha: 0.46),
+              palette.cheek.withValues(alpha: 0.35 - degradationLevel * 0.18),
               palette.cheek.withValues(alpha: 0),
             ],
           ).createShader(
             Rect.fromCircle(
-              center: Offset(center.dx - size.width * 0.26, size.height * 0.5),
-              radius: cheekRadius,
+              center: Offset(center.dx - size.width * 0.24, size.height * 0.54),
+              radius: size.width * 0.12,
             ),
-          )
-      ..style = PaintingStyle.fill;
+          );
 
     canvas.drawCircle(
-      Offset(center.dx - size.width * 0.26, size.height * 0.5),
-      cheekRadius,
+      Offset(center.dx - size.width * 0.24, size.height * 0.54),
+      size.width * 0.12,
       cheekPaint,
     );
     canvas.drawCircle(
-      Offset(center.dx + size.width * 0.26, size.height * 0.5),
-      cheekRadius,
+      Offset(center.dx + size.width * 0.24, size.height * 0.54),
+      size.width * 0.12,
       cheekPaint,
     );
 
-    final eyeSocketPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.14)
+    final underEyePaint = Paint()
+      ..color = const Color(
+        0xFF53617F,
+      ).withValues(alpha: 0.08 + underEyeStrength * 0.3)
       ..style = PaintingStyle.fill;
+    final underEyeDeepPaint = Paint()
+      ..color = const Color(
+        0xFF34405A,
+      ).withValues(alpha: underEyeStrength * 0.16)
+      ..style = PaintingStyle.fill;
+    if (underEyeStrength > 0.02) {
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(center.dx - eyeSpread, eyeY + size.height * 0.07),
+          width: size.width * (0.16 + degradationLevel * 0.03),
+          height:
+              size.height *
+              (0.055 + degradationLevel * 0.05 + puffiness * 0.02),
+        ),
+        underEyePaint,
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(center.dx + eyeSpread, eyeY + size.height * 0.07),
+          width: size.width * (0.16 + degradationLevel * 0.03),
+          height:
+              size.height *
+              (0.055 + degradationLevel * 0.05 + puffiness * 0.02),
+        ),
+        underEyePaint,
+      );
+      if (underEyeStrength > 0.18) {
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(center.dx - eyeSpread, eyeY + size.height * 0.074),
+            width: size.width * (0.11 + degradationLevel * 0.02),
+            height: size.height * (0.026 + degradationLevel * 0.03),
+          ),
+          underEyeDeepPaint,
+        );
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(center.dx + eyeSpread, eyeY + size.height * 0.074),
+            width: size.width * (0.11 + degradationLevel * 0.02),
+            height: size.height * (0.026 + degradationLevel * 0.03),
+          ),
+          underEyeDeepPaint,
+        );
+      }
+    }
+
     final eyePaint = Paint()
-      ..shader =
-          LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [palette.eye.withValues(alpha: 0.96), palette.eye],
-          ).createShader(
-            Rect.fromLTWH(0, eyeY - eyeRadius, size.width, eyeRadius * 2.4),
-          )
+      ..color = palette.eye
       ..style = PaintingStyle.fill;
-    final highlightPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.9)
+    final eyeHighlightPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.92)
       ..style = PaintingStyle.fill;
-    final eyeOutlinePaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.01;
 
     final leftEyeRect = RRect.fromRectAndRadius(
       Rect.fromCenter(
@@ -132,7 +206,7 @@ class _CartoonFacePainter extends CustomPainter {
         width: eyeWidth,
         height: eyeHeight,
       ),
-      Radius.circular(eyeRadius * 1.2),
+      Radius.circular(size.width * 0.08),
     );
     final rightEyeRect = RRect.fromRectAndRadius(
       Rect.fromCenter(
@@ -140,100 +214,129 @@ class _CartoonFacePainter extends CustomPainter {
         width: eyeWidth,
         height: eyeHeight,
       ),
-      Radius.circular(eyeRadius * 1.2),
+      Radius.circular(size.width * 0.08),
     );
 
-    canvas.drawRRect(leftEyeRect.inflate(size.width * 0.02), eyeSocketPaint);
-    canvas.drawRRect(rightEyeRect.inflate(size.width * 0.02), eyeSocketPaint);
     canvas.drawRRect(leftEyeRect, eyePaint);
     canvas.drawRRect(rightEyeRect, eyePaint);
-    canvas.drawRRect(leftEyeRect, eyeOutlinePaint);
-    canvas.drawRRect(rightEyeRect, eyeOutlinePaint);
 
-    if (blink < 0.45) {
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(
-            center.dx - eyeSpread - eyeRadius * 0.15,
-            eyeY - eyeRadius * 0.18,
-          ),
-          width: eyeRadius * 0.4,
-          height: eyeRadius * 0.28,
+    if (blink < 0.5) {
+      canvas.drawCircle(
+        Offset(
+          center.dx - eyeSpread - size.width * 0.014,
+          eyeY - size.height * 0.03,
         ),
-        highlightPaint,
+        size.width * 0.015,
+        eyeHighlightPaint,
       );
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(
-            center.dx + eyeSpread - eyeRadius * 0.15,
-            eyeY - eyeRadius * 0.18,
-          ),
-          width: eyeRadius * 0.4,
-          height: eyeRadius * 0.28,
+      canvas.drawCircle(
+        Offset(
+          center.dx + eyeSpread - size.width * 0.014,
+          eyeY - size.height * 0.03,
         ),
-        highlightPaint,
+        size.width * 0.015,
+        eyeHighlightPaint,
       );
     }
 
-    final beakPaint = Paint()
-      ..shader =
-          LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.white.withValues(alpha: 0.18),
-              palette.beak,
-              palette.beak.withValues(alpha: 0.96),
-            ],
-          ).createShader(
-            Rect.fromLTWH(
-              center.dx - size.width * 0.1,
-              size.height * 0.46,
-              size.width * 0.2,
-              size.height * 0.16,
-            ),
-          )
+    if (wateryEyes && blink < 0.82) {
+      final tearPaint = Paint()
+        ..color = const Color(0xFF79B9E8).withValues(alpha: 0.44)
+        ..style = PaintingStyle.fill;
+      final leftTear = Path()
+        ..moveTo(center.dx - eyeSpread, eyeY + size.height * 0.055)
+        ..quadraticBezierTo(
+          center.dx - eyeSpread + size.width * 0.02,
+          eyeY + size.height * 0.11,
+          center.dx - eyeSpread - size.width * 0.004,
+          eyeY + size.height * 0.132,
+        )
+        ..quadraticBezierTo(
+          center.dx - eyeSpread - size.width * 0.03,
+          eyeY + size.height * 0.1,
+          center.dx - eyeSpread,
+          eyeY + size.height * 0.055,
+        )
+        ..close();
+      final rightTear = Path()
+        ..moveTo(center.dx + eyeSpread, eyeY + size.height * 0.055)
+        ..quadraticBezierTo(
+          center.dx + eyeSpread + size.width * 0.02,
+          eyeY + size.height * 0.11,
+          center.dx + eyeSpread - size.width * 0.004,
+          eyeY + size.height * 0.132,
+        )
+        ..quadraticBezierTo(
+          center.dx + eyeSpread - size.width * 0.03,
+          eyeY + size.height * 0.1,
+          center.dx + eyeSpread,
+          eyeY + size.height * 0.055,
+        )
+        ..close();
+      canvas.drawPath(leftTear, tearPaint);
+      canvas.drawPath(rightTear, tearPaint);
+    }
+
+    final muzzleRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(
+          center.dx,
+          size.height * (0.6 + degradationLevel * 0.016),
+        ),
+        width: size.width * 0.42,
+        height: size.height * 0.23,
+      ),
+      Radius.circular(size.width * 0.18),
+    );
+    final muzzlePaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.white.withValues(alpha: 0.94), palette.belly],
+      ).createShader(muzzleRect.outerRect);
+    canvas.drawRRect(muzzleRect, muzzlePaint);
+
+    final nosePaint = Paint()
+      ..color = palette.eye
       ..style = PaintingStyle.fill;
-    final beakLinePaint = Paint()
-      ..color = palette.eye.withValues(alpha: 0.14)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = size.width * 0.012;
-    final beakPath = Path()
-      ..moveTo(center.dx, size.height * 0.46)
-      ..lineTo(center.dx - size.width * 0.092, size.height * 0.555)
-      ..quadraticBezierTo(
-        center.dx,
-        size.height * 0.61,
-        center.dx + size.width * 0.092,
-        size.height * 0.555,
-      )
-      ..close();
-    canvas.drawPath(beakPath, beakPaint);
-    canvas.drawLine(
-      Offset(center.dx, size.height * 0.49),
-      Offset(center.dx, size.height * 0.575),
-      beakLinePaint,
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(center.dx, size.height * 0.55),
+          width: size.width * 0.12,
+          height: size.height * 0.08,
+        ),
+        Radius.circular(size.width * 0.05),
+      ),
+      nosePaint,
     );
 
     final mouthPaint = Paint()
-      ..color = palette.eye.withValues(alpha: 0.9)
+      ..color = palette.eye.withValues(alpha: 0.92)
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = size.width * 0.03;
+      ..strokeWidth = size.width * 0.024;
 
-    final mouthCenter = Offset(center.dx, size.height * 0.635);
-    final mouthWidth = size.width * 0.22;
+    canvas.drawLine(
+      Offset(center.dx, size.height * 0.59),
+      Offset(center.dx, size.height * 0.64),
+      mouthPaint,
+    );
+
+    final mouthCenter = Offset(
+      center.dx,
+      size.height * (0.69 + degradationLevel * 0.02),
+    );
     switch (expression) {
       case 'happy':
         canvas.drawArc(
           Rect.fromCenter(
             center: mouthCenter,
-            width: mouthWidth * 0.96,
-            height: mouthWidth * 0.72,
+            width: size.width * 0.2,
+            height: size.height * 0.12,
           ),
-          0.2,
-          math.pi - 0.4,
+          0.15,
+          math.pi - 0.3,
           false,
           mouthPaint,
         );
@@ -241,12 +344,12 @@ class _CartoonFacePainter extends CustomPainter {
       case 'sad':
         canvas.drawArc(
           Rect.fromCenter(
-            center: mouthCenter.translate(0, size.height * 0.04),
-            width: mouthWidth,
-            height: mouthWidth * 0.58,
+            center: mouthCenter.translate(0, size.height * 0.05),
+            width: size.width * 0.22,
+            height: size.height * 0.11,
           ),
-          math.pi + 0.3,
-          math.pi - 0.6,
+          math.pi + 0.28,
+          math.pi - 0.56,
           false,
           mouthPaint,
         );
@@ -254,37 +357,118 @@ class _CartoonFacePainter extends CustomPainter {
       case 'angry':
         canvas.drawLine(
           Offset(
-            center.dx - mouthWidth * 0.36,
-            mouthCenter.dy + size.height * 0.02,
+            center.dx - size.width * 0.08,
+            mouthCenter.dy + size.height * 0.01,
           ),
           Offset(
-            center.dx + mouthWidth * 0.36,
+            center.dx + size.width * 0.08,
             mouthCenter.dy - size.height * 0.01,
           ),
           mouthPaint,
         );
-        _drawBrows(canvas, size, center, tilt: 1);
+        _drawBrows(canvas, size, center, intensity: 1);
         break;
       case 'calm':
         canvas.drawArc(
           Rect.fromCenter(
-            center: mouthCenter.translate(0, size.height * 0.01),
-            width: mouthWidth * 0.9,
-            height: mouthWidth * 0.36,
+            center: mouthCenter,
+            width: size.width * 0.18,
+            height: size.height * 0.08,
           ),
-          0.35,
-          math.pi - 0.72,
+          0.28,
+          math.pi - 0.58,
           false,
           mouthPaint,
         );
         break;
       default:
-        canvas.drawLine(
-          Offset(center.dx - mouthWidth * 0.28, mouthCenter.dy),
-          Offset(center.dx + mouthWidth * 0.28, mouthCenter.dy),
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: mouthCenter,
+            width: size.width * 0.16,
+            height: size.height * 0.05,
+          ),
+          0.24,
+          math.pi - 0.5,
+          false,
           mouthPaint,
         );
         break;
+    }
+
+    if (degradationLevel > 0.16) {
+      final wrinklePaint = Paint()
+        ..color = palette.eye.withValues(alpha: degradationLevel * 0.22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.012
+        ..strokeCap = StrokeCap.round;
+
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(center.dx - eyeSpread, eyeY + size.height * 0.08),
+          width: size.width * 0.14,
+          height: size.height * 0.05,
+        ),
+        0.2,
+        math.pi - 0.4,
+        false,
+        wrinklePaint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(center.dx + eyeSpread, eyeY + size.height * 0.08),
+          width: size.width * 0.14,
+          height: size.height * 0.05,
+        ),
+        0.2,
+        math.pi - 0.4,
+        false,
+        wrinklePaint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(center.dx, size.height * 0.48),
+          width: size.width * 0.18,
+          height: size.height * 0.05,
+        ),
+        math.pi + 0.18,
+        math.pi - 0.36,
+        false,
+        wrinklePaint,
+      );
+    }
+
+    if (degradationLevel > 0.34) {
+      final fatigueLinePaint = Paint()
+        ..color = const Color(
+          0xFF34405A,
+        ).withValues(alpha: degradationLevel * 0.24)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.01
+        ..strokeCap = StrokeCap.round;
+
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(center.dx - eyeSpread, eyeY + size.height * 0.095),
+          width: size.width * 0.16,
+          height: size.height * 0.042,
+        ),
+        0.22,
+        math.pi - 0.44,
+        false,
+        fatigueLinePaint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(center.dx + eyeSpread, eyeY + size.height * 0.095),
+          width: size.width * 0.16,
+          height: size.height * 0.042,
+        ),
+        0.22,
+        math.pi - 0.44,
+        false,
+        fatigueLinePaint,
+      );
     }
   }
 
@@ -292,35 +476,27 @@ class _CartoonFacePainter extends CustomPainter {
     Canvas canvas,
     Size size,
     Offset center, {
-    required double tilt,
+    required double intensity,
   }) {
     final browPaint = Paint()
-      ..color = palette.eye.withValues(alpha: 0.95)
+      ..color = palette.eye
       ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.03
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.024;
 
-    final browY = size.height * 0.27;
-    final spread = size.width * 0.19;
     canvas.drawLine(
       Offset(
-        center.dx - spread - size.width * 0.05,
-        browY + size.height * 0.015 * tilt,
+        center.dx - size.width * 0.27,
+        size.height * 0.29 + intensity * size.height * 0.015,
       ),
-      Offset(
-        center.dx - spread + size.width * 0.045,
-        browY - size.height * 0.015 * tilt,
-      ),
+      Offset(center.dx - size.width * 0.15, size.height * 0.25),
       browPaint,
     );
     canvas.drawLine(
+      Offset(center.dx + size.width * 0.15, size.height * 0.25),
       Offset(
-        center.dx + spread - size.width * 0.045,
-        browY - size.height * 0.015 * tilt,
-      ),
-      Offset(
-        center.dx + spread + size.width * 0.05,
-        browY + size.height * 0.015 * tilt,
+        center.dx + size.width * 0.27,
+        size.height * 0.29 + intensity * size.height * 0.015,
       ),
       browPaint,
     );
@@ -330,6 +506,10 @@ class _CartoonFacePainter extends CustomPainter {
   bool shouldRepaint(covariant _CartoonFacePainter oldDelegate) {
     return oldDelegate.expression != expression ||
         oldDelegate.palette != palette ||
-        oldDelegate.blink != blink;
+        oldDelegate.blink != blink ||
+        oldDelegate.degradationLevel != degradationLevel ||
+        oldDelegate.headDip != headDip ||
+        oldDelegate.wateryEyes != wateryEyes ||
+        oldDelegate.puffiness != puffiness;
   }
 }

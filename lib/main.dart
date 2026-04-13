@@ -10,6 +10,7 @@ import 'services/background_eod_service.dart';
 import 'package:provider/provider.dart';
 import 'moodlog_store.dart';
 import 'avatar_store.dart';
+import 'sleep_store.dart';
 import 'theme_controller.dart';
 
 void main() async {
@@ -29,6 +30,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => MoodLogStore()),
         ChangeNotifierProvider(create: (_) => AvatarStore()),
+        ChangeNotifierProvider(create: (_) => SleepStore()),
         ChangeNotifierProvider(create: (_) => ThemeController()),
       ],
       child: const MyApp(),

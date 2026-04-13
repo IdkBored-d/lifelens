@@ -5,6 +5,7 @@ import 'restart.dart';
 import 'preferences_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
+import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -81,11 +82,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     CircleAvatar(
                       radius: 44,
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      child: Icon(
-                        Icons.person,
-                        size: 48,
-                        color: theme.colorScheme.onPrimaryContainer,
+                      backgroundColor: Colors.transparent,
+                      child: MiniMeProfileIcon(
+                        size: 88,
+                        padding: 7,
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        borderColor: theme.colorScheme.outlineVariant
+                            .withValues(alpha: 0.4),
                       ),
                     ),
 

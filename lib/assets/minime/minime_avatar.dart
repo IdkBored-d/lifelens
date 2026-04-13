@@ -4,6 +4,88 @@ import 'package:flutter/material.dart';
 
 import 'cartoon_face.dart';
 
+enum MiniMeAmbientEffect { none, sparkles, haze, rainCloud, sweat }
+
+enum MiniMeAccessoryMood { none, coffee, blanket, bandage, star }
+
+enum MiniMeOutfitMode { standard, comfort, active, polished, worn }
+
+class MiniMeVisualState {
+  const MiniMeVisualState({
+    this.wearLevel = 0,
+    this.energyLevel = 0.6,
+    this.recoveryLevel = 0,
+    this.muscleToneLevel = 0,
+    this.symptomLevel = 0,
+    this.sleepDebtLevel = 0,
+    this.distressLevel = 0,
+    this.streakLevel = 0,
+    this.messyHairLevel = 0,
+    this.postureSlump = 0,
+    this.wateryEyes = false,
+    this.ambientEffect = MiniMeAmbientEffect.none,
+    this.accessoryMood = MiniMeAccessoryMood.none,
+    this.outfitMode = MiniMeOutfitMode.standard,
+    this.statusText = '',
+  });
+
+  final double wearLevel;
+  final double energyLevel;
+  final double recoveryLevel;
+  final double muscleToneLevel;
+  final double symptomLevel;
+  final double sleepDebtLevel;
+  final double distressLevel;
+  final double streakLevel;
+  final double messyHairLevel;
+  final double postureSlump;
+  final bool wateryEyes;
+  final MiniMeAmbientEffect ambientEffect;
+  final MiniMeAccessoryMood accessoryMood;
+  final MiniMeOutfitMode outfitMode;
+  final String statusText;
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is MiniMeVisualState &&
+            other.wearLevel == wearLevel &&
+            other.energyLevel == energyLevel &&
+            other.recoveryLevel == recoveryLevel &&
+            other.muscleToneLevel == muscleToneLevel &&
+            other.symptomLevel == symptomLevel &&
+            other.sleepDebtLevel == sleepDebtLevel &&
+            other.distressLevel == distressLevel &&
+            other.streakLevel == streakLevel &&
+            other.messyHairLevel == messyHairLevel &&
+            other.postureSlump == postureSlump &&
+            other.wateryEyes == wateryEyes &&
+            other.ambientEffect == ambientEffect &&
+            other.accessoryMood == accessoryMood &&
+            other.outfitMode == outfitMode &&
+            other.statusText == statusText;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    wearLevel,
+    energyLevel,
+    recoveryLevel,
+    muscleToneLevel,
+    symptomLevel,
+    sleepDebtLevel,
+    distressLevel,
+    streakLevel,
+    messyHairLevel,
+    postureSlump,
+    wateryEyes,
+    ambientEffect,
+    accessoryMood,
+    outfitMode,
+    statusText,
+  );
+}
+
 class MiniMeAvatar extends StatefulWidget {
   const MiniMeAvatar({
     super.key,
@@ -11,6 +93,7 @@ class MiniMeAvatar extends StatefulWidget {
     required this.hairModel,
     required this.shirtModel,
     required this.bodyWidthScale,
+    this.companionId,
     this.moodLabel,
     this.moodEmoji,
     this.glow,
@@ -18,12 +101,18 @@ class MiniMeAvatar extends StatefulWidget {
     this.onAvatarTap,
     this.onRotate,
     this.enableAutoRotate = true,
+    this.enableInteractions = true,
+    this.degradationLevel = 0,
+    this.isHatched = true,
+    this.visualState = const MiniMeVisualState(),
+    this.onHatchComplete,
   });
 
   final String bodyModel;
   final String hairModel;
   final String shirtModel;
   final double bodyWidthScale;
+  final String? companionId;
   final String? moodLabel;
   final String? moodEmoji;
   final Color? glow;
@@ -31,22 +120,201 @@ class MiniMeAvatar extends StatefulWidget {
   final VoidCallback? onAvatarTap;
   final ValueChanged<double>? onRotate;
   final bool enableAutoRotate;
+  final bool enableInteractions;
+  final double degradationLevel;
+  final bool isHatched;
+  final MiniMeVisualState visualState;
+  final VoidCallback? onHatchComplete;
 
   @override
   State<MiniMeAvatar> createState() => _MiniMeAvatarState();
 }
 
+class MiniMePortraitAvatar extends StatelessWidget {
+  const MiniMePortraitAvatar({
+    super.key,
+    required this.bodyModel,
+    required this.hairModel,
+    required this.shirtModel,
+    required this.bodyWidthScale,
+    this.companionId,
+    this.moodLabel,
+    this.size = 64,
+    this.degradationLevel = 0,
+    this.visualState = const MiniMeVisualState(),
+  });
+
+  final String bodyModel;
+  final String hairModel;
+  final String shirtModel;
+  final double bodyWidthScale;
+  final String? companionId;
+  final String? moodLabel;
+  final double size;
+  final double degradationLevel;
+  final MiniMeVisualState visualState;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _resolvePalette(
+      bodyModel,
+      hairModel,
+      shirtModel,
+      companionId,
+    );
+    final expression = _resolveExpression(moodLabel);
+    final headSize = size * 0.66;
+    final shouldersWidth = size * 0.76 * bodyWidthScale.clamp(0.9, 1.12);
+    final shouldersHeight = size * 0.34;
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            bottom: size * 0.02,
+            child: Container(
+              width: shouldersWidth,
+              height: shouldersHeight,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(size),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [palette.secondary, palette.primary],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: size * 0.04,
+            child: SizedBox(
+              width: headSize,
+              height: headSize,
+              child: CustomPaint(
+                painter: _HeadShellPainter(
+                  palette: palette,
+                  degradationLevel: degradationLevel,
+                  visualState: visualState,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: size * 0.18,
+            child: CartoonFace(
+              expression: expression,
+              palette: palette,
+              size: headSize * 0.5,
+              blink: 0,
+              degradationLevel: degradationLevel,
+              headDip: 0,
+              wateryEyes: visualState.wateryEyes,
+              puffiness: visualState.sleepDebtLevel,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MiniMeAvatarState extends State<MiniMeAvatar>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
+    with TickerProviderStateMixin {
+  late final AnimationController _idleController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3600),
   )..repeat();
 
+  late final AnimationController _reactionController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
+  late final AnimationController _hatchController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1150),
+  );
+
+  _MiniMeReaction _reaction = _MiniMeReaction.none;
+  bool _didNotifyHatchComplete = false;
+
   @override
   void dispose() {
-    _controller.dispose();
+    _idleController.dispose();
+    _reactionController.dispose();
+    _hatchController.dispose();
     super.dispose();
+  }
+
+  void _handleTapDown(TapDownDetails details, double size) {
+    if (!widget.isHatched) {
+      _startHatching();
+      return;
+    }
+
+    if (!widget.enableInteractions) {
+      widget.onAvatarTap?.call();
+      return;
+    }
+
+    final dx = details.localPosition.dx / size;
+    final dy = details.localPosition.dy / size;
+
+    if (dy < 0.38) {
+      _triggerReaction(_MiniMeReaction.flinch);
+    } else if (dx < 0.34 && dy < 0.78) {
+      _triggerReaction(_MiniMeReaction.doubleBicep);
+    } else if (dx > 0.66 && dy < 0.78) {
+      _triggerReaction(_MiniMeReaction.doubleBicep);
+    } else {
+      _triggerReaction(_MiniMeReaction.bounce);
+    }
+
+    widget.onAvatarTap?.call();
+  }
+
+  void _startHatching() {
+    if (_hatchController.isAnimating || widget.isHatched) {
+      return;
+    }
+
+    _didNotifyHatchComplete = false;
+    _hatchController
+      ..stop()
+      ..value = 0
+      ..forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant MiniMeAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isHatched && !oldWidget.isHatched) {
+      _hatchController.value = 1;
+      _didNotifyHatchComplete = true;
+    } else if (!widget.isHatched && oldWidget.isHatched) {
+      _hatchController.value = 0;
+      _didNotifyHatchComplete = false;
+    }
+  }
+
+  void _triggerReaction(_MiniMeReaction reaction) {
+    final duration = switch (reaction) {
+      _MiniMeReaction.doubleBicep => const Duration(milliseconds: 2000),
+      _ => const Duration(milliseconds: 420),
+    };
+    setState(() => _reaction = reaction);
+    _reactionController
+      ..duration = duration
+      ..stop()
+      ..value = 0
+      ..forward().whenComplete(() {
+        if (mounted) {
+          setState(() => _reaction = _MiniMeReaction.none);
+        }
+      });
   }
 
   @override
@@ -55,94 +323,189 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
       widget.bodyModel,
       widget.hairModel,
       widget.shirtModel,
+      widget.companionId,
     );
     final expression = _resolveExpression(widget.moodLabel);
-    final clampedSize = widget.size.clamp(160.0, 720.0);
+    final visualWearLevel = _resolveVisualWearLevel(
+      widget.moodLabel,
+      math.max(widget.degradationLevel, widget.visualState.wearLevel),
+    );
+    final accessory = _resolveAccessory(widget.shirtModel);
+    final crest = _resolveCrest(widget.hairModel);
+    final clampedSize = widget.size.clamp(140.0, 720.0);
 
-    return GestureDetector(
-      onTap: widget.onAvatarTap,
-      child: SizedBox(
-        width: clampedSize,
-        height: clampedSize,
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            final motion = _motionForExpression(expression, _controller.value);
-            final blink = _blinkValue(_controller.value);
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTapDown: (details) => _handleTapDown(details, clampedSize),
+        child: SizedBox(
+          width: clampedSize,
+          height: clampedSize,
+          child: AnimatedBuilder(
+            animation: Listenable.merge([
+              _idleController,
+              _reactionController,
+              _hatchController,
+            ]),
+            builder: (context, _) {
+              final idleMotion = _motionForExpression(
+                expression,
+                widget.enableAutoRotate ? _idleController.value : 0,
+              );
+              final energyScale = 0.72 + widget.visualState.energyLevel * 0.48;
+              final reactionMotion = _reactionMotion(
+                _reaction,
+                _reactionController.value,
+              );
+              final bob = idleMotion.bob * energyScale + reactionMotion.bob;
+              final sway =
+                  idleMotion.sway *
+                      (0.76 + widget.visualState.energyLevel * 0.38) +
+                  reactionMotion.sway;
+              final headDip =
+                  idleMotion.headDip +
+                  widget.visualState.postureSlump * 4.5 -
+                  widget.visualState.recoveryLevel * 1.2 +
+                  reactionMotion.headDip;
+              final shadowScale =
+                  idleMotion.shadowScale +
+                  widget.visualState.postureSlump * 0.04 -
+                  widget.visualState.energyLevel * 0.02 +
+                  reactionMotion.shadowDelta;
+              final muscleTone = widget.visualState.muscleToneLevel.clamp(
+                0.0,
+                1.0,
+              );
+              final powerPulse =
+                  math.sin(_idleController.value * math.pi * 2) *
+                  muscleTone *
+                  clampedSize *
+                  0.012;
+              final hatchProgress = widget.isHatched
+                  ? 1.0
+                  : Curves.easeInOutCubic.transform(_hatchController.value);
+              final eggOpacity = (1 - (hatchProgress * 1.5)).clamp(0.0, 1.0);
+              final mascotOpacity = ((hatchProgress - 0.28) / 0.72).clamp(
+                0.0,
+                1.0,
+              );
+              final eggScale = 1.0 - (hatchProgress * 0.08);
+              final mascotScale = 0.82 + (mascotOpacity * 0.18);
+              final hatchShake =
+                  math.sin(hatchProgress * math.pi * 10) *
+                  (1 - hatchProgress) *
+                  clampedSize *
+                  0.035;
 
-            if (widget.onRotate != null) {
-              widget.onRotate!(motion.sway);
-            }
+              if (!widget.isHatched &&
+                  hatchProgress >= 0.98 &&
+                  !_didNotifyHatchComplete) {
+                _didNotifyHatchComplete = true;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    widget.onHatchComplete?.call();
+                  }
+                });
+              }
 
-            return Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                _AmbientHalo(
-                  size: clampedSize,
-                  color: widget.glow ?? palette.primary,
-                  shimmer: motion.shimmer,
-                ),
-                Positioned(
-                  bottom: clampedSize * 0.075,
-                  child: Transform.scale(
-                    scaleX: motion.shadowScale,
-                    scaleY: 1,
-                    child: Container(
-                      width: clampedSize * 0.5,
-                      height: clampedSize * 0.085,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        gradient: RadialGradient(
-                          colors: [
-                            palette.eye.withValues(alpha: 0.18),
-                            palette.eye.withValues(alpha: 0.03),
-                            Colors.transparent,
-                          ],
-                          stops: const [0, 0.68, 1],
+              if (widget.onRotate != null) {
+                widget.onRotate!(sway);
+              }
+
+              return Stack(
+                alignment: Alignment.center,
+                clipBehavior: Clip.none,
+                children: [
+                  RepaintBoundary(
+                    child: _AmbientHalo(
+                      size: clampedSize,
+                      color: widget.glow ?? palette.primary,
+                      shimmer: idleMotion.shimmer,
+                      visualState: widget.visualState,
+                    ),
+                  ),
+                  Positioned(
+                    bottom: clampedSize * 0.1,
+                    child: Transform.scale(
+                      scaleX: shadowScale,
+                      child: Container(
+                        width: clampedSize * 0.42,
+                        height: clampedSize * 0.08,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(999),
+                          color: Colors.black.withValues(alpha: 0.12),
                         ),
                       ),
                     ),
                   ),
-                ),
-                Transform.translate(
-                  offset: Offset(motion.offsetX, motion.bobOffset),
-                  child: Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()
-                      ..setEntry(3, 2, 0.0012)
-                      ..rotateZ(motion.sway)
-                      ..rotateX(motion.tiltX)
-                      ..rotateY(motion.tiltY),
-                    child: Transform.scale(
-                      scaleY: motion.bodyScaleY,
-                      scaleX: motion.bodyScaleX,
-                      child: _MascotBody(
-                        palette: palette,
-                        expression: expression,
-                        accessory: _resolveAccessory(widget.shirtModel),
-                        crest: _resolveCrest(widget.hairModel),
-                        bodyWidthScale: widget.bodyWidthScale,
-                        size: clampedSize,
-                        blink: blink,
-                        bodyLean: motion.bodyLean,
-                        headOffsetY: motion.headOffsetY,
-                        wingLift: motion.wingLift,
-                        accessoryLift: motion.accessoryLift,
+                  Transform.translate(
+                    offset: Offset(idleMotion.offsetX + hatchShake, bob),
+                    child: Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, 0.001)
+                        ..rotateZ(sway)
+                        ..rotateY(idleMotion.turn),
+                      child: RepaintBoundary(
+                        child: Stack(
+                          alignment: Alignment.center,
+                          clipBehavior: Clip.none,
+                          children: [
+                            if (mascotOpacity > 0)
+                              Opacity(
+                                opacity: mascotOpacity,
+                                child: Transform.scale(
+                                  scale: mascotScale,
+                                  child: _MascotBody(
+                                    palette: palette,
+                                    expression: expression,
+                                    accessory: accessory,
+                                    crest: crest,
+                                    size: clampedSize,
+                                    blink: _blinkValue(_idleController.value),
+                                    bodyWidthScale: widget.bodyWidthScale,
+                                    armLiftLeft: reactionMotion.leftArmLift,
+                                    armLiftRight: reactionMotion.rightArmLift,
+                                    flexPoseLevel: reactionMotion.flexPoseLevel,
+                                    headDip:
+                                        headDip -
+                                        (1 - mascotOpacity) * 10 -
+                                        muscleTone * 3.5,
+                                    degradationLevel: visualWearLevel,
+                                    visualState: widget.visualState,
+                                    powerPulse: powerPulse,
+                                  ),
+                                ),
+                              ),
+                            if (!widget.isHatched || eggOpacity > 0)
+                              Opacity(
+                                opacity: eggOpacity,
+                                child: Transform.scale(
+                                  scale: eggScale,
+                                  child: _MiniMeEgg(
+                                    size: clampedSize * 0.7,
+                                    accentColor:
+                                        widget.glow ?? palette.accessory,
+                                    bob: bob,
+                                    crackProgress: hatchProgress,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
   double _blinkValue(double t) {
-    final windows = <double>[0.17, 0.51, 0.86];
+    const windows = <double>[0.17, 0.51, 0.86];
     var best = 0.0;
     for (final center in windows) {
       final distance = (t - center).abs();
@@ -161,43 +524,79 @@ class _MascotBody extends StatelessWidget {
     required this.expression,
     required this.accessory,
     required this.crest,
-    required this.bodyWidthScale,
     required this.size,
     required this.blink,
-    required this.bodyLean,
-    required this.headOffsetY,
-    required this.wingLift,
-    required this.accessoryLift,
+    required this.bodyWidthScale,
+    required this.armLiftLeft,
+    required this.armLiftRight,
+    required this.flexPoseLevel,
+    required this.headDip,
+    required this.degradationLevel,
+    required this.visualState,
+    required this.powerPulse,
   });
 
   final MiniMeFacePalette palette;
   final String expression;
   final _MiniMeAccessory accessory;
   final _MiniMeCrest crest;
-  final double bodyWidthScale;
   final double size;
   final double blink;
-  final double bodyLean;
-  final double headOffsetY;
-  final double wingLift;
-  final double accessoryLift;
+  final double bodyWidthScale;
+  final double armLiftLeft;
+  final double armLiftRight;
+  final double flexPoseLevel;
+  final double headDip;
+  final double degradationLevel;
+  final MiniMeVisualState visualState;
+  final double powerPulse;
 
   @override
   Widget build(BuildContext context) {
-    final bodyWidth = size * 0.56 * bodyWidthScale.clamp(0.82, 1.18);
-    final bodyHeight = size * 0.68;
-    final headSize = size * 0.41;
-    final shellWidth = size * 0.72;
-    final shellHeight = size * 0.78;
-    final shellTop = size * 0.12 + headOffsetY * 0.08;
-    final headCenterY = shellTop + shellHeight * 0.24;
-    final headDiameter = shellWidth * 0.57;
-    final headLeft = (size - headDiameter) / 2;
-    final faceSize = headDiameter * 0.9;
-    final faceTop = headCenterY - (faceSize / 2);
-    final crestTop = shellTop - size * 0.01;
-    final wingBaseY = size * 0.18 + wingLift;
-    final footOffsetX = bodyWidth * 0.16;
+    final headSize = size * 0.39;
+    final muscleTone = visualState.muscleToneLevel.clamp(0.0, 1.0);
+    final flexPose = flexPoseLevel.clamp(0.0, 1.0);
+    final flexMuscleBoost = flexPose * 0.42;
+    final displayedMuscleTone = (muscleTone + flexMuscleBoost).clamp(0.0, 1.0);
+    final bodyWidth =
+        size *
+        0.44 *
+        (bodyWidthScale.clamp(0.86, 1.16) + displayedMuscleTone * 0.08);
+    final bodyHeight = size * (0.46 + displayedMuscleTone * 0.03);
+    final slumpOffset = visualState.postureSlump * size * 0.035;
+    final confidenceLift = displayedMuscleTone * size * 0.022;
+    final headTop = size * 0.13 + headDip * 0.2 + slumpOffset - confidenceLift;
+    final bodyTop = size * 0.38 + slumpOffset * 0.5 - confidenceLift * 0.4;
+    final torsoTilt =
+        visualState.postureSlump * -0.06 +
+        visualState.recoveryLevel * 0.02 +
+        displayedMuscleTone * 0.018;
+    final shoulderDrop =
+        visualState.postureSlump * size * 0.02 -
+        displayedMuscleTone * size * 0.01;
+    final armWidth = size * (0.16 + displayedMuscleTone * 0.035);
+    final armHeight = size * (0.25 + displayedMuscleTone * 0.015);
+    final shoulderSpread =
+        size * (displayedMuscleTone * 0.035 + flexPose * 0.012);
+    final flexLift = displayedMuscleTone * 0.16 + flexPose * 0.14;
+    final armTop =
+        bodyTop +
+        size * 0.04 +
+        shoulderDrop -
+        (armLiftLeft + flexPose * 0.04) * size * 0.11;
+    final torsoTurn = 0.0;
+    final leftArmAngle =
+        -0.22 -
+        (armLiftLeft + flexLift) * 0.58 -
+        visualState.postureSlump * 0.04 -
+        displayedMuscleTone * 0.05 -
+        flexPose * 0.03;
+    final rightArmAngle =
+        0.22 +
+        (armLiftRight + flexLift) * 0.58 +
+        visualState.postureSlump * 0.04 +
+        displayedMuscleTone * 0.05 +
+        flexPose * 0.03;
 
     return SizedBox(
       width: size,
@@ -206,118 +605,681 @@ class _MascotBody extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           Positioned(
-            top: shellTop,
-            child: CustomPaint(
-              size: Size(shellWidth, shellHeight),
-              painter: _CharacterShellPainter(
-                palette: palette,
-                bodyWidthScale: bodyWidthScale,
+            top: headTop - headSize * 0.08,
+            child: _Crest(
+              crest: crest,
+              palette: palette,
+              size: headSize * 0.34,
+              messyHairLevel: visualState.messyHairLevel,
+              recoveryLevel: visualState.recoveryLevel,
+            ),
+          ),
+          Positioned(
+            left: size / 2 - bodyWidth * 0.67 - shoulderSpread,
+            top: armTop,
+            child: Transform(
+              alignment: Alignment.topCenter,
+              transform: Matrix4.identity()..rotateZ(leftArmAngle),
+              child: _Arm(
+                width: armWidth,
+                height: armHeight,
+                color: palette.primary,
+                shadowColor: palette.secondary,
+                muscleToneLevel: displayedMuscleTone,
+                flexPoseLevel: flexPose,
               ),
             ),
           ),
           Positioned(
-            left: (size / 2) - bodyWidth * 0.46,
-            top: wingBaseY,
-            child: Transform.rotate(
-              angle: -0.34 - bodyLean * 0.16,
-              child: _Wing(
-                width: size * 0.17,
-                height: size * 0.27,
-                color: palette.secondary.withValues(alpha: 0.92),
-                accent: Colors.white.withValues(alpha: 0.1),
+            right: size / 2 - bodyWidth * 0.67 - shoulderSpread,
+            top:
+                bodyTop +
+                size * 0.04 +
+                shoulderDrop -
+                (armLiftRight + flexPose * 0.04) * size * 0.11,
+            child: Transform(
+              alignment: Alignment.topCenter,
+              transform: Matrix4.identity()..rotateZ(rightArmAngle),
+              child: _Arm(
+                width: armWidth,
+                height: armHeight,
+                color: palette.primary,
+                shadowColor: palette.secondary,
+                muscleToneLevel: displayedMuscleTone,
+                flexPoseLevel: flexPose,
               ),
             ),
           ),
           Positioned(
-            right: (size / 2) - bodyWidth * 0.46,
-            top: wingBaseY + wingLift * 0.08,
-            child: Transform.rotate(
-              angle: 0.34 + bodyLean * 0.16,
-              child: _Wing(
-                width: size * 0.17,
-                height: size * 0.27,
-                color: palette.secondary.withValues(alpha: 0.96),
-                accent: Colors.white.withValues(alpha: 0.12),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: size * 0.2,
-            left: headLeft + headDiameter * 0.04,
-            child: Transform.rotate(
-              angle: -0.24,
-              child: Container(
-                width: bodyWidth * 0.14,
-                height: bodyHeight * 0.42,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(bodyWidth),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.28),
-                      Colors.white.withValues(alpha: 0),
-                    ],
+            top: bodyTop,
+            child: Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(torsoTurn)
+                ..rotateZ(torsoTilt),
+              child: Transform.scale(
+                scaleX: 1 + displayedMuscleTone * 0.05 + flexPose * 0.03,
+                scaleY: 1 + (powerPulse / size) + flexPose * 0.02,
+                child: SizedBox(
+                  width: bodyWidth,
+                  height: bodyHeight,
+                  child: CustomPaint(
+                    painter: _BodyPainter(
+                      palette: palette,
+                      degradationLevel: degradationLevel,
+                      visualState: visualState,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
           Positioned(
-            top: crestTop,
-            child: _Crest(
-              crest: crest,
-              palette: palette,
-              size: headSize * 0.34,
-            ),
-          ),
-          Positioned(
-            top: shellTop + shellHeight * 0.08,
-            left: headLeft + headDiameter * 0.12 + bodyLean * size * 0.012,
-            child: Container(
-              width: headSize * 0.28,
-              height: headSize * 0.17,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(headSize),
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.36),
-                    Colors.white.withValues(alpha: 0),
-                  ],
+            top: headTop,
+            child: Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(torsoTurn * 0.65)
+                ..scaleByDouble(
+                  1 - displayedMuscleTone * 0.02,
+                  1 - displayedMuscleTone * 0.02,
+                  1,
+                  1,
+                ),
+              child: SizedBox(
+                width: headSize,
+                height: headSize,
+                child: CustomPaint(
+                  painter: _HeadShellPainter(
+                    palette: palette,
+                    degradationLevel: degradationLevel,
+                    visualState: visualState,
+                  ),
                 ),
               ),
             ),
           ),
           Positioned(
-            top: faceTop,
+            top: headTop + headSize * 0.16,
             child: CartoonFace(
               expression: expression,
               palette: palette,
-              size: faceSize,
+              size: headSize * 0.72,
               blink: blink,
+              degradationLevel: degradationLevel,
+              headDip: headDip,
+              wateryEyes: visualState.wateryEyes,
+              puffiness: visualState.sleepDebtLevel,
             ),
           ),
           Positioned(
-            bottom: size * 0.245 + accessoryLift,
+            top: bodyTop + bodyHeight * 0.24,
             child: _AccessoryBadge(
-              palette: palette,
               accessory: accessory,
-              size: size * 0.19,
+              palette: palette,
+              size: size * 0.16,
+              accessoryMood: visualState.accessoryMood,
+              outfitMode: visualState.outfitMode,
             ),
           ),
           Positioned(
-            bottom: size * 0.08,
-            left: (size / 2) - footOffsetX - size * 0.04,
-            child: _Foot(color: palette.beak, flip: false, size: size * 0.08),
+            left: size / 2 - bodyWidth * 0.24,
+            bottom: size * 0.11,
+            child: _Leg(
+              width: size * 0.11,
+              height: size * 0.17,
+              color: palette.belly,
+            ),
           ),
           Positioned(
-            bottom: size * 0.08,
-            right: (size / 2) - footOffsetX - size * 0.04,
-            child: _Foot(color: palette.beak, flip: true, size: size * 0.08),
+            right: size / 2 - bodyWidth * 0.24,
+            bottom: size * 0.11,
+            child: _Leg(
+              width: size * 0.11,
+              height: size * 0.17,
+              color: palette.belly,
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _MiniMeEgg extends StatelessWidget {
+  const _MiniMeEgg({
+    required this.size,
+    required this.accentColor,
+    required this.bob,
+    this.crackProgress = 0,
+  });
+
+  final double size;
+  final Color accentColor;
+  final double bob;
+  final double crackProgress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.translate(
+      offset: Offset(0, bob * 0.35),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned(
+              bottom: size * 0.06,
+              child: Container(
+                width: size * 0.48,
+                height: size * 0.1,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: Colors.black.withValues(alpha: 0.12),
+                ),
+              ),
+            ),
+            Container(
+              width: size * 0.56,
+              height: size * 0.72,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(size),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white,
+                    Color.alphaBlend(
+                      accentColor.withValues(alpha: 0.22),
+                      Colors.white,
+                    ),
+                  ],
+                ),
+                border: Border.all(
+                  color: accentColor.withValues(alpha: 0.65),
+                  width: 2,
+                ),
+              ),
+            ),
+            if (crackProgress > 0.12)
+              Positioned(
+                top: size * 0.16,
+                child: SizedBox(
+                  width: size * 0.44,
+                  height: size * 0.44,
+                  child: CustomPaint(
+                    painter: _EggCrackPainter(
+                      color: accentColor.withValues(alpha: 0.7),
+                      progress: crackProgress,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EggCrackPainter extends CustomPainter {
+  const _EggCrackPainter({required this.color, required this.progress});
+
+  final Color color;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final eased = Curves.easeOut.transform(progress.clamp(0.0, 1.0));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path()
+      ..moveTo(size.width * 0.5, size.height * 0.02)
+      ..lineTo(size.width * 0.44, size.height * 0.18)
+      ..lineTo(size.width * 0.54, size.height * 0.3)
+      ..lineTo(size.width * 0.4, size.height * 0.48)
+      ..lineTo(size.width * 0.56, size.height * 0.64)
+      ..lineTo(size.width * 0.46, size.height * 0.88);
+
+    final metric = path.computeMetrics().first;
+    final visiblePath = metric.extractPath(0, metric.length * eased);
+    canvas.drawPath(visiblePath, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _EggCrackPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.progress != progress;
+  }
+}
+
+class _HeadShellPainter extends CustomPainter {
+  const _HeadShellPainter({
+    required this.palette,
+    required this.degradationLevel,
+    required this.visualState,
+  });
+
+  final MiniMeFacePalette palette;
+  final double degradationLevel;
+  final MiniMeVisualState visualState;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final headRect = Rect.fromLTWH(
+      size.width * 0.06,
+      size.height * 0.1,
+      size.width * 0.88,
+      size.height * 0.82,
+    );
+
+    final earPaint = Paint()..color = palette.primary;
+    canvas.drawCircle(
+      Offset(size.width * 0.23, size.height * 0.18),
+      size.width * 0.12,
+      earPaint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.77, size.height * 0.18),
+      size.width * 0.12,
+      earPaint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.23, size.height * 0.2),
+      size.width * 0.06,
+      Paint()..color = palette.accessory.withValues(alpha: 0.24),
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.77, size.height * 0.2),
+      size.width * 0.06,
+      Paint()..color = palette.accessory.withValues(alpha: 0.24),
+    );
+
+    final headPaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.16, -0.22),
+        radius: 0.94,
+        colors: [Colors.white, palette.primary],
+      ).createShader(headRect);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(headRect, Radius.circular(size.width * 0.34)),
+      headPaint,
+    );
+
+    if (visualState.recoveryLevel > 0.45) {
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(size.width * 0.44, size.height * 0.24),
+          width: size.width * 0.38,
+          height: size.height * 0.16,
+        ),
+        Paint()
+          ..color = Colors.white.withValues(
+            alpha: 0.08 + visualState.recoveryLevel * 0.1,
+          ),
+      );
+    }
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(headRect, Radius.circular(size.width * 0.34)),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.02,
+    );
+
+    if (degradationLevel > 0.2) {
+      final sagPaint = Paint()
+        ..color = const Color(
+          0xFF7D8CA8,
+        ).withValues(alpha: degradationLevel * 0.12)
+        ..style = PaintingStyle.fill;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(size.width * 0.5, size.height * 0.72),
+          width: size.width * (0.42 + degradationLevel * 0.08),
+          height: size.height * 0.18,
+        ),
+        sagPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeadShellPainter oldDelegate) {
+    return oldDelegate.palette != palette ||
+        oldDelegate.degradationLevel != degradationLevel ||
+        oldDelegate.visualState != visualState;
+  }
+}
+
+class _BodyPainter extends CustomPainter {
+  const _BodyPainter({
+    required this.palette,
+    required this.degradationLevel,
+    required this.visualState,
+  });
+
+  final MiniMeFacePalette palette;
+  final double degradationLevel;
+  final MiniMeVisualState visualState;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final muscleTone = visualState.muscleToneLevel.clamp(0.0, 1.0);
+    final shellRect = Rect.fromLTWH(
+      size.width * 0.06,
+      0,
+      size.width * 0.88,
+      size.height,
+    );
+    final shirtRect = Rect.fromLTWH(
+      shellRect.left,
+      size.height * 0.16,
+      shellRect.width,
+      size.height * 0.6,
+    );
+
+    final bodyPath = Path()
+      ..moveTo(shellRect.left + shellRect.width * 0.18, shellRect.top)
+      ..quadraticBezierTo(
+        shellRect.left + shellRect.width * (0.02 - muscleTone * 0.06),
+        shellRect.top + shellRect.height * (0.22 - muscleTone * 0.06),
+        shellRect.left + shellRect.width * 0.12,
+        shellRect.bottom - shellRect.height * 0.2,
+      )
+      ..quadraticBezierTo(
+        shellRect.left + shellRect.width * 0.18,
+        shellRect.bottom,
+        shellRect.center.dx,
+        shellRect.bottom,
+      )
+      ..quadraticBezierTo(
+        shellRect.right - shellRect.width * 0.18,
+        shellRect.bottom,
+        shellRect.right - shellRect.width * 0.12,
+        shellRect.bottom - shellRect.height * 0.2,
+      )
+      ..quadraticBezierTo(
+        shellRect.right - shellRect.width * (0.02 - muscleTone * 0.06),
+        shellRect.top + shellRect.height * (0.22 - muscleTone * 0.06),
+        shellRect.right - shellRect.width * 0.18,
+        shellRect.top,
+      )
+      ..close();
+
+    canvas.drawPath(
+      bodyPath,
+      Paint()
+        ..color = palette.primary
+        ..style = PaintingStyle.fill,
+    );
+
+    final shirtPath = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(shirtRect, Radius.circular(size.width * 0.18)),
+      );
+    canvas.save();
+    canvas.clipPath(bodyPath);
+    canvas.drawPath(
+      shirtPath,
+      Paint()
+        ..color = palette.secondary
+        ..style = PaintingStyle.fill,
+    );
+
+    switch (visualState.outfitMode) {
+      case MiniMeOutfitMode.comfort:
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: Offset(size.width * 0.5, size.height * 0.22),
+            width: size.width * 0.52,
+            height: size.height * 0.24,
+          ),
+          math.pi,
+          math.pi,
+          false,
+          Paint()
+            ..color = Colors.white.withValues(alpha: 0.16)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = size.width * 0.04
+            ..strokeCap = StrokeCap.round,
+        );
+        break;
+      case MiniMeOutfitMode.active:
+        final stripePaint = Paint()
+          ..color = Colors.white.withValues(alpha: 0.2)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.018
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(
+          Offset(size.width * 0.25, size.height * 0.35),
+          Offset(size.width * 0.4, size.height * 0.64),
+          stripePaint,
+        );
+        canvas.drawLine(
+          Offset(size.width * 0.75, size.height * 0.35),
+          Offset(size.width * 0.6, size.height * 0.64),
+          stripePaint,
+        );
+        break;
+      case MiniMeOutfitMode.polished:
+        canvas.drawCircle(
+          Offset(size.width * 0.68, size.height * 0.34),
+          size.width * 0.04,
+          Paint()..color = Colors.white.withValues(alpha: 0.34),
+        );
+        break;
+      case MiniMeOutfitMode.worn:
+      case MiniMeOutfitMode.standard:
+        break;
+    }
+
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(
+          size.width * 0.5,
+          size.height * (0.78 - muscleTone * 0.02),
+        ),
+        width: size.width * (0.42 + muscleTone * 0.06),
+        height: size.height * (0.18 + muscleTone * 0.02),
+      ),
+      Paint()..color = palette.belly,
+    );
+
+    if (muscleTone > 0.18) {
+      final definitionPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.08 + muscleTone * 0.10)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.012
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(size.width * 0.33, size.height * 0.36),
+        Offset(size.width * 0.42, size.height * 0.52),
+        definitionPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.67, size.height * 0.36),
+        Offset(size.width * 0.58, size.height * 0.52),
+        definitionPaint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(size.width * 0.5, size.height * 0.46),
+          width: size.width * (0.18 + muscleTone * 0.08),
+          height: size.height * (0.16 + muscleTone * 0.06),
+        ),
+        math.pi * 0.1,
+        math.pi * 0.8,
+        false,
+        definitionPaint,
+      );
+    }
+
+    if (degradationLevel > 0.04) {
+      final tiredPaint = Paint()
+        ..color = const Color(
+          0xFF52627F,
+        ).withValues(alpha: degradationLevel * 0.18)
+        ..style = PaintingStyle.fill;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(size.width * 0.5, size.height * 0.74),
+          width: size.width * (0.44 + degradationLevel * 0.1),
+          height: size.height * 0.16,
+        ),
+        tiredPaint,
+      );
+    }
+
+    if (degradationLevel > 0.22) {
+      final wrinklePaint = Paint()
+        ..color = Colors.black.withValues(alpha: degradationLevel * 0.11)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.012
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(size.width * 0.34, size.height * 0.54),
+        Offset(size.width * 0.66, size.height * 0.54),
+        wrinklePaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.37, size.height * 0.6),
+        Offset(size.width * 0.63, size.height * 0.6),
+        wrinklePaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.28, size.height * 0.47),
+        Offset(size.width * 0.44, size.height * 0.5),
+        wrinklePaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.56, size.height * 0.5),
+        Offset(size.width * 0.73, size.height * 0.46),
+        wrinklePaint,
+      );
+    }
+
+    if (degradationLevel > 0.38) {
+      final scuffPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.18)
+        ..style = PaintingStyle.fill;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(size.width * 0.3, size.height * 0.46),
+          width: size.width * 0.12,
+          height: size.height * 0.07,
+        ),
+        scuffPaint,
+      );
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(size.width * 0.72, size.height * 0.66),
+          width: size.width * 0.1,
+          height: size.height * 0.06,
+        ),
+        scuffPaint,
+      );
+    }
+
+    if (degradationLevel > 0.48) {
+      final frayPaint = Paint()
+        ..color = Colors.black.withValues(alpha: degradationLevel * 0.16)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.01
+        ..strokeCap = StrokeCap.round;
+      final leftTear = Path()
+        ..moveTo(size.width * 0.26, size.height * 0.48)
+        ..lineTo(size.width * 0.22, size.height * 0.56)
+        ..lineTo(size.width * 0.28, size.height * 0.62)
+        ..lineTo(size.width * 0.32, size.height * 0.54)
+        ..close();
+      final rightTear = Path()
+        ..moveTo(size.width * 0.7, size.height * 0.58)
+        ..lineTo(size.width * 0.66, size.height * 0.67)
+        ..lineTo(size.width * 0.72, size.height * 0.72)
+        ..lineTo(size.width * 0.77, size.height * 0.63)
+        ..close();
+      final tearInteriorPaint = Paint()
+        ..color = palette.primary.withValues(alpha: 0.72)
+        ..style = PaintingStyle.fill;
+
+      canvas.drawPath(leftTear, tearInteriorPaint);
+      canvas.drawPath(rightTear, tearInteriorPaint);
+      canvas.drawPath(leftTear, frayPaint);
+      canvas.drawPath(rightTear, frayPaint);
+
+      canvas.drawLine(
+        Offset(size.width * 0.23, size.height * 0.59),
+        Offset(size.width * 0.2, size.height * 0.62),
+        frayPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.29, size.height * 0.6),
+        Offset(size.width * 0.26, size.height * 0.64),
+        frayPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.68, size.height * 0.7),
+        Offset(size.width * 0.65, size.height * 0.74),
+        frayPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.74, size.height * 0.69),
+        Offset(size.width * 0.71, size.height * 0.75),
+        frayPaint,
+      );
+    }
+
+    if (degradationLevel > 0.68) {
+      final seamPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.28)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.008
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(size.width * 0.24, size.height * 0.34),
+        Offset(size.width * 0.32, size.height * 0.38),
+        seamPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.24, size.height * 0.37),
+        Offset(size.width * 0.32, size.height * 0.41),
+        seamPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.65, size.height * 0.46),
+        Offset(size.width * 0.78, size.height * 0.51),
+        seamPaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.65, size.height * 0.49),
+        Offset(size.width * 0.77, size.height * 0.54),
+        seamPaint,
+      );
+    }
+    canvas.restore();
+
+    canvas.drawPath(
+      bodyPath,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.12)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.016,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BodyPainter oldDelegate) {
+    return oldDelegate.palette != palette ||
+        oldDelegate.degradationLevel != degradationLevel ||
+        oldDelegate.visualState != visualState;
   }
 }
 
@@ -326,276 +1288,249 @@ class _AmbientHalo extends StatelessWidget {
     required this.size,
     required this.color,
     required this.shimmer,
+    required this.visualState,
   });
 
   final double size;
   final Color color;
   final double shimmer;
+  final MiniMeVisualState visualState;
 
   @override
   Widget build(BuildContext context) {
+    Color auraColor;
+    switch (visualState.ambientEffect) {
+      case MiniMeAmbientEffect.sparkles:
+        auraColor = const Color(0xFFD8C56A);
+        break;
+      case MiniMeAmbientEffect.haze:
+        auraColor = const Color(0xFF8191AA);
+        break;
+      case MiniMeAmbientEffect.rainCloud:
+        auraColor = const Color(0xFF7D92B7);
+        break;
+      case MiniMeAmbientEffect.sweat:
+        auraColor = const Color(0xFF73B7DE);
+        break;
+      case MiniMeAmbientEffect.none:
+        auraColor = color;
+        break;
+    }
+
     return Stack(
       alignment: Alignment.center,
       children: [
-        Transform.translate(
-          offset: Offset(shimmer * size * 0.03, size * 0.03),
-          child: Container(
-            width: size * 0.76,
-            height: size * 0.76,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.18 + shimmer * 0.03),
-                  blurRadius: size * (0.12 + shimmer * 0.015),
-                  spreadRadius: size * 0.02,
-                ),
-              ],
-            ),
-          ),
-        ),
         Container(
-          width: size * (0.64 + shimmer * 0.015),
-          height: size * (0.64 + shimmer * 0.015),
+          width:
+              size * (0.6 + shimmer * 0.02 + visualState.recoveryLevel * 0.02),
+          height:
+              size * (0.6 + shimmer * 0.02 + visualState.recoveryLevel * 0.02),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              center: Alignment(-0.15 + shimmer * 0.12, -0.2),
-              radius: 0.88,
+              center: Alignment(-0.1 + shimmer * 0.08, -0.15),
               colors: [
-                color.withValues(alpha: 0.2),
-                color.withValues(alpha: 0.08),
+                auraColor.withValues(
+                  alpha: 0.16 + visualState.recoveryLevel * 0.04,
+                ),
+                auraColor.withValues(
+                  alpha: 0.05 + visualState.distressLevel * 0.03,
+                ),
                 Colors.transparent,
               ],
-              stops: const [0, 0.48, 1],
+              stops: const [0, 0.46, 1],
             ),
           ),
         ),
-        Positioned(
-          top: size * 0.12,
-          child: Container(
-            width: size * 0.22,
-            height: size * 0.08,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              color: Colors.white.withValues(alpha: 0.08),
+        if (visualState.ambientEffect != MiniMeAmbientEffect.none)
+          SizedBox(
+            width: size * 0.72,
+            height: size * 0.72,
+            child: CustomPaint(
+              painter: _AmbientEffectPainter(
+                effect: visualState.ambientEffect,
+                shimmer: shimmer,
+                intensity: math.max(
+                  visualState.recoveryLevel,
+                  math.max(
+                    visualState.sleepDebtLevel,
+                    visualState.symptomLevel,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
       ],
     );
   }
 }
 
-class _CharacterShellPainter extends CustomPainter {
-  const _CharacterShellPainter({
-    required this.palette,
-    required this.bodyWidthScale,
+class _AmbientEffectPainter extends CustomPainter {
+  const _AmbientEffectPainter({
+    required this.effect,
+    required this.shimmer,
+    required this.intensity,
   });
 
-  final MiniMeFacePalette palette;
-  final double bodyWidthScale;
+  final MiniMeAmbientEffect effect;
+  final double shimmer;
+  final double intensity;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final headRadius = size.width * 0.285;
-    final headCenter = Offset(size.width * 0.5, size.height * 0.24);
-    final bodyWidth = size.width * 0.56 * bodyWidthScale.clamp(0.82, 1.18);
-    final bodyLeft = (size.width - bodyWidth) / 2;
-    final bodyTop = size.height * 0.33;
-    final bodyRect = Rect.fromLTWH(
-      bodyLeft,
-      bodyTop,
-      bodyWidth,
-      size.height * 0.5,
-    );
+    switch (effect) {
+      case MiniMeAmbientEffect.sparkles:
+        final paint = Paint()
+          ..color = const Color(0xFFE2C85B).withValues(alpha: 0.5)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.01
+          ..strokeCap = StrokeCap.round;
+        for (final point in <Offset>[
+          Offset(size.width * 0.2, size.height * 0.34),
+          Offset(size.width * 0.75, size.height * 0.18),
+          Offset(size.width * 0.84, size.height * 0.58),
+        ]) {
+          _drawSparkle(
+            canvas,
+            point.translate(0, shimmer * 3),
+            paint,
+            size.width * 0.035,
+          );
+        }
+        break;
+      case MiniMeAmbientEffect.haze:
+        final hazePaint = Paint()
+          ..color = const Color(
+            0xFF7B8BA6,
+          ).withValues(alpha: 0.12 + intensity * 0.12)
+          ..style = PaintingStyle.fill;
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(size.width * 0.34, size.height * 0.62),
+            width: size.width * 0.28,
+            height: size.height * 0.12,
+          ),
+          hazePaint,
+        );
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: Offset(size.width * 0.7, size.height * 0.44),
+            width: size.width * 0.24,
+            height: size.height * 0.1,
+          ),
+          hazePaint,
+        );
+        break;
+      case MiniMeAmbientEffect.rainCloud:
+        final cloudPaint = Paint()
+          ..color = const Color(0xFF879BC0).withValues(alpha: 0.35)
+          ..style = PaintingStyle.fill;
+        final dropPaint = Paint()
+          ..color = const Color(0xFF76B6E6).withValues(alpha: 0.5)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.012
+          ..strokeCap = StrokeCap.round;
+        canvas.drawCircle(
+          Offset(size.width * 0.28, size.height * 0.26),
+          size.width * 0.05,
+          cloudPaint,
+        );
+        canvas.drawCircle(
+          Offset(size.width * 0.36, size.height * 0.24),
+          size.width * 0.06,
+          cloudPaint,
+        );
+        canvas.drawCircle(
+          Offset(size.width * 0.44, size.height * 0.27),
+          size.width * 0.05,
+          cloudPaint,
+        );
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(
+              size.width * 0.25,
+              size.height * 0.26,
+              size.width * 0.22,
+              size.height * 0.06,
+            ),
+            Radius.circular(size.width * 0.03),
+          ),
+          cloudPaint,
+        );
+        canvas.drawLine(
+          Offset(size.width * 0.32, size.height * 0.36),
+          Offset(size.width * 0.3, size.height * 0.44),
+          dropPaint,
+        );
+        canvas.drawLine(
+          Offset(size.width * 0.4, size.height * 0.36),
+          Offset(size.width * 0.38, size.height * 0.46),
+          dropPaint,
+        );
+        break;
+      case MiniMeAmbientEffect.sweat:
+        final paint = Paint()
+          ..color = const Color(0xFF76B6E6).withValues(alpha: 0.52)
+          ..style = PaintingStyle.fill;
+        final tear = Path()
+          ..moveTo(size.width * 0.74, size.height * 0.2)
+          ..quadraticBezierTo(
+            size.width * 0.79,
+            size.height * 0.24,
+            size.width * 0.75,
+            size.height * 0.3,
+          )
+          ..quadraticBezierTo(
+            size.width * 0.69,
+            size.height * 0.26,
+            size.width * 0.74,
+            size.height * 0.2,
+          )
+          ..close();
+        canvas.drawPath(tear.shift(Offset(0, shimmer * 4)), paint);
+        break;
+      case MiniMeAmbientEffect.none:
+        break;
+    }
+  }
 
-    final bodyPath = Path()
-      ..moveTo(bodyRect.left + bodyWidth * 0.2, bodyRect.top)
-      ..quadraticBezierTo(
-        bodyRect.left + bodyWidth * 0.02,
-        bodyRect.top + bodyRect.height * 0.12,
-        bodyRect.left + bodyWidth * 0.08,
-        bodyRect.bottom - bodyRect.height * 0.2,
-      )
-      ..quadraticBezierTo(
-        bodyRect.left + bodyWidth * 0.18,
-        bodyRect.bottom,
-        bodyRect.center.dx,
-        bodyRect.bottom,
-      )
-      ..quadraticBezierTo(
-        bodyRect.right - bodyWidth * 0.18,
-        bodyRect.bottom,
-        bodyRect.right - bodyWidth * 0.08,
-        bodyRect.bottom - bodyRect.height * 0.2,
-      )
-      ..quadraticBezierTo(
-        bodyRect.right - bodyWidth * 0.02,
-        bodyRect.top + bodyRect.height * 0.12,
-        bodyRect.right - bodyWidth * 0.2,
-        bodyRect.top,
-      )
-      ..close();
-
-    final bodyShadow = bodyPath.shift(const Offset(0, 8));
-    canvas.drawPath(
-      bodyShadow,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.08)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+  void _drawSparkle(Canvas canvas, Offset center, Paint paint, double radius) {
+    canvas.drawLine(
+      Offset(center.dx - radius, center.dy),
+      Offset(center.dx + radius, center.dy),
+      paint,
     );
-
-    canvas.drawCircle(
-      headCenter.translate(0, 4),
-      headRadius,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.08)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
-    );
-
-    final bodyPaint = Paint()
-      ..shader = RadialGradient(
-        center: const Alignment(-0.22, -0.28),
-        radius: 1.02,
-        colors: [
-          Colors.white.withValues(alpha: 0.15),
-          palette.primary,
-          palette.secondary,
-        ],
-        stops: const [0, 0.36, 1],
-      ).createShader(bodyRect.inflate(bodyWidth * 0.05));
-    canvas.drawPath(bodyPath, bodyPaint);
-    canvas.drawPath(
-      bodyPath,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.1)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.008,
-    );
-
-    final bodyGloss = Path()
-      ..moveTo(
-        bodyRect.left + bodyWidth * 0.2,
-        bodyRect.top + bodyRect.height * 0.06,
-      )
-      ..quadraticBezierTo(
-        bodyRect.left + bodyWidth * 0.34,
-        bodyRect.top + bodyRect.height * 0.14,
-        bodyRect.left + bodyWidth * 0.28,
-        bodyRect.bottom - bodyRect.height * 0.3,
-      )
-      ..quadraticBezierTo(
-        bodyRect.left + bodyWidth * 0.22,
-        bodyRect.bottom - bodyRect.height * 0.18,
-        bodyRect.left + bodyWidth * 0.14,
-        bodyRect.bottom - bodyRect.height * 0.36,
-      )
-      ..quadraticBezierTo(
-        bodyRect.left + bodyWidth * 0.12,
-        bodyRect.top + bodyRect.height * 0.16,
-        bodyRect.left + bodyWidth * 0.2,
-        bodyRect.top + bodyRect.height * 0.06,
-      )
-      ..close();
-    canvas.drawPath(
-      bodyGloss,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white.withValues(alpha: 0.22),
-            Colors.white.withValues(alpha: 0),
-          ],
-        ).createShader(bodyRect),
-    );
-
-    final bellyRect = Rect.fromCenter(
-      center: Offset(bodyRect.center.dx, bodyRect.top + bodyRect.height * 0.56),
-      width: bodyWidth * 0.56,
-      height: bodyRect.height * 0.35,
-    );
-    final bellyPath = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          bellyRect,
-          Radius.circular(bellyRect.width * 0.5),
-        ),
-      );
-    canvas.drawPath(
-      bellyPath,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.white.withValues(alpha: 0.16), palette.belly],
-        ).createShader(bellyRect),
-    );
-
-    canvas.drawCircle(
-      headCenter,
-      headRadius,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.18, -0.24),
-          radius: 0.92,
-          colors: [
-            Colors.white.withValues(alpha: 0.18),
-            palette.primary,
-            palette.secondary,
-          ],
-          stops: const [0, 0.44, 1],
-        ).createShader(Rect.fromCircle(center: headCenter, radius: headRadius)),
-    );
-    canvas.drawCircle(
-      headCenter,
-      headRadius,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.1)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.009,
-    );
-
-    final headHighlight = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: headCenter.translate(-headRadius * 0.22, -headRadius * 0.2),
-        width: headRadius * 0.55,
-        height: headRadius * 0.28,
-      ),
-      Radius.circular(headRadius),
-    );
-    canvas.drawRRect(
-      headHighlight,
-      Paint()
-        ..shader = LinearGradient(
-          colors: [
-            Colors.white.withValues(alpha: 0.34),
-            Colors.white.withValues(alpha: 0),
-          ],
-        ).createShader(headHighlight.outerRect),
+    canvas.drawLine(
+      Offset(center.dx, center.dy - radius),
+      Offset(center.dx, center.dy + radius),
+      paint,
     );
   }
 
   @override
-  bool shouldRepaint(covariant _CharacterShellPainter oldDelegate) {
-    return oldDelegate.palette != palette ||
-        oldDelegate.bodyWidthScale != bodyWidthScale;
+  bool shouldRepaint(covariant _AmbientEffectPainter oldDelegate) {
+    return oldDelegate.effect != effect ||
+        oldDelegate.shimmer != shimmer ||
+        oldDelegate.intensity != intensity;
   }
 }
 
-class _Wing extends StatelessWidget {
-  const _Wing({
+class _Arm extends StatelessWidget {
+  const _Arm({
     required this.width,
     required this.height,
     required this.color,
-    required this.accent,
+    required this.shadowColor,
+    this.muscleToneLevel = 0,
+    this.flexPoseLevel = 0,
   });
 
   final double width;
   final double height;
   final Color color;
-  final Color accent;
+  final Color shadowColor;
+  final double muscleToneLevel;
+  final double flexPoseLevel;
 
   @override
   Widget build(BuildContext context) {
@@ -603,248 +1538,326 @@ class _Wing extends StatelessWidget {
       width: width,
       height: height,
       child: CustomPaint(
-        painter: _WingPainter(color: color, accent: accent),
+        painter: _ArmPainter(
+          color: color,
+          shadowColor: shadowColor,
+          muscleToneLevel: muscleToneLevel,
+          flexPoseLevel: flexPoseLevel,
+        ),
       ),
     );
   }
 }
 
-class _WingPainter extends CustomPainter {
-  const _WingPainter({required this.color, required this.accent});
+class _ArmPainter extends CustomPainter {
+  const _ArmPainter({
+    required this.color,
+    required this.shadowColor,
+    required this.muscleToneLevel,
+    required this.flexPoseLevel,
+  });
 
   final Color color;
-  final Color accent;
+  final Color shadowColor;
+  final double muscleToneLevel;
+  final double flexPoseLevel;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(size.width * 0.72, size.height * 0.04)
-      ..quadraticBezierTo(
-        size.width * 0.08,
-        size.height * 0.14,
-        size.width * 0.1,
-        size.height * 0.56,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.12,
-        size.height * 0.92,
-        size.width * 0.58,
-        size.height * 0.98,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.94,
-        size.height * 0.88,
-        size.width * 0.94,
-        size.height * 0.46,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.9,
-        size.height * 0.18,
-        size.width * 0.72,
-        size.height * 0.04,
-      )
-      ..close();
+    final tone = muscleToneLevel.clamp(0.0, 1.0);
+    final flexPose = flexPoseLevel.clamp(0.0, 1.0);
+    final path = _buildDefaultArmPath(size, tone, flexPose);
 
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [accent, color, color.withValues(alpha: 0.92)],
-        stops: const [0, 0.36, 1],
-      ).createShader(Offset.zero & size);
-    final strokePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.06;
-
-    canvas.drawPath(path, fillPaint);
-    canvas.drawPath(path, strokePaint);
-
-    final featherPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.08)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.05
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(size.width * 0.58, size.height * 0.22),
-      Offset(size.width * 0.36, size.height * 0.76),
-      featherPaint,
+    canvas.drawPath(
+      path.shift(const Offset(0, 4)),
+      Paint()..color = shadowColor.withValues(alpha: 0.18),
     );
-    canvas.drawLine(
-      Offset(size.width * 0.68, size.height * 0.34),
-      Offset(size.width * 0.5, size.height * 0.84),
-      featherPaint,
-    );
+    canvas.drawPath(path, Paint()..color = color);
+
+    if (tone > 0.14) {
+      final highlightPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.10 + tone * 0.12)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.08
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(size.width * 0.5, size.height * 0.16),
+        Offset(size.width * (0.62 + tone * 0.06), size.height * 0.42),
+        highlightPaint,
+      );
+
+      final bicepPaint = Paint()
+        ..color = shadowColor.withValues(alpha: 0.12 + tone * 0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.06
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(
+            size.width * (0.52 + flexPose * 0.12),
+            size.height * (0.28 + flexPose * 0.06),
+          ),
+          width: size.width * (0.34 + tone * 0.16 + flexPose * 0.18),
+          height: size.height * (0.18 + tone * 0.08 + flexPose * 0.1),
+        ),
+        math.pi * 0.9,
+        math.pi * 0.85,
+        false,
+        bicepPaint,
+      );
+    }
+
+    if (flexPose > 0.08) {
+      final bulgePaint = Paint()
+        ..color = color.withValues(alpha: 0.26 + flexPose * 0.18)
+        ..style = PaintingStyle.fill;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(
+            size.width * (0.6 + flexPose * 0.1),
+            size.height * (0.34 + flexPose * 0.1),
+          ),
+          width: size.width * (0.32 + flexPose * 0.26),
+          height: size.height * (0.16 + flexPose * 0.16),
+        ),
+        bulgePaint,
+      );
+      final contourPaint = Paint()
+        ..color = shadowColor.withValues(alpha: 0.14 + flexPose * 0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.055
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(
+            size.width * (0.6 + flexPose * 0.1),
+            size.height * (0.34 + flexPose * 0.1),
+          ),
+          width: size.width * (0.34 + flexPose * 0.26),
+          height: size.height * (0.18 + flexPose * 0.18),
+        ),
+        math.pi * 1.02,
+        math.pi * 0.72,
+        false,
+        contourPaint,
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _WingPainter oldDelegate) {
-    return oldDelegate.color != color || oldDelegate.accent != accent;
+  bool shouldRepaint(covariant _ArmPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.shadowColor != shadowColor ||
+        oldDelegate.muscleToneLevel != muscleToneLevel ||
+        oldDelegate.flexPoseLevel != flexPoseLevel;
+  }
+
+  Path _buildDefaultArmPath(Size size, double tone, double flexPose) {
+    return Path()
+      ..moveTo(size.width * 0.46, 0)
+      ..quadraticBezierTo(
+        size.width * (0.08 - tone * 0.03 - flexPose * 0.02),
+        size.height * (0.18 - tone * 0.02 + flexPose * 0.04),
+        size.width * (0.12 - flexPose * 0.02),
+        size.height * (0.66 - flexPose * 0.02),
+      )
+      ..quadraticBezierTo(
+        size.width * (0.22 + flexPose * 0.02),
+        size.height * (0.95 - flexPose * 0.02),
+        size.width * 0.5,
+        size.height * 0.98,
+      )
+      ..quadraticBezierTo(
+        size.width * (0.84 + tone * 0.04 + flexPose * 0.12),
+        size.height * (0.92 - flexPose * 0.02),
+        size.width * (0.78 + flexPose * 0.1),
+        size.height * (0.5 - flexPose * 0.02),
+      )
+      ..quadraticBezierTo(
+        size.width * (0.74 + flexPose * 0.14),
+        size.height * (0.14 + flexPose * 0.08),
+        size.width * (0.46 + flexPose * 0.04),
+        0,
+      )
+      ..close();
   }
 }
 
-_MotionProfile _motionForExpression(String expression, double t) {
-  final wave = math.sin(t * math.pi * 2);
-  final fastWave = math.sin(t * math.pi * 4);
-  final slowWave = math.cos(t * math.pi * 2);
+class _Leg extends StatelessWidget {
+  const _Leg({required this.width, required this.height, required this.color});
 
-  switch (expression) {
-    case 'happy':
-      return _MotionProfile(
-        bobOffset: wave * 7 + math.max(0, fastWave) * 2.2,
-        sway: wave * 0.035,
-        tiltX: fastWave * 0.018,
-        tiltY: slowWave * 0.06,
-        bodyScaleX: 1 - math.max(0, wave) * 0.015,
-        bodyScaleY: 1 + math.max(0, wave) * 0.018,
-        shadowScale: 1 - math.max(0, wave) * 0.08,
-        shimmer: (slowWave + 1) / 2,
-        wingLift: math.max(0, fastWave) * 4.5,
-        headOffsetY: math.max(0, wave) * -3.5,
-        bodyLean: wave * 0.12,
-        accessoryLift: math.max(0, fastWave) * 2,
-        offsetX: wave * 1.8,
-      );
-    case 'calm':
-      return _MotionProfile(
-        bobOffset: wave * 3.5,
-        sway: wave * 0.018,
-        tiltX: slowWave * 0.012,
-        tiltY: wave * 0.03,
-        bodyScaleX: 1,
-        bodyScaleY: 1,
-        shadowScale: 1,
-        shimmer: (slowWave + 1) / 2,
-        wingLift: math.max(0, slowWave) * 1.2,
-        headOffsetY: slowWave * -1.6,
-        bodyLean: wave * 0.05,
-        accessoryLift: 0.8,
-        offsetX: wave * 0.6,
-      );
-    case 'sad':
-      return _MotionProfile(
-        bobOffset: wave * 2.2 + 3,
-        sway: wave * 0.012,
-        tiltX: -0.015 + slowWave * 0.006,
-        tiltY: wave * 0.016,
-        bodyScaleX: 1.01,
-        bodyScaleY: 0.99,
-        shadowScale: 1.03,
-        shimmer: 0.2 + (slowWave + 1) / 2 * 0.2,
-        wingLift: 0.2,
-        headOffsetY: 5 + math.max(0, wave) * 1.2,
-        bodyLean: -0.03,
-        accessoryLift: 0,
-        offsetX: 0,
-      );
-    case 'angry':
-      return _MotionProfile(
-        bobOffset: wave * 2.8,
-        sway: wave * 0.028,
-        tiltX: fastWave * 0.012,
-        tiltY: slowWave * 0.038,
-        bodyScaleX: 1.015,
-        bodyScaleY: 1,
-        shadowScale: 0.98,
-        shimmer: 0.35,
-        wingLift: math.max(0, fastWave) * 1.8,
-        headOffsetY: -1.2,
-        bodyLean: wave * 0.08,
-        accessoryLift: 0.6,
-        offsetX: wave * 1.2,
-      );
-    default:
-      return _MotionProfile(
-        bobOffset: wave * 4.5,
-        sway: wave * 0.022,
-        tiltX: fastWave * 0.012,
-        tiltY: slowWave * 0.04,
-        bodyScaleX: 1,
-        bodyScaleY: 1,
-        shadowScale: 1,
-        shimmer: (slowWave + 1) / 2 * 0.7,
-        wingLift: math.max(0, fastWave) * 1.5,
-        headOffsetY: slowWave * -1.5,
-        bodyLean: wave * 0.06,
-        accessoryLift: 0.8,
-        offsetX: wave * 0.9,
-      );
+  final double width;
+  final double height;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(width),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+    );
   }
-}
-
-class _MotionProfile {
-  const _MotionProfile({
-    required this.bobOffset,
-    required this.sway,
-    required this.tiltX,
-    required this.tiltY,
-    required this.bodyScaleX,
-    required this.bodyScaleY,
-    required this.shadowScale,
-    required this.shimmer,
-    required this.wingLift,
-    required this.headOffsetY,
-    required this.bodyLean,
-    required this.accessoryLift,
-    required this.offsetX,
-  });
-
-  final double bobOffset;
-  final double sway;
-  final double tiltX;
-  final double tiltY;
-  final double bodyScaleX;
-  final double bodyScaleY;
-  final double shadowScale;
-  final double shimmer;
-  final double wingLift;
-  final double headOffsetY;
-  final double bodyLean;
-  final double accessoryLift;
-  final double offsetX;
 }
 
 class _AccessoryBadge extends StatelessWidget {
   const _AccessoryBadge({
-    required this.palette,
     required this.accessory,
+    required this.palette,
     required this.size,
+    required this.accessoryMood,
+    required this.outfitMode,
   });
 
-  final MiniMeFacePalette palette;
   final _MiniMeAccessory accessory;
+  final MiniMeFacePalette palette;
   final double size;
+  final MiniMeAccessoryMood accessoryMood;
+  final MiniMeOutfitMode outfitMode;
 
   @override
   Widget build(BuildContext context) {
-    if (accessory == _MiniMeAccessory.none) {
-      return const SizedBox.shrink();
-    }
-
-    if (accessory == _MiniMeAccessory.tie) {
-      return SizedBox(
-        width: size,
-        height: size * 0.9,
-        child: CustomPaint(painter: _TiePainter(color: palette.accessory)),
-      );
-    }
-
-    return Container(
-      width: size,
-      height: size * 0.34,
-      decoration: BoxDecoration(
-        color: palette.accessory,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Center(
-        child: Container(
-          width: size * 0.16,
-          height: size * 0.16,
+    Widget baseAccessory;
+    switch (accessory) {
+      case _MiniMeAccessory.tie:
+        baseAccessory = SizedBox(
+          width: size,
+          height: size * 1.1,
+          child: CustomPaint(painter: _TiePainter(color: palette.accessory)),
+        );
+      case _MiniMeAccessory.band:
+        baseAccessory = Container(
+          width: size,
+          height: size * 0.26,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.82),
-            shape: BoxShape.circle,
+            color: palette.accessory,
+            borderRadius: BorderRadius.circular(999),
           ),
-        ),
+        );
+      case _MiniMeAccessory.none:
+        baseAccessory = const SizedBox.shrink();
+    }
+
+    if (accessoryMood == MiniMeAccessoryMood.none &&
+        outfitMode == MiniMeOutfitMode.standard) {
+      return baseAccessory;
+    }
+
+    return SizedBox(
+      width: size * 1.7,
+      height: size * 1.55,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          baseAccessory,
+          if (outfitMode == MiniMeOutfitMode.comfort)
+            Positioned(
+              top: size * 0.12,
+              child: Container(
+                width: size * 1.22,
+                height: size * 0.36,
+                decoration: BoxDecoration(
+                  color: palette.secondary.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(size),
+                ),
+              ),
+            ),
+          if (accessoryMood == MiniMeAccessoryMood.coffee)
+            Positioned(
+              right: size * 0.02,
+              top: size * 0.16,
+              child: _MiniPropIcon(
+                icon: Icons.coffee_rounded,
+                color: const Color(0xFF9C6744),
+              ),
+            ),
+          if (accessoryMood == MiniMeAccessoryMood.blanket)
+            Positioned(
+              top: size * 0.18,
+              child: Container(
+                width: size * 1.12,
+                height: size * 0.4,
+                decoration: BoxDecoration(
+                  color: palette.secondary.withValues(alpha: 0.92),
+                  borderRadius: BorderRadius.circular(size * 0.24),
+                ),
+              ),
+            ),
+          if (accessoryMood == MiniMeAccessoryMood.bandage)
+            Positioned(
+              left: size * 0.04,
+              top: size * 0.2,
+              child: Transform.rotate(
+                angle: -0.28,
+                child: Container(
+                  width: size * 0.34,
+                  height: size * 0.12,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8D9BA),
+                    borderRadius: BorderRadius.circular(size),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: size * 0.08,
+                      height: size * 0.08,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFC9B28E),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (accessoryMood == MiniMeAccessoryMood.star)
+            Positioned(
+              right: size * 0.02,
+              top: 0,
+              child: _MiniPropIcon(
+                icon: Icons.auto_awesome_rounded,
+                color: const Color(0xFFE1BD51),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniPropIcon extends StatelessWidget {
+  const _MiniPropIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, size: 16, color: color),
       ),
     );
   }
@@ -857,44 +1870,27 @@ class _TiePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final knot = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * 0.22),
-        width: size.width * 0.25,
-        height: size.height * 0.18,
+    final paint = Paint()..color = color;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(size.width / 2, size.height * 0.18),
+          width: size.width * 0.28,
+          height: size.height * 0.14,
+        ),
+        Radius.circular(size.width * 0.08),
       ),
-      Radius.circular(size.width * 0.08),
+      paint,
     );
-    canvas.drawRRect(knot, paint);
-
-    final leftWing = Path()
-      ..moveTo(size.width * 0.18, size.height * 0.16)
-      ..lineTo(size.width * 0.42, size.height * 0.1)
-      ..lineTo(size.width * 0.39, size.height * 0.36)
-      ..close();
-    canvas.drawPath(leftWing, paint);
-
-    final rightWing = Path()
-      ..moveTo(size.width * 0.82, size.height * 0.16)
-      ..lineTo(size.width * 0.58, size.height * 0.1)
-      ..lineTo(size.width * 0.61, size.height * 0.36)
-      ..close();
-    canvas.drawPath(rightWing, paint);
-
     final tail = Path()
-      ..moveTo(size.width * 0.5, size.height * 0.3)
-      ..lineTo(size.width * 0.37, size.height * 0.9)
+      ..moveTo(size.width * 0.5, size.height * 0.24)
+      ..lineTo(size.width * 0.38, size.height * 0.96)
       ..quadraticBezierTo(
         size.width * 0.5,
-        size.height * 0.98,
-        size.width * 0.63,
-        size.height * 0.9,
+        size.height,
+        size.width * 0.62,
+        size.height * 0.96,
       )
-      ..lineTo(size.width * 0.5, size.height * 0.3)
       ..close();
     canvas.drawPath(tail, paint);
   }
@@ -910,11 +1906,15 @@ class _Crest extends StatelessWidget {
     required this.crest,
     required this.palette,
     required this.size,
+    required this.messyHairLevel,
+    required this.recoveryLevel,
   });
 
   final _MiniMeCrest crest;
   final MiniMeFacePalette palette;
   final double size;
+  final double messyHairLevel;
+  final double recoveryLevel;
 
   @override
   Widget build(BuildContext context) {
@@ -922,14 +1922,17 @@ class _Crest extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    return SizedBox(
-      width: size * 1.9,
-      height: size * 1.4,
-      child: CustomPaint(
-        painter: _CrestPainter(
-          crest: crest,
-          color: palette.accessory,
-          secondary: palette.secondary,
+    return Transform.rotate(
+      angle: (messyHairLevel - recoveryLevel * 0.35) * 0.14,
+      child: SizedBox(
+        width: size * 1.8,
+        height: size * 1.3,
+        child: CustomPaint(
+          painter: _CrestPainter(
+            crest: crest,
+            color: palette.accessory,
+            messyHairLevel: messyHairLevel,
+          ),
         ),
       ),
     );
@@ -940,65 +1943,55 @@ class _CrestPainter extends CustomPainter {
   const _CrestPainter({
     required this.crest,
     required this.color,
-    required this.secondary,
+    required this.messyHairLevel,
   });
 
   final _MiniMeCrest crest;
   final Color color;
-  final Color secondary;
+  final double messyHairLevel;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    final shadowPaint = Paint()
-      ..color = secondary.withValues(alpha: 0.28)
-      ..style = PaintingStyle.fill;
+    final paint = Paint()..color = color;
 
-    void drawLeaf(double startX, double peakX, double peakY, double endX) {
+    final droop = messyHairLevel * size.height * 0.12;
+
+    void leaf(double startX, double peakX, double peakY, double endX) {
       final path = Path()
         ..moveTo(startX, size.height)
-        ..quadraticBezierTo(peakX, peakY, endX, size.height * 0.92)
+        ..quadraticBezierTo(peakX, peakY + droop, endX, size.height * 0.9)
         ..quadraticBezierTo(
           (startX + endX) / 2,
-          size.height * 0.78,
+          size.height * (0.72 + messyHairLevel * 0.08),
           startX,
           size.height,
         )
         ..close();
-      canvas.drawPath(path.shift(const Offset(0, 3)), shadowPaint);
       canvas.drawPath(path, paint);
     }
 
     switch (crest) {
       case _MiniMeCrest.fluff:
-        drawLeaf(
-          size.width * 0.2,
-          size.width * 0.36,
-          size.height * 0.02,
-          size.width * 0.44,
-        );
-        drawLeaf(size.width * 0.4, size.width * 0.52, 0, size.width * 0.64);
-        drawLeaf(
-          size.width * 0.58,
-          size.width * 0.74,
+        leaf(
+          size.width * 0.18,
+          size.width * 0.34,
           size.height * 0.08,
-          size.width * 0.8,
+          size.width * 0.46,
         );
+        leaf(size.width * 0.42, size.width * 0.56, 0, size.width * 0.7);
         break;
       case _MiniMeCrest.sprout:
-        drawLeaf(
+        leaf(
           size.width * 0.26,
-          size.width * 0.38,
-          size.height * 0.08,
-          size.width * 0.5,
+          size.width * 0.4,
+          size.height * 0.12,
+          size.width * 0.54,
         );
-        drawLeaf(
-          size.width * 0.5,
+        leaf(
+          size.width * 0.46,
           size.width * 0.62,
-          size.height * 0.02,
-          size.width * 0.74,
+          size.height * 0.04,
+          size.width * 0.76,
         );
         break;
       case _MiniMeCrest.none:
@@ -1010,73 +2003,186 @@ class _CrestPainter extends CustomPainter {
   bool shouldRepaint(covariant _CrestPainter oldDelegate) {
     return oldDelegate.crest != crest ||
         oldDelegate.color != color ||
-        oldDelegate.secondary != secondary;
+        oldDelegate.messyHairLevel != messyHairLevel;
   }
 }
 
-class _Foot extends StatelessWidget {
-  const _Foot({required this.color, required this.flip, required this.size});
+_IdleMotion _motionForExpression(String expression, double t) {
+  final wave = math.sin(t * math.pi * 2);
+  final fastWave = math.sin(t * math.pi * 4);
+  final slowWave = math.cos(t * math.pi * 2);
 
-  final Color color;
-  final bool flip;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.flip(
-      flipX: flip,
-      child: SizedBox(
-        width: size,
-        height: size * 0.44,
-        child: CustomPaint(painter: _FootPainter(color: color)),
-      ),
-    );
+  switch (expression) {
+    case 'happy':
+      return _IdleMotion(
+        bob: wave * 6.5,
+        sway: wave * 0.03,
+        turn: slowWave * 0.04,
+        offsetX: wave * 1.4,
+        shimmer: (slowWave + 1) / 2,
+        headDip: math.max(0, wave) * -2.8,
+        shadowScale: 0.96 - math.max(0, wave) * 0.05,
+      );
+    case 'sad':
+      return _IdleMotion(
+        bob: wave * 2.2 + 2.8,
+        sway: wave * 0.012,
+        turn: slowWave * 0.015,
+        offsetX: 0,
+        shimmer: 0.22,
+        headDip: 4 + math.max(0, wave) * 1.4,
+        shadowScale: 1.02,
+      );
+    case 'angry':
+      return _IdleMotion(
+        bob: wave * 2.8,
+        sway: wave * 0.02,
+        turn: slowWave * 0.02,
+        offsetX: fastWave * 0.6,
+        shimmer: 0.3,
+        headDip: -0.6,
+        shadowScale: 0.98,
+      );
+    case 'calm':
+      return _IdleMotion(
+        bob: wave * 3.2,
+        sway: wave * 0.015,
+        turn: slowWave * 0.02,
+        offsetX: wave * 0.4,
+        shimmer: (slowWave + 1) / 2 * 0.45,
+        headDip: slowWave * -0.8,
+        shadowScale: 1,
+      );
+    default:
+      return _IdleMotion(
+        bob: wave * 4.2,
+        sway: wave * 0.02,
+        turn: slowWave * 0.03,
+        offsetX: wave * 0.8,
+        shimmer: (slowWave + 1) / 2 * 0.6,
+        headDip: slowWave * -1.2,
+        shadowScale: 1,
+      );
   }
 }
 
-class _FootPainter extends CustomPainter {
-  const _FootPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = size.height * 0.18;
-
-    final baseY = size.height * 0.55;
-    canvas.drawLine(
-      Offset(size.width * 0.12, baseY),
-      Offset(size.width * 0.42, size.height * 0.24),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.32, baseY),
-      Offset(size.width * 0.56, size.height * 0.22),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.52, baseY),
-      Offset(size.width * 0.82, size.height * 0.3),
-      paint,
-    );
+_ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
+  switch (reaction) {
+    case _MiniMeReaction.flinch:
+      final eased = Curves.easeOut.transform(t);
+      return _ReactionMotion(
+        bob: math.sin(eased * math.pi) * 5,
+        sway: -math.sin(eased * math.pi) * 0.04,
+        headDip: math.sin(eased * math.pi) * 10,
+        leftArmLift: 0.14,
+        rightArmLift: 0.14,
+        shadowDelta: 0.06,
+      );
+    case _MiniMeReaction.doubleBicep:
+      final enter = _timedPoseValue(t, enterEnd: 0.18, holdEnd: 0.78);
+      final exit = t <= 0.78
+          ? 0.0
+          : Curves.easeIn.transform((t - 0.78) / 0.22).clamp(0.0, 1.0);
+      final settle = Curves.easeInOut.transform(
+        ((t - 0.18) / 0.60).clamp(0.0, 1.0),
+      );
+      return _ReactionMotion(
+        bob: -enter * 2.4 + settle * 0.6 - exit * 0.8,
+        sway: math.sin(settle * math.pi) * 0.004,
+        headDip: -enter * 1.8 + settle * 0.4,
+        leftArmLift: 0.12 + enter * 0.52 - exit * 0.08,
+        rightArmLift: 0.12 + enter * 0.52 - exit * 0.08,
+        flexPoseLevel: enter,
+        shadowDelta: -0.06 * enter,
+      );
+    case _MiniMeReaction.bounce:
+      final eased = Curves.easeOut.transform(t);
+      return _ReactionMotion(
+        bob: -math.sin(eased * math.pi) * 7,
+        sway: 0,
+        headDip: -math.sin(eased * math.pi) * 2,
+        leftArmLift: 0.1,
+        rightArmLift: 0.1,
+        shadowDelta: -0.07,
+      );
+    case _MiniMeReaction.none:
+      return const _ReactionMotion();
   }
+}
 
-  @override
-  bool shouldRepaint(covariant _FootPainter oldDelegate) {
-    return oldDelegate.color != color;
+class _IdleMotion {
+  const _IdleMotion({
+    required this.bob,
+    required this.sway,
+    required this.turn,
+    required this.offsetX,
+    required this.shimmer,
+    required this.headDip,
+    required this.shadowScale,
+  });
+
+  final double bob;
+  final double sway;
+  final double turn;
+  final double offsetX;
+  final double shimmer;
+  final double headDip;
+  final double shadowScale;
+}
+
+class _ReactionMotion {
+  const _ReactionMotion({
+    this.bob = 0,
+    this.sway = 0,
+    this.headDip = 0,
+    this.leftArmLift = 0,
+    this.rightArmLift = 0,
+    this.flexPoseLevel = 0,
+    this.shadowDelta = 0,
+  });
+
+  final double bob;
+  final double sway;
+  final double headDip;
+  final double leftArmLift;
+  final double rightArmLift;
+  final double flexPoseLevel;
+  final double shadowDelta;
+}
+
+enum _MiniMeReaction { none, flinch, doubleBicep, bounce }
+
+double _timedPoseValue(
+  double t, {
+  required double enterEnd,
+  required double holdEnd,
+}) {
+  if (t <= 0) return 0;
+  if (t < enterEnd) {
+    return Curves.easeOutBack.transform((t / enterEnd).clamp(0.0, 1.0));
   }
+  if (t <= holdEnd) {
+    return 1.0;
+  }
+  return (1 -
+          Curves.easeInOut.transform(
+            ((t - holdEnd) / (1 - holdEnd)).clamp(0.0, 1.0),
+          ))
+      .clamp(0.0, 1.0);
 }
 
 MiniMeFacePalette _resolvePalette(
   String bodyModel,
   String hairModel,
   String shirtModel,
+  String? companionId,
 ) {
-  final source = [bodyModel, hairModel, shirtModel].join('|').toLowerCase();
+  final source = [
+    companionId ?? '',
+    bodyModel,
+    hairModel,
+    shirtModel,
+  ].join('|').toLowerCase();
   final index = source.hashCode.abs() % _palettes.length;
   return _palettes[index];
 }
@@ -1103,12 +2209,16 @@ String _resolveExpression(String? moodLabel) {
   }
 }
 
+double _resolveVisualWearLevel(String? moodLabel, double degradationLevel) {
+  return degradationLevel.clamp(0.0, 1.0).toDouble();
+}
+
 _MiniMeCrest _resolveCrest(String hairModel) {
   final key = hairModel.toLowerCase();
-  if (key.contains('male')) {
+  if (key.contains('male') || key.contains('sprout')) {
     return _MiniMeCrest.sprout;
   }
-  if (key.contains('hair')) {
+  if (key.contains('hair') || key.contains('fluff')) {
     return _MiniMeCrest.fluff;
   }
   return _MiniMeCrest.none;
@@ -1131,39 +2241,39 @@ enum _MiniMeCrest { none, fluff, sprout }
 
 const List<MiniMeFacePalette> _palettes = [
   MiniMeFacePalette(
-    primary: Color(0xFF69C4B6),
-    secondary: Color(0xFF4AA597),
-    belly: Color(0xFFF7F2E7),
-    beak: Color(0xFFF6AE45),
-    cheek: Color(0xFFF7B6B2),
-    eye: Color(0xFF18323A),
-    accessory: Color(0xFFEF6F6C),
+    primary: Color(0xFFF8F6F2),
+    secondary: Color(0xFF75A0E3),
+    belly: Color(0xFFF2F0EC),
+    beak: Color(0xFFE3D9CF),
+    cheek: Color(0xFFF0B7C5),
+    eye: Color(0xFF17345C),
+    accessory: Color(0xFF90A7F4),
   ),
   MiniMeFacePalette(
-    primary: Color(0xFFF7B267),
-    secondary: Color(0xFFE59644),
-    belly: Color(0xFFFFF2DD),
-    beak: Color(0xFFEE8B2B),
-    cheek: Color(0xFFF7B0A3),
-    eye: Color(0xFF432818),
-    accessory: Color(0xFF7F95D1),
+    primary: Color(0xFFFFF6EA),
+    secondary: Color(0xFFE7A16F),
+    belly: Color(0xFFF6ECDD),
+    beak: Color(0xFFE1B98A),
+    cheek: Color(0xFFF0B6A6),
+    eye: Color(0xFF3A2A27),
+    accessory: Color(0xFF8B78D9),
   ),
   MiniMeFacePalette(
-    primary: Color(0xFF8FCB9B),
-    secondary: Color(0xFF5FAE74),
-    belly: Color(0xFFF7F5E8),
-    beak: Color(0xFFE8A04F),
-    cheek: Color(0xFFF2B7C6),
-    eye: Color(0xFF233127),
-    accessory: Color(0xFF5B7DB1),
+    primary: Color(0xFFF1FBF3),
+    secondary: Color(0xFF67BEA0),
+    belly: Color(0xFFE8F5EA),
+    beak: Color(0xFFD9E6D7),
+    cheek: Color(0xFFF0C4CF),
+    eye: Color(0xFF234236),
+    accessory: Color(0xFF5C9D87),
   ),
   MiniMeFacePalette(
-    primary: Color(0xFF9DB4F0),
-    secondary: Color(0xFF6E86D6),
-    belly: Color(0xFFF8F7FF),
-    beak: Color(0xFFF3B55B),
-    cheek: Color(0xFFF1B4C8),
-    eye: Color(0xFF22304F),
-    accessory: Color(0xFFE87461),
+    primary: Color(0xFFF8F8FC),
+    secondary: Color(0xFF9A8DE8),
+    belly: Color(0xFFF0F0F8),
+    beak: Color(0xFFE4DCF2),
+    cheek: Color(0xFFF0BED1),
+    eye: Color(0xFF2B2950),
+    accessory: Color(0xFFE89172),
   ),
 ];

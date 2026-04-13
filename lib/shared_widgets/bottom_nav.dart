@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
 
 class BottomNav extends StatelessWidget {
   const BottomNav({
@@ -19,7 +20,7 @@ class BottomNav extends StatelessWidget {
       onDestinationSelected: onChanged,
       backgroundColor: cs.surface.withValues(alpha: 0.95),
       indicatorColor: cs.primaryContainer.withValues(alpha: 0.7),
-      destinations: const [
+      destinations: [
         NavigationDestination(
           icon: Icon(Icons.person_outline_rounded),
           selectedIcon: Icon(Icons.person_rounded),
@@ -40,7 +41,7 @@ class BottomNav extends StatelessWidget {
 
         NavigationDestination(
           icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings_rounded),
+          selectedIcon: MiniMeProfileIcon(size: 28, padding: 2),
           label: 'Profile',
         ),
       ],

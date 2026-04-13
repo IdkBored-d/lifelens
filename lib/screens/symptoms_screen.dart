@@ -553,7 +553,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: cs.primaryContainer.withValues(alpha:0.45),
+                      color: cs.primaryContainer.withValues(alpha: 0.45),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Column(
@@ -570,14 +570,16 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         Text(
                           '${summary.windowLabel} • ${_formatDate(summary.fromDate)} to ${_formatDate(summary.toDate)}',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onPrimaryContainer.withValues(alpha:0.9),
+                            color: cs.onPrimaryContainer.withValues(alpha: 0.9),
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           _burdenLabel(summary),
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: cs.onPrimaryContainer.withValues(alpha:0.95),
+                            color: cs.onPrimaryContainer.withValues(
+                              alpha: 0.95,
+                            ),
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -607,18 +609,22 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                       child: Column(
                         children: [
                           _ReportSectionCard(
-                            title: 'Symptoms showing up most often',
+                            title: 'Most common symptoms',
                             body: topSymptoms.isEmpty
-                                ? 'No predominant symptom identified for this window.'
+                                ? 'No main symptom stood out in this time.'
                                 : topSymptoms.join(', '),
                           ),
-                          const SizedBox(height: 10),
-                          _ReportSectionCard(
-                            title: 'Compared with the previous period',
-                            body:
-                                'Symptoms that increased:\n${worseningSymptoms.isEmpty ? 'None detected.' : worseningSymptoms.join(', ')}\n\n'
-                                'Symptoms that improved:\n${improvingSymptoms.isEmpty ? 'None detected.' : improvingSymptoms.join(', ')}',
-                          ),
+                          if (summary.compareWithPrevious &&
+                              (worseningSymptoms.isNotEmpty ||
+                                  improvingSymptoms.isNotEmpty)) ...[
+                            const SizedBox(height: 10),
+                            _ReportSectionCard(
+                              title: 'Simple changes',
+                              body:
+                                  '${worseningSymptoms.isEmpty ? 'No clear increases.' : 'More: ${worseningSymptoms.take(2).join(', ')}'}\n\n'
+                                  '${improvingSymptoms.isEmpty ? 'No clear decreases.' : 'Less: ${improvingSymptoms.take(2).join(', ')}'}',
+                            ),
+                          ],
                           const SizedBox(height: 10),
                           _ReportSectionCard(
                             title: 'Plain-language summary',
@@ -775,7 +781,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: cs.primaryContainer.withValues(alpha:0.45),
+                          color: cs.primaryContainer.withValues(alpha: 0.45),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Text(
@@ -872,7 +878,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: cs.primaryContainer.withValues(alpha:0.6),
+                              color: cs.primaryContainer.withValues(alpha: 0.6),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Icon(
@@ -955,7 +961,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Compare with previous period'),
                         subtitle: const Text(
-                          'Shows what symptoms are increasing or improving.',
+                          'Adds a short note about what seems more or less common.',
                         ),
                         onChanged: (value) {
                           setState(() => _compareWithPreviousPeriod = value);
@@ -1018,7 +1024,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                             color: cs.surface,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: cs.outlineVariant.withValues(alpha:0.5),
+                              color: cs.outlineVariant.withValues(alpha: 0.5),
                             ),
                           ),
                           child: Column(
@@ -1105,7 +1111,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
       ),
       child: child,
     );
@@ -1197,7 +1203,7 @@ class _TrendBarChart extends StatelessWidget {
                           minHeight: 10,
                           backgroundColor: Theme.of(
                             context,
-                          ).colorScheme.outlineVariant.withValues(alpha:0.35),
+                          ).colorScheme.outlineVariant.withValues(alpha: 0.35),
                         ),
                       ),
                     ),
@@ -1251,7 +1257,7 @@ class _DailyTrendMiniChart extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: value > 0
                       ? cs.primary
-                      : cs.outlineVariant.withValues(alpha:0.4),
+                      : cs.outlineVariant.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(6),
                 ),
               ),
@@ -1277,7 +1283,7 @@ class _MetricChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: cs.primaryContainer.withValues(alpha:0.5),
+        color: cs.primaryContainer.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1325,7 +1331,7 @@ class _ReportSectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.5)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
