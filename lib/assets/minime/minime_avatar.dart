@@ -2168,16 +2168,25 @@ String _resolveExpression(String? moodLabel, String? animationState) {
     case 'happy':
     case 'excited':
     case 'joyful':
+    case 'joy':
+    case 'surprised':
+    case 'surprise':
+    case 'affectionate':
+    case 'love':
       return 'happy';
-    case 'calm':
-    case 'peaceful':
-      return 'calm';
+    case 'neutral':
+    case 'content':
+      return 'neutral';
+    case 'scared':
+    case 'fear':
     case 'anxious':
     case 'sad':
+    case 'sadness':
     case 'tired':
     case 'low':
       return 'sad';
     case 'angry':
+    case 'anger':
     case 'frustrated':
       return 'angry';
     default:

@@ -86,17 +86,31 @@ class MoodLogStore extends ChangeNotifier {
   }
 
   String _emojiForMood(String moodLabel) {
-    switch (moodLabel) {
-      case 'Happy':
-        return '😊';
-      case 'Calm':
-        return '😌';
-      case 'Anxious':
-        return '😟';
-      case 'Sad':
-        return '😔';
-      case 'Neutral':
+    final normalized = moodLabel.trim().toLowerCase();
+
+    switch (normalized) {
+      case 'neutral':
+      case 'content':
         return '😐';
+      case 'angry':
+      case 'anger':
+        return '😠';
+      case 'scared':
+      case 'fear':
+      case 'anxious':
+        return '😨';
+      case 'happy':
+      case 'joy':
+        return '😊';
+      case 'affectionate':
+      case 'love':
+        return '🥰';
+      case 'sad':
+      case 'sadness':
+        return '😔';
+      case 'surprised':
+      case 'surprise':
+        return '😲';
       default:
         return '🙂';
     }

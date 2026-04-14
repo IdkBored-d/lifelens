@@ -6,6 +6,7 @@ import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
+import 'package:lifelens/screens/suggestions_screen.dart';
 import 'package:lifelens/screens/symptoms_screen.dart';
 import 'package:lifelens/services/exercise_store.dart';
 import 'package:lifelens/sleep_store.dart';
@@ -97,6 +98,12 @@ class _LogHubScreenState extends State<LogHubScreen> {
                     title: 'Symptom Log',
                     subtitle: 'Track symptom changes and summaries',
                     onTap: () => _openTracker(const SymptomsScreen()),
+                  ),
+                  _TrackerRow(
+                    icon: Icons.tips_and_updates_outlined,
+                    title: 'Suggestions',
+                    subtitle: 'See guidance based on your real recent data',
+                    onTap: () => _openTracker(const SuggestionsScreen()),
                   ),
                 ],
               ),

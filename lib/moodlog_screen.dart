@@ -30,11 +30,13 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   bool _restoringDraft = true;
 
   final moods = const [
-    _MoodOption("Happy", "😊"),
-    _MoodOption("Calm", "😌"),
     _MoodOption("Neutral", "😐"),
-    _MoodOption("Anxious", "😟"),
+    _MoodOption("Angry", "😠"),
+    _MoodOption("Scared", "😨"),
+    _MoodOption("Happy", "😊"),
+    _MoodOption("Affectionate", "🥰"),
     _MoodOption("Sad", "😔"),
+    _MoodOption("Surprised", "😲"),
   ];
 
   final tagOptions = const [
@@ -118,14 +120,20 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
 
   String moodHint(String label) {
     switch (label) {
+      case "Neutral":
+        return "A steady check-in still helps spot patterns over time.";
+      case "Angry":
+        return "Naming anger can help uncover what pushed you there.";
+      case "Scared":
+        return "Logging fear can make triggers and patterns easier to notice.";
       case "Happy":
         return "Capture what's going well right now.";
-      case "Calm":
-        return "Maintain that calm aura";
-      case "Anxious":
-        return "Noticing anxiety helps identify triggers.";
+      case "Affectionate":
+        return "This is a good moment to note who or what feels meaningful.";
       case "Sad":
         return "Thank you for checking in - this matters.";
+      case "Surprised":
+        return "A quick note can help explain what caught you off guard.";
       default:
         return "A quick check-in helps over time.";
     }
@@ -223,7 +231,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                         itemCount: moods.length,
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 5,
+                              crossAxisCount: 4,
                               mainAxisSpacing: 10,
                               crossAxisSpacing: 10,
                             ),

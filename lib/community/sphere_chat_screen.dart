@@ -1351,11 +1351,7 @@ class _PostCard extends StatelessWidget {
       data['reactionCounts'] as Map? ?? {},
     );
     final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
-    final String displayName =
-        (type == 'system_join'
-            ? (data['miniMeName'] ?? data['nickname'])
-            : data['nickname']) ??
-        'Anonymous';
+    final String displayName = (data['nickname'] ?? data['miniMeName']) ?? 'Anonymous';
 
     return Container(
       padding: const EdgeInsets.all(14),

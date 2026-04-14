@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
 
 String miniMeAssetForMood(String? moodLabel) {
-  switch (moodLabel) {
-    case "Happy":
+  switch ((moodLabel ?? '').trim().toLowerCase()) {
+    case "happy":
+    case "joy":
+    case "surprised":
       return "lib/assets/minime/happy.png";
-    case "Sad":
+    case "affectionate":
+    case "love":
+      return "lib/assets/minime/happy.png";
+    case "sad":
+    case "sadness":
+    case "scared":
+    case "fear":
       return "lib/assets/minime/sad.png";
-    case "Anxious":
-    case "Stressed":
+    case "angry":
+    case "anxious":
+    case "stressed":
       return "lib/assets/minime/stressed.png";
-    case "Energetic":
+    case "energetic":
       return "lib/assets/minime/energetic.png";
     default:
       return "lib/assets/minime/calm.png";

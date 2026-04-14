@@ -46,7 +46,7 @@ class MoodLogDraftStorageService {
   static final MoodLogDraftStorageService instance =
       MoodLogDraftStorageService._();
 
-  static const _draftKey = 'mood_log_draft_v1';
+  static const _draftKey = 'mood_log_draft_v2';
 
   Future<MoodLogDraft?> load() async {
     final prefs = await SharedPreferences.getInstance();

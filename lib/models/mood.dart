@@ -6,9 +6,11 @@ class Mood {
 }
 
 const moods = <Mood> [
-  Mood('😊', 'Happy'),
-  Mood('😌', 'Calm'),
   Mood('😐', 'Neutral'),
-  Mood('😟', 'Anxious'),
-  Mood('😞', 'Sad')
+  Mood('😠', 'Angry'),
+  Mood('😨', 'Scared'),
+  Mood('😊', 'Happy'),
+  Mood('🥰', 'Affectionate'),
+  Mood('😔', 'Sad'),
+  Mood('😲', 'Surprised'),
 ];

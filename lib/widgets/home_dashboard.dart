@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lifelens/exercises/exercise_screen.dart';
 import 'package:lifelens/models/mood.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
+import 'package:lifelens/screens/suggestions_screen.dart';
 import 'package:lifelens/models/quick_action.dart';
 import 'package:lifelens/models/summary_item.dart';
 import 'package:lifelens/moodlog_screen.dart';
@@ -52,7 +53,7 @@ class HomeDashboard extends StatelessWidget {
             child: MiniMeHeroCard(
               title: "Mini-Me",
               moodLabel: selectedMood == -1
-                  ? "Tap an emotion to check-in"
+                  ? "Tap a mood to check in"
                   : moods[selectedMood].label,
               statusLine: selectedMood == -1 ? "Energy: —" : "Energy: Balanced",
             ),
@@ -105,6 +106,15 @@ class HomeDashboard extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const SymptomsScreen()),
                   );
                 }
+              ),
+              Quickaction(
+                icon: Icons.tips_and_updates_outlined,
+                label: "Suggestions",
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SuggestionsScreen()),
+                  );
+                },
               ),
             ],
           ),

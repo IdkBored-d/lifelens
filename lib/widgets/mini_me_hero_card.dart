@@ -119,13 +119,17 @@ class MiniMeHeroCard extends StatelessWidget {
   Color _stateColorFromMood(String moodLabel, ColorScheme cs) {
     final m = moodLabel.toLowerCase();
 
-    if (m.contains("calm")) return Color(0xFFb4A6E6);
     if (m.contains("happy") || m.contains("joy")) return Colors.greenAccent;
+    if (m.contains("affectionate") || m.contains("love")) return const Color(0xFFFF9DB3);
     if (m.contains("sad")) return Colors.redAccent;
-    if (m.contains("neutral")) return Color(0xFF8C91A8);
-    if (m.contains("anxious") || m.contains("stress")) {
+    if (m.contains("angry") || m.contains("anger")) return const Color(0xFFFF8A65);
+    if (m.contains("scared") || m.contains("fear") || m.contains("anxious")) {
       return Colors.orangeAccent;
     }
+    if (m.contains("surprised") || m.contains("surprise")) {
+      return const Color(0xFFFFD166);
+    }
+    if (m.contains("neutral")) return Color(0xFF8C91A8);
 
     return cs.primary;
   }

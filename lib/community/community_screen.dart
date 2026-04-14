@@ -372,14 +372,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   lastReadAt == null ||
                   (sphere.lastActivityAt?.isAfter(lastReadAt) ?? false);
               final isJoined = memberSnapshot.data?.exists ?? false;
-              final promptText =
-                  CommunityPromptService.isCurrentPrompt(
-                    storedPrompt: sphere.dailyPrompt,
-                    sphereName: sphere.name,
-                    storedDateKey: sphere.dailyPromptDateKey,
-                  )
-                  ? (sphere.dailyPrompt ?? 'Daily prompt')
-                  : CommunityPromptService.promptForSphere(sphere.name);
               final lastActivityLabel = sphere.lastActivityAt == null
                   ? 'No recent activity'
                   : _relativeTimeLabel(sphere.lastActivityAt!);
@@ -518,16 +510,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          promptText,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: cs.primary,
-                            fontWeight: FontWeight.w800,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
                           previewText,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: cs.onSurfaceVariant,
@@ -615,7 +597,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
     if (userId == null) return;
     final avatarStore = context.read<AvatarStore>();
     final miniMeData = avatarStore.toCommunityAvatarMap();
-    final miniMeName = avatarStore.miniMeName;
 
     try {
       final sphereRef = FirebaseFirestore.instance
@@ -639,7 +620,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           'warningCount': memberDoc.data()?['warningCount'] ?? 0,
           'role': sphere.creatorId == userId ? 'owner' : 'member',
           'miniMe': miniMeData,
-          'miniMeName': miniMeName,
+          'miniMeName': nickname,
         }, SetOptions(merge: true));
 
         if (!memberDoc.exists) {
@@ -648,11 +629,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
           final joinPostRef = sphereRef.collection('posts').doc();
           transaction.set(joinPostRef, {
             'type': 'system_join',
-            'text': '$miniMeName has joined the sphere',
+            'text': '$nickname has joined the sphere',
             'userId': 'system',
-            'nickname': miniMeName,
+            'nickname': nickname,
             'miniMe': miniMeData,
-            'miniMeName': miniMeName,
+            'miniMeName': nickname,
             'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
             'latestActivityAt': FieldValue.serverTimestamp(),
@@ -665,7 +646,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
       if (createdJoinPost) {
         await sphereRef.set({
-          'lastActivityText': '$miniMeName has joined the sphere',
+          'lastActivityText': '$nickname has joined the sphere',
           'lastActivityAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       }

@@ -57,25 +57,33 @@ class ContextualSuggestions extends StatelessWidget {
   List<Suggestion> _suggestionsForMood(String mood) {
     final m = mood.toLowerCase();
 
-    if (m.contains("calm")) {
+    if (m.contains("affectionate") || m.contains("love")) {
       return const [
         Suggestion(
-          icon: Icons.self_improvement_rounded,
-          text: "Maintain your calm with a 2-minute breathing exercise",
+          icon: Icons.favorite_rounded,
+          text: "Hold onto this connection by noting who or what made today feel warm",
         ),
-
         Suggestion(
           icon: Icons.bookmark_border_rounded,
-          text: "Reflect briefly on what's helping you feel balanced",
+          text: "Capture this moment so you can revisit what felt meaningful",
         ),
       ];
     }
 
-    if (m.contains("anxious") || m.contains("stress")) {
+    if (m.contains("scared") || m.contains("fear") || m.contains("anxious") || m.contains("stress")) {
       return const [
         Suggestion(
           icon: Icons.air_rounded,
           text: "Try a short grounding breathing exercise",
+        ),
+      ];
+    }
+
+    if (m.contains("angry") || m.contains("anger")) {
+      return const [
+        Suggestion(
+          icon: Icons.directions_walk_rounded,
+          text: "Step away for a minute and let your body burn off some tension",
         ),
       ];
     }
@@ -97,6 +105,16 @@ class ContextualSuggestions extends StatelessWidget {
         ),
       ];
     }
+
+    if (m.contains("surprised") || m.contains("surprise")) {
+      return const [
+        Suggestion(
+          icon: Icons.edit_note_rounded,
+          text: "Write down what caught you off guard while it is still fresh",
+        ),
+      ];
+    }
+
     return const [
       Suggestion(
         icon: Icons.track_changes_rounded,

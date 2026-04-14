@@ -4,6 +4,7 @@ import 'package:lifelens/models/quick_action.dart';
 import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
+import 'package:lifelens/screens/suggestions_screen.dart';
 import 'package:lifelens/screens/symptoms_screen.dart';
 import 'package:lifelens/shared_widgets/section_title.dart';
 import 'package:lifelens/widgets/quick_actions_grid.dart';
@@ -82,6 +83,17 @@ class TrackHubScreen extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const SymptomsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  Quickaction(
+                    icon: Icons.tips_and_updates_outlined,
+                    label: 'Suggestions',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SuggestionsScreen(),
                         ),
                       );
                     },
