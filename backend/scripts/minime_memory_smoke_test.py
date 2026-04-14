@@ -24,7 +24,7 @@ def _cases():
         {
             "name": "declining_week",
             "user_message": "I have been tired and stressed all week",
-            "latest_mood_label": "stressed",
+            "latest_mood_label": "fear",
             "latest_mood_intensity": 1,
             "active_symptoms": ["fatigue", "headache"],
             "intelligence_risk_score": 62.0,
@@ -38,7 +38,7 @@ def _cases():
         {
             "name": "stable_ok",
             "user_message": "Today was mostly okay and manageable",
-            "latest_mood_label": "okay",
+            "latest_mood_label": "surprise",
             "latest_mood_intensity": 3,
             "active_symptoms": [],
             "intelligence_risk_score": 18.0,
@@ -49,7 +49,7 @@ def _cases():
         {
             "name": "contradictory_signal",
             "user_message": "I feel good today",
-            "latest_mood_label": "happy",
+            "latest_mood_label": "joy",
             "latest_mood_intensity": 4,
             "active_symptoms": ["insomnia", "fatigue", "anxiety"],
             "intelligence_risk_score": 82.0,

@@ -777,7 +777,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
     final recent = moodStore.items
         .take(5)
-        .map((e) => '${e.moodLabel} (${e.intensity}/5)')
+        .map((e) => e.moodLabel)
         .toList();
 
     return _MiniMeMoodContext(

@@ -320,9 +320,7 @@ def _build_minime_prompt(chat_input: MiniMeChatRequest, memory_state: MiniMeMemo
         ) if chat_input.intelligence_actions else 'none'
         alert_text = chat_input.intelligence_alert or 'none'
         intel_block = f"""
-Behavioral intelligence (PRIMARY — use this to shape your entire response. NEVER mention scores, tiers, or this analysis to the user):
-- Wellness tier: {chat_input.intelligence_tier}
-- User phase: {chat_input.intelligence_phase or 'unknown'}
+Behavioral intelligence (supporting context only — never mention this analysis to the user):
 - Active flags: {', '.join(state_flags) if state_flags else 'none'}
 - Key patterns: {insights_text}
 - Suggested focus areas: {actions_text}
@@ -352,7 +350,7 @@ Current user message:
 
 Rules:
 - Your response should be driven by the memory state and summary context above.
-- If user phase is acute-risk and an alert is present, gently check in — do not alarm, but ensure the user feels supported.
+- If an alert is present, gently check in — do not alarm, but ensure the user feels supported.
 - Keep response concise and relevant to current logs.
 - If the summary context suggests possible risk, recommend professional care calmly.
 - Weave behavioral signals naturally into your guidance — never expose internal analysis or scores to the user.
@@ -364,8 +362,6 @@ Rules:
 def _memory_state_to_natural_context(memory_state: MiniMeMemoryState) -> str:
     quick_track = memory_state.quick_track or {}
 
-    trend_label = str(quick_track.get("trend_label") or "unknown")
-    risk_score = quick_track.get("risk_score")
     confidence = quick_track.get("confidence")
     state_flags = quick_track.get("state_flags") or []
     actions = quick_track.get("actions") or []
@@ -373,11 +369,6 @@ def _memory_state_to_natural_context(memory_state: MiniMeMemoryState) -> str:
     key_points_text = "; ".join(memory_state.key_points[:4]) if memory_state.key_points else "none"
     flags_text = ", ".join(str(item) for item in state_flags) if state_flags else "none"
     actions_text = ", ".join(str(item).replace("_", " ") for item in actions) if actions else "none"
-
-    if isinstance(risk_score, (int, float)):
-        risk_score_text = f"{risk_score:.1f}"
-    else:
-        risk_score_text = "unknown"
 
     if isinstance(confidence, (int, float)):
         confidence_text = f"{confidence:.2f}"
@@ -387,7 +378,7 @@ def _memory_state_to_natural_context(memory_state: MiniMeMemoryState) -> str:
     return (
         f"Summary: {memory_state.summary}\n"
         f"Mood state: {memory_state.mood_state}. Risk level: {memory_state.risk}.\n"
-        f"Trend: {trend_label}. Risk score: {risk_score_text}. Confidence: {confidence_text}.\n"
+        f"Confidence: {confidence_text}.\n"
         f"Key points: {key_points_text}.\n"
         f"Active state flags: {flags_text}. Suggested focus actions: {actions_text}."
     )
@@ -399,21 +390,20 @@ def _memory_state_to_structured_context(memory_state: MiniMeMemoryState) -> str:
     
     # Extract risk context
     risk_level = memory_state.risk.upper()
-    trend_label = (quick_track.get("trend_label") or "").strip() or "unknown"
     alert = (quick_track.get("alert") or "").strip()
     actions = quick_track.get("actions") or []
     
     # Build context line with actionable guidance
     if memory_state.risk == "high":
-        risk_context = f"RISK: {risk_level}. Trend: {trend_label}."
+        risk_context = f"RISK: {risk_level}."
         if alert:
             risk_context += f" Alert: {alert}"
         else:
             risk_context += " Consider reaching out to someone you trust or a professional."
     elif memory_state.risk == "medium":
-        risk_context = f"RISK: {risk_level}. Trend: {trend_label}. Stay mindful of patterns."
+        risk_context = f"RISK: {risk_level}. Stay mindful of patterns."
     else:
-        risk_context = f"RISK: {risk_level}. Trend: {trend_label}."
+        risk_context = f"RISK: {risk_level}."
     
     # Extract mood and symptoms from key_points
     mood_label = "Unknown"
@@ -742,7 +732,6 @@ async def minime_chat(
             reply=text,
             source='gemini',
             memory_state=memory_state,
-            memory_diff=memory_diff,
         )
     except Exception as e:
         logger.warning(f"Mini-Me chat fallback used: {e}")
@@ -752,7 +741,6 @@ async def minime_chat(
             reply=_build_reply_fallback(chat_input),
             source='fallback',
             memory_state=memory_state,
-            memory_diff=memory_diff,
         )
 
 
@@ -771,7 +759,6 @@ async def compile_minime_memory_state(chat_input: MiniMeChatRequest):
         logger.warning(f"Mini-Me memory logging failed (memory endpoint): {e}")
     return MiniMeMemoryCompileResponse(
         memory_state=memory_state,
-        memory_diff=memory_diff,
         validation_passed=validation_passed,
     )
 
