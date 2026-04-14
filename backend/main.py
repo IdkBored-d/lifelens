@@ -289,7 +289,7 @@ def _build_minime_prompt(chat_input: MiniMeChatRequest, memory_state: MiniMeMemo
     intensity = chat_input.latest_mood_intensity
     mood_notes = chat_input.latest_mood_notes or 'None'
     recent_moods = chat_input.recent_moods or ['No recent mood logs']
-    active_symptoms = chat_input.active_symptoms or ['No active symptoms logged']
+    summary_context = (chat_input.summary_context or '').strip() or 'No summary context available.'
 
     history_lines = []
     for item in chat_input.chat_history[-4:]:
@@ -300,11 +300,11 @@ def _build_minime_prompt(chat_input: MiniMeChatRequest, memory_state: MiniMeMemo
     if not chat_input.user_message:
         task = (
             'Return ONLY a 2-3 sentence opening coaching suggestion before the user asks anything. '
-            'It must be specific to the mood/symptom context and include one small actionable step for today.'
+            'It must be specific to the summarized context and include one small actionable step for today.'
         )
     else:
         task = (
-            'Respond to the user message in 3-5 supportive sentences. Build on the logged mood/symptoms. '
+            'Respond to the user message in 3-5 supportive sentences. Build on the summarized context. '
             'Give concrete next-step guidance and keep tone warm, practical, and non-judgmental. '
             'Do not claim a diagnosis.'
         )
@@ -337,11 +337,12 @@ Memory context (PRIMARY truth for this turn):
 {_memory_state_to_structured_context(memory_state)}
 
 Supporting context:
+- Summary context (primary source from the summarization layer):
+{summary_context}
 - Latest mood: {latest_mood}
 - Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
 - Mood notes: {mood_notes}
 - Recent moods: {' | '.join(recent_moods)}
-- Active symptoms: {' | '.join(active_symptoms)}
 
 Conversation so far:
 {history_text}
@@ -350,10 +351,10 @@ Current user message:
 {chat_input.user_message or '[none: opening suggestion requested]'}
 
 Rules:
-- Your response should be driven by the behavioral intelligence signals above. Mood and symptoms are supporting detail.
+- Your response should be driven by the memory state and summary context above.
 - If user phase is acute-risk and an alert is present, gently check in — do not alarm, but ensure the user feels supported.
 - Keep response concise and relevant to current logs.
-- If symptoms suggest possible risk, recommend professional care calmly.
+- If the summary context suggests possible risk, recommend professional care calmly.
 - Weave behavioral signals naturally into your guidance — never expose internal analysis or scores to the user.
 - Never output markdown lists unless asked.
 - Return plain text only.
@@ -475,8 +476,7 @@ def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str
     intensity = suggestion_input.latest_mood_intensity
     mood_notes = suggestion_input.latest_mood_notes or 'None'
     recent_moods = suggestion_input.recent_moods or ['No recent mood logs']
-    recent_logs = suggestion_input.recent_logs or ['No recent notes']
-    active_symptoms = suggestion_input.active_symptoms or ['No active symptoms logged']
+    summary_context = (suggestion_input.summary_context or '').strip() or 'No summary context available.'
 
     history_lines = []
     for item in suggestion_input.chat_history[-12:]:
@@ -486,7 +486,7 @@ def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str
 
     return f"""You are Mini-Me, a supportive wellness coach in the LifeLens app.
 
-Write 3 UNIQUE daily suggestions for this specific user based on their recent moods, notes, symptoms, and chat history.
+Write 3 UNIQUE daily suggestions for this specific user based on their summarized context and chat history.
 
 Requirements:
 - Each suggestion must feel freshly written for this user's context.
@@ -507,12 +507,11 @@ Return exactly this JSON shape:
 }}
 
 Current context:
+- Summary context (primary source): {summary_context}
 - Latest mood: {latest_mood}
 - Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
 - Mood notes: {mood_notes}
 - Recent moods: {' | '.join(recent_moods)}
-- Recent log notes: {' | '.join(recent_logs)}
-- Active symptoms: {' | '.join(active_symptoms)}
 
 Mini-Me conversation history:
 {history_text}
@@ -523,7 +522,13 @@ def _build_suggestions_fallback(
     suggestion_input: MiniMeSuggestionsRequest,
 ) -> MiniMeSuggestionsResponse:
     mood = (suggestion_input.latest_mood_label or 'neutral').lower()
-    symptoms = ', '.join(suggestion_input.active_symptoms[:2])
+    summary_context = (suggestion_input.summary_context or '').lower()
+    symptoms = ''
+    for line in summary_context.split('\n'):
+        trimmed = line.strip()
+        if trimmed.lower().startswith('symptom summary:'):
+            symptoms = trimmed[len('Symptom summary:'):].strip()
+            break
 
     suggestions = [
         MiniMeSuggestionItem(
@@ -557,8 +562,7 @@ def _build_exercise_recommendations_prompt(
     intensity = recommendation_input.latest_mood_intensity
     mood_notes = recommendation_input.latest_mood_notes or 'None'
     recent_moods = recommendation_input.recent_moods or ['No recent mood logs']
-    recent_logs = recommendation_input.recent_logs or ['No recent notes']
-    active_symptoms = recommendation_input.active_symptoms or ['No active symptoms logged']
+    summary_context = (recommendation_input.summary_context or '').strip() or 'No summary context available.'
 
     history_lines = []
     for item in recommendation_input.chat_history[-12:]:
@@ -579,9 +583,9 @@ Choose the BEST 3 exercises for this user right now from the provided catalog.
 
 Requirements:
 - Only recommend exercises from the provided catalog.
-- Match the user's mood, intensity, recent logs, symptoms, and Mini-Me context.
+- Match the user's mood, intensity, summarized context, and Mini-Me context.
 - Prefer realistic, low-friction choices when the user seems stressed, low-energy, or physically uncomfortable.
-- Avoid recommending intense exercise when symptoms suggest caution.
+- Avoid recommending intense exercise when the summarized context suggests caution.
 - Use clear, casual, easy-to-understand language.
 - Do not use markdown.
 - Return valid JSON only.
@@ -597,12 +601,11 @@ Return exactly this JSON shape:
 }}
 
 Current context:
+- Summary context (primary source): {summary_context}
 - Latest mood: {latest_mood}
 - Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
 - Mood notes: {mood_notes}
 - Recent moods: {' | '.join(recent_moods)}
-- Recent log notes: {' | '.join(recent_logs)}
-- Active symptoms: {' | '.join(active_symptoms)}
 
 Mini-Me conversation history:
 {history_text}
@@ -617,7 +620,8 @@ def _build_exercise_recommendations_fallback(
 ) -> MiniMeExerciseRecommendationResponse:
     exercises = recommendation_input.exercises
     mood = (recommendation_input.latest_mood_label or 'neutral').lower()
-    symptoms_text = ' '.join(recommendation_input.active_symptoms).lower()
+    summary_context = (recommendation_input.summary_context or '').lower()
+    symptoms_text = summary_context
     cautious = any(
         word in symptoms_text
         for word in ['pain', 'injury', 'dizzy', 'fatigue', 'tired', 'headache']

@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
-import 'package:lifelens/models/symptom_result.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_summary_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
@@ -72,28 +71,20 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     String? syncWarning;
 
     try {
-      final online = await AppServices.isOnline();
-      final result = await AppServices.symptomPipeline.analyze(
-        userSymptoms: symptomsForPipeline.join(', '),
-        isOnline: online,
-      );
-
-      if (!mounted) return;
-
       HapticFeedback.mediumImpact();
 
-      final topDiagnosis = result.diagnoses.isNotEmpty
-          ? result.diagnoses.first.diseaseName
-          : 'No diagnosis';
-      final urgentCount = result.diagnoses.where((d) => d.isUrgent).length;
+      final savedAt = DateTime.now();
+      await _saveSymptomsLocally(
+        rawInput: rawInput,
+        symptoms: symptomsForPipeline,
+        timestamp: savedAt,
+      );
 
       try {
         await _syncSymptomsToCloud(
           rawInput: rawInput,
           symptoms: symptomsForPipeline,
-          topDiagnosis: topDiagnosis,
-          urgentCount: urgentCount,
-          result: result,
+          timestamp: savedAt,
         );
       } catch (_) {
         syncWarning =
@@ -137,9 +128,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   Future<void> _syncSymptomsToCloud({
     required String rawInput,
     required List<String> symptoms,
-    required String topDiagnosis,
-    required int urgentCount,
-    required SymptomPipelineResult result,
+    required DateTime timestamp,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -150,24 +139,33 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       'userId': uid,
       'rawInput': rawInput,
       'symptoms': symptoms,
-      'topDiagnosis': topDiagnosis,
-      'urgentCount': urgentCount,
-      'resolvedBy': result.resolvedBy.name,
-      'ragUsed': result.ragUsed,
-      'isOffline': result.isOffline,
-      'diagnoses': result.diagnoses
-          .map(
-            (diagnosis) => {
-              'diseaseName': diagnosis.diseaseName,
-              'reasoning': diagnosis.reasoning,
-              'nextSteps': diagnosis.nextSteps,
-              'isUrgent': diagnosis.isUrgent,
-            },
-          )
-          .toList(growable: false),
-      'createdAt': Timestamp.fromDate(result.timestamp),
-      'date': Timestamp.fromDate(result.timestamp),
+      'createdAt': Timestamp.fromDate(timestamp),
+      'date': Timestamp.fromDate(timestamp),
     });
+  }
+
+  Future<void> _saveSymptomsLocally({
+    required String rawInput,
+    required List<String> symptoms,
+    required DateTime timestamp,
+  }) async {
+    final today = timestamp.toIso8601String().split('T').first;
+
+    final entry = SymptomEntry()
+      ..date = today
+      ..rawSymptoms = rawInput.isNotEmpty ? rawInput : symptoms.join(', ')
+      ..symptomList = symptoms
+      ..predictedAilment = 'tracking-only'
+      ..disEmbedScore = null
+      ..diagnosesJson = '[]'
+      ..resolvedBy = 'tracking'
+      ..ragUsed = false
+      ..wasOffline = true
+      ..status = 'active'
+      ..timestamp = timestamp
+      ..updatedAt = timestamp;
+
+    await AppServices.isar.writeSymptomEntry(entry);
   }
 
   Stream<List<SymptomEntry>> _trendStream() {

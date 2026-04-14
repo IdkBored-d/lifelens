@@ -1,7 +1,6 @@
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
-import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 
@@ -25,11 +24,16 @@ class MiniMeSuggestionAggregator {
     final recentEntries = await IsarService.instance.getRecentMoodEntries(
       days: days,
     );
-    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
 
     // ── Quick-track plaintext summaries ──────────────────────────────────────
     final moodSummary    = await AppServices.quickTrack.buildMoodContext();
     final symptomSummary = await AppServices.quickTrack.buildSymptomContext();
+    final conversationSummary = await AppServices.quickTrack.buildConversationContext();
+    final summaryContext = <String>[
+      if (moodSummary.trim().isNotEmpty) 'Mood summary:\n$moodSummary',
+      if (symptomSummary.trim().isNotEmpty) 'Symptom summary:\n$symptomSummary',
+      if (conversationSummary.trim().isNotEmpty) 'Conversation summary:\n$conversationSummary',
+    ].join('\n\n');
 
     // ── Recent ISAR chat history (last session, up to 20 messages) ───────────
     final recentSessions = await IsarService.instance.getRecentChatSessions(limit: 1);
@@ -72,30 +76,16 @@ class MiniMeSuggestionAggregator {
         .map((entry) => '${entry.resolvedMood} (${_extractIntensity(entry)}/5)')
         .toList(growable: false);
 
-    // Combine quick-track summaries with recent raw logs for richer context.
-    final recentLogs = <String>[
-      if (moodSummary.isNotEmpty && moodSummary != 'No mood history available.')
-        moodSummary,
-      if (symptomSummary.isNotEmpty &&
-          symptomSummary != 'No symptom history available.')
-        symptomSummary,
-      ...moodEntries
-          .take(8)
-          .map((entry) => _trim(entry.rawLog, 220))
-          .where((text) => text.isNotEmpty),
-    ].take(12).toList(growable: false);
-
-    final symptomLabels = _flattenSymptoms(activeSymptoms);
-
     try {
       final reply = await MiniMeBackendService.instance.suggestions(
         latestMoodLabel: latestMoodLabel,
         latestMoodIntensity: latestMoodIntensity,
         latestMoodNotes: latestMoodNotes,
         recentMoods: recentMoods,
-        recentLogs: recentLogs,
-        activeSymptoms: symptomLabels,
+        recentLogs: const [],
+        activeSymptoms: const [],
         history: history,
+        summaryContext: summaryContext,
       );
 
       final suggestions = reply.suggestions
@@ -119,7 +109,7 @@ class MiniMeSuggestionAggregator {
 
     return _buildFallbackSuggestions(
       moodEntries: moodEntries,
-      activeSymptoms: symptomLabels,
+      summaryContext: summaryContext,
       chatMessages: history
           .map((item) => item.text)
           .toList(growable: false),
@@ -128,7 +118,7 @@ class MiniMeSuggestionAggregator {
 
   static List<DailySuggestion> _buildFallbackSuggestions({
     required List<MoodEntry> moodEntries,
-    required List<String> activeSymptoms,
+    required String summaryContext,
     required List<String> chatMessages,
   }) {
     final latestMood = moodEntries.isEmpty
@@ -140,7 +130,7 @@ class MiniMeSuggestionAggregator {
     final hasHighIntensity = moodEntries
         .take(4)
         .any((entry) => _extractIntensity(entry) >= 4);
-    final symptomText = activeSymptoms.take(2).join(', ');
+    final symptomText = _extractSymptomText(summaryContext);
     final lastChat = chatMessages.isEmpty ? '' : chatMessages.last.trim();
 
     return [
@@ -193,19 +183,19 @@ class MiniMeSuggestionAggregator {
     return 'Check in with what usually helps when you feel $latestMood, and choose the easiest version of that today.';
   }
 
-  static List<String> _flattenSymptoms(List<SymptomEntry> entries) {
-    final seen = <String>{};
-    final flattened = <String>[];
-    for (final entry in entries) {
-      for (final symptom in entry.symptomList) {
-        final trimmed = symptom.trim();
-        final key = trimmed.toLowerCase();
-        if (trimmed.isNotEmpty && seen.add(key)) {
-          flattened.add(trimmed);
-        }
+  static String _extractSymptomText(String summaryContext) {
+    if (summaryContext.trim().isEmpty) {
+      return '';
+    }
+
+    for (final line in summaryContext.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.toLowerCase().startsWith('symptom summary:')) {
+        return trimmed.substring('Symptom summary:'.length).trim();
       }
     }
-    return flattened.take(12).toList(growable: false);
+
+    return summaryContext.trim();
   }
 
   static int _extractIntensity(MoodEntry entry) {

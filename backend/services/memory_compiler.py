@@ -62,6 +62,8 @@ def _infer_risk(chat_input: MiniMeChatRequest, mood_state: str) -> str:
     risk_score = chat_input.intelligence_risk_score
     tier = (chat_input.intelligence_tier or "").strip().lower()
     symptom_count = len(chat_input.active_symptoms)
+    summary_context = (chat_input.summary_context or "").strip().lower()
+    summary_mentions_symptoms = bool(summary_context) and "symptom" in summary_context and "none active" not in summary_context
 
     if risk_score is not None:
         if risk_score >= 70:
@@ -75,7 +77,7 @@ def _infer_risk(chat_input: MiniMeChatRequest, mood_state: str) -> str:
     if tier == "medium":
         return "medium"
 
-    if mood_state == "negative" and symptom_count >= 3:
+    if mood_state == "negative" and (symptom_count >= 3 or summary_mentions_symptoms):
         return "medium"
     return "low"
 
@@ -112,6 +114,12 @@ def _infer_weighted_mood_state(chat_input: MiniMeChatRequest, user_lines: List[s
 
 def _collect_key_points(chat_input: MiniMeChatRequest, user_lines: List[str]) -> List[str]:
     points: List[str] = []
+
+    summary_context = (chat_input.summary_context or '').strip()
+    if summary_context:
+        compact_summary = ' '.join(summary_context.split()).lower()
+        if compact_summary:
+            points.append(f"summary context: {compact_summary[:160]}")
 
     mood_label = (chat_input.latest_mood_label or "").strip().lower()
     if mood_label:
@@ -158,6 +166,7 @@ def _primary_key_signal(key_points: List[str]) -> str:
         return "limited recent detail"
 
     priority_prefixes = [
+        "summary context:",
         "risk score:",
         "trend phase:",
         "symptoms reported:",

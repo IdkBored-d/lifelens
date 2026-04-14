@@ -121,6 +121,7 @@ class MiniMeChatRequest(BaseModel):
     latest_mood_label: Optional[str] = Field(None, max_length=80)
     latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
     latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=8)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
@@ -143,6 +144,10 @@ class MiniMeChatRequest(BaseModel):
     @validator('recent_moods', each_item=True)
     def validate_recent_mood_item(cls, v):
         return v.strip()
+
+    @validator('summary_context')
+    def validate_summary_context(cls, v):
+        return v.strip() if v is not None else None
 
     @validator('active_symptoms', each_item=True)
     def validate_active_symptom_item(cls, v):
@@ -195,6 +200,7 @@ class MiniMeSuggestionsRequest(BaseModel):
     latest_mood_label: Optional[str] = Field(None, max_length=80)
     latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
     latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=10)
     recent_logs: List[str] = Field(default_factory=list, max_items=12)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
@@ -204,6 +210,10 @@ class MiniMeSuggestionsRequest(BaseModel):
     @validator('recent_moods', each_item=True)
     def validate_suggestion_recent_mood_item(cls, v):
         return v.strip()
+
+    @validator('summary_context')
+    def validate_suggestion_summary_context(cls, v):
+        return v.strip() if v is not None else None
 
     @validator('recent_logs', each_item=True)
     def validate_recent_log_item(cls, v):
@@ -236,6 +246,7 @@ class MiniMeExerciseRecommendationRequest(BaseModel):
     latest_mood_label: Optional[str] = Field(None, max_length=80)
     latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
     latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=10)
     recent_logs: List[str] = Field(default_factory=list, max_items=12)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
@@ -246,6 +257,10 @@ class MiniMeExerciseRecommendationRequest(BaseModel):
     @validator('recent_moods', each_item=True)
     def validate_exercise_recent_mood_item(cls, v):
         return v.strip()
+
+    @validator('summary_context')
+    def validate_exercise_summary_context(cls, v):
+        return v.strip() if v is not None else None
 
     @validator('recent_logs', each_item=True)
     def validate_exercise_recent_log_item(cls, v):

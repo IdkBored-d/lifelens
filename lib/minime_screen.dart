@@ -137,7 +137,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     final moodStore = context.read<MoodLogStore>();
     final moodContext = _buildMoodContext(moodStore);
-    final symptomContext = await _buildSymptomContext();
+    final summaryContext = await _buildSummaryContext();
 
     try {
       final response = await MiniMeBackendService.instance.chat(
@@ -146,8 +146,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         moodIntensity: moodContext.intensity,
         moodNotes: moodContext.notes,
         recentMoods: moodContext.recentMoodSummary,
-        activeSymptoms: symptomContext,
+        activeSymptoms: const [],
         history: const [],
+        summaryContext: summaryContext,
         intelligence: _intelligence,
       );
 
@@ -383,6 +384,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final moodStore = context.read<MoodLogStore>();
     final moodContext = _buildMoodContext(moodStore);
     final moodLabel = moodContext.label;
+    final summaryContext = await _buildSummaryContext();
 
     setState(() {
       _isCoachExpanded = true;
@@ -626,8 +628,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           moodIntensity: moodContext.intensity,
           moodNotes: moodContext.notes,
           recentMoods: moodContext.recentMoodSummary,
-          activeSymptoms: symptomContext,
+          activeSymptoms: const [],
           history: history,
+          summaryContext: summaryContext,
           intelligence: _intelligence,
         );
 
@@ -785,15 +788,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
   }
 
-  Future<List<String>> _buildSymptomContext() async {
+  Future<String> _buildSummaryContext() async {
     try {
-      final entries = await IsarService.instance.getActiveSymptomEntries();
-      return entries.take(6).map((e) {
-        final symptoms = e.symptomList.take(3).join(', ');
-        return '${e.predictedAilment}: $symptoms';
-      }).toList();
+      final moodSummary = await AppServices.quickTrack.buildMoodContext();
+      final symptomSummary = await AppServices.quickTrack.buildSymptomContext();
+      final conversationSummary = await AppServices.quickTrack.buildConversationContext();
+      final parts = <String>[
+        if (moodSummary.trim().isNotEmpty) 'Mood summary:\n$moodSummary',
+        if (symptomSummary.trim().isNotEmpty) 'Symptom summary:\n$symptomSummary',
+        if (conversationSummary.trim().isNotEmpty) 'Conversation summary:\n$conversationSummary',
+      ];
+      return parts.join('\n\n');
     } catch (_) {
-      return const [];
+      return '';
     }
   }
 
