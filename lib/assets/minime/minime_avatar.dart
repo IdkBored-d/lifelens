@@ -1570,8 +1570,7 @@ class _ArmPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final tone = muscleToneLevel.clamp(0.0, 1.0);
-    final flexPose = flexPoseLevel.clamp(0.0, 1.0);
-    final path = _buildDefaultArmPath(size, tone, flexPose);
+    final path = _buildDefaultArmPath(size, tone);
 
     canvas.drawPath(
       path.shift(const Offset(0, 4)),
@@ -1598,53 +1597,14 @@ class _ArmPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round;
       canvas.drawArc(
         Rect.fromCenter(
-          center: Offset(
-            size.width * (0.52 + flexPose * 0.12),
-            size.height * (0.28 + flexPose * 0.06),
-          ),
-          width: size.width * (0.34 + tone * 0.16 + flexPose * 0.18),
-          height: size.height * (0.18 + tone * 0.08 + flexPose * 0.1),
+          center: Offset(size.width * 0.52, size.height * 0.28),
+          width: size.width * (0.34 + tone * 0.16),
+          height: size.height * (0.18 + tone * 0.08),
         ),
         math.pi * 0.9,
         math.pi * 0.85,
         false,
         bicepPaint,
-      );
-    }
-
-    if (flexPose > 0.08) {
-      final bulgePaint = Paint()
-        ..color = color.withValues(alpha: 0.26 + flexPose * 0.18)
-        ..style = PaintingStyle.fill;
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(
-            size.width * (0.6 + flexPose * 0.1),
-            size.height * (0.34 + flexPose * 0.1),
-          ),
-          width: size.width * (0.32 + flexPose * 0.26),
-          height: size.height * (0.16 + flexPose * 0.16),
-        ),
-        bulgePaint,
-      );
-      final contourPaint = Paint()
-        ..color = shadowColor.withValues(alpha: 0.14 + flexPose * 0.18)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size.width * 0.055
-        ..strokeCap = StrokeCap.round;
-      canvas.drawArc(
-        Rect.fromCenter(
-          center: Offset(
-            size.width * (0.6 + flexPose * 0.1),
-            size.height * (0.34 + flexPose * 0.1),
-          ),
-          width: size.width * (0.34 + flexPose * 0.26),
-          height: size.height * (0.18 + flexPose * 0.18),
-        ),
-        math.pi * 1.02,
-        math.pi * 0.72,
-        false,
-        contourPaint,
       );
     }
   }
@@ -1657,31 +1617,31 @@ class _ArmPainter extends CustomPainter {
         oldDelegate.flexPoseLevel != flexPoseLevel;
   }
 
-  Path _buildDefaultArmPath(Size size, double tone, double flexPose) {
+  Path _buildDefaultArmPath(Size size, double tone) {
     return Path()
       ..moveTo(size.width * 0.46, 0)
       ..quadraticBezierTo(
-        size.width * (0.08 - tone * 0.03 - flexPose * 0.02),
-        size.height * (0.18 - tone * 0.02 + flexPose * 0.04),
-        size.width * (0.12 - flexPose * 0.02),
-        size.height * (0.66 - flexPose * 0.02),
+        size.width * (0.08 - tone * 0.03),
+        size.height * (0.18 - tone * 0.02),
+        size.width * 0.14,
+        size.height * 0.7,
       )
       ..quadraticBezierTo(
-        size.width * (0.22 + flexPose * 0.02),
-        size.height * (0.95 - flexPose * 0.02),
+        size.width * 0.2,
+        size.height * 0.96,
         size.width * 0.5,
         size.height * 0.98,
       )
       ..quadraticBezierTo(
-        size.width * (0.84 + tone * 0.04 + flexPose * 0.12),
-        size.height * (0.92 - flexPose * 0.02),
-        size.width * (0.78 + flexPose * 0.1),
-        size.height * (0.5 - flexPose * 0.02),
+        size.width * (0.86 + tone * 0.05),
+        size.height * 0.92,
+        size.width * 0.82,
+        size.height * 0.56,
       )
       ..quadraticBezierTo(
-        size.width * (0.74 + flexPose * 0.14),
-        size.height * (0.14 + flexPose * 0.08),
-        size.width * (0.46 + flexPose * 0.04),
+        size.width * 0.78,
+        size.height * 0.16,
+        size.width * 0.5,
         0,
       )
       ..close();

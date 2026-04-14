@@ -8,7 +8,6 @@ import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
-import 'package:lifelens/services/minime_shop_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/chat_session_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
@@ -16,6 +15,7 @@ import 'package:lifelens/services/mini_me_suggestion_aggregator.dart';
 import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/chat_message.dart';
+import 'package:lifelens/database/fitness_entry.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
 import 'sleep_store.dart';
@@ -267,6 +267,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       _isIntelligenceLoading = true;
     });
 
+    final avatarStore = context.read<AvatarStore>();
+    var recentFitnessEntries = const <FitnessEntry>[];
+
     try {
       final moodStore = context.read<MoodLogStore>();
       final sleepStore = context.read<SleepStore>();
@@ -290,10 +293,16 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           .toList(growable: false);
       final activeSymptoms = await IsarService.instance
           .getActiveSymptomEntries();
+      recentFitnessEntries = await IsarService.instance.getRecentFitnessEntries(
+        days: 45,
+      );
       final symptomCount = activeSymptoms
           .take(7)
           .map((entry) => entry.symptomList.length.clamp(0, 8))
           .toList(growable: false);
+      avatarStore.setAutoBodyWidthScale(
+        _autoBodyScaleFromFitnessEntries(recentFitnessEntries),
+      );
 
       final payloadMood = mood.isEmpty ? const [3, 3, 3] : mood;
       final payloadSleep = recentSleep.isEmpty
@@ -320,6 +329,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       });
     } catch (_) {
       // Keep UI functional even if backend is unavailable.
+      avatarStore.setAutoBodyWidthScale(
+        _autoBodyScaleFromFitnessEntries(recentFitnessEntries),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -327,6 +339,35 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         });
       }
     }
+  }
+
+  double _autoBodyScaleFromFitnessEntries(List<FitnessEntry> entries) {
+    if (entries.isEmpty) {
+      return 1.0;
+    }
+
+    final recentWithBmi = entries
+        .where((entry) => entry.bmi > 0)
+        .take(14)
+        .toList(growable: false);
+
+    if (recentWithBmi.isEmpty) {
+      return 1.0;
+    }
+
+    final latestBmi = recentWithBmi.first.bmi;
+    final oldestBmi = recentWithBmi.length >= 4
+        ? recentWithBmi.last.bmi
+        : latestBmi;
+    final baselineBmi =
+        recentWithBmi.map((entry) => entry.bmi).reduce((a, b) => a + b) /
+        recentWithBmi.length;
+
+    final trendDelta = latestBmi - oldestBmi;
+    final baselineDelta = latestBmi - baselineBmi;
+    final combinedDelta = trendDelta * 0.6 + baselineDelta * 0.4;
+
+    return (1.0 + (combinedDelta * 0.012)).clamp(0.9, 1.1).toDouble();
   }
 
   int _estimatedSleepHoursFromMood(String moodLabel) {
@@ -848,6 +889,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   // ignore: unused_element
   MiniMeVisualState _buildMiniMeVisualState({
     required MoodLogStore moodStore,
+    required AvatarStore avatarStore,
     required SleepStore sleepStore,
     required String? effectiveMoodLabel,
   }) {
@@ -1149,28 +1191,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
   }
 
-  Future<void> _openShop({
-    required MoodLogStore moodStore,
-    required AvatarStore avatarStore,
-  }) async {
-    final streak = await StreakService.instance.buildSnapshot(
-      moodLogs: moodStore.items,
-    );
-    if (!mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return _MiniMeShopSheet(
-          avatarStore: avatarStore,
-          streakSnapshot: streak,
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1236,15 +1256,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
             icon: const Icon(Icons.delete_sweep_rounded),
           ),
           IconButton(
-            tooltip: 'Mini-Me shop',
-            onPressed: () {
-              final moodStore = context.read<MoodLogStore>();
-              final avatarStore = context.read<AvatarStore>();
-              _openShop(moodStore: moodStore, avatarStore: avatarStore);
-            },
-            icon: const Icon(Icons.storefront_rounded),
-          ),
-          IconButton(
             tooltip: 'Customize avatar',
             onPressed: () {
               Navigator.push(
@@ -1272,6 +1283,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
               _intelligence?.miniMeLinkage['animation_state'] as String?;
           final visualState = _buildMiniMeVisualState(
             moodStore: moodStore,
+            avatarStore: avatarStore,
             sleepStore: sleepStore,
             effectiveMoodLabel: avatarMoodLabel,
           );
@@ -2702,541 +2714,6 @@ class _DayCircle extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _MiniMeShopSheet extends StatefulWidget {
-  const _MiniMeShopSheet({
-    required this.avatarStore,
-    required this.streakSnapshot,
-  });
-
-  final AvatarStore avatarStore;
-  final StreakSnapshot streakSnapshot;
-
-  @override
-  State<_MiniMeShopSheet> createState() => _MiniMeShopSheetState();
-}
-
-class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
-  final MiniMeShopService _shopService = MiniMeShopService.instance;
-  late Future<MiniMeShopState> _stateFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _stateFuture = _loadState();
-  }
-
-  Future<MiniMeShopState> _loadState() async {
-    final rewarded = await _shopService.grantDailyRewards(
-      streak: widget.streakSnapshot,
-    );
-
-    if (rewarded.lastReward.rewarded) {
-      return rewarded;
-    }
-
-    return _shopService.loadState();
-  }
-
-  Future<void> _unlock(String itemId) async {
-    setState(() {
-      _stateFuture = _shopService.unlockItem(itemId: itemId);
-    });
-  }
-
-  void _equip(MiniMeShopItem item) {
-    switch (item.type) {
-      case MiniMeItemType.hair:
-        widget.avatarStore.setHairModel(item.assetPath ?? '');
-        break;
-      case MiniMeItemType.shirt:
-        widget.avatarStore.setShirtModel(item.assetPath ?? '');
-        break;
-      case MiniMeItemType.bodyScale:
-        widget.avatarStore.setBodyWidthScale(item.bodyScale ?? 1.0);
-        break;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${item.name} equipped.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  bool _isEquipped(MiniMeShopItem item) {
-    switch (item.type) {
-      case MiniMeItemType.hair:
-        return widget.avatarStore.hairModel == (item.assetPath ?? '');
-      case MiniMeItemType.shirt:
-        return widget.avatarStore.shirtModel == (item.assetPath ?? '');
-      case MiniMeItemType.bodyScale:
-        return widget.avatarStore.bodyWidthScale == (item.bodyScale ?? 1.0);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return SafeArea(
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.78,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [cs.surfaceContainerHighest, cs.surface, cs.surface],
-          ),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: FutureBuilder<MiniMeShopState>(
-          future: _stateFuture,
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final state = snapshot.data!;
-
-            return Column(
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 44,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: cs.outlineVariant,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          color: cs.surface,
-                          border: Border.all(
-                            color: cs.outlineVariant.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'Mini-Me Store',
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const Spacer(),
-                                _ShopHudPill(
-                                  icon: Icons.monetization_on_rounded,
-                                  label: '${state.coins}',
-                                  background: cs.primaryContainer,
-                                  foreground: cs.onPrimaryContainer,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Unlock and equip simple customizations for your Mini-Me.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _SimpleShopInfo(
-                                    label: 'Streak',
-                                    value:
-                                        '${widget.streakSnapshot.currentStreak} days',
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _SimpleShopInfo(
-                                    label: 'Unlocked',
-                                    value: '${state.unlockedIds.length} items',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (state.lastReward.message.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: state.lastReward.rewarded
-                                  ? [cs.tertiaryContainer, cs.primaryContainer]
-                                  : [
-                                      cs.surfaceContainerHighest,
-                                      cs.surfaceContainer,
-                                    ],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: state.lastReward.rewarded
-                                  ? cs.tertiary.withValues(alpha: 0.35)
-                                  : cs.outlineVariant.withValues(alpha: 0.35),
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: state.lastReward.rewarded
-                                      ? cs.tertiary.withValues(alpha: 0.14)
-                                      : cs.surface.withValues(alpha: 0.5),
-                                ),
-                                child: Icon(
-                                  state.lastReward.rewarded
-                                      ? Icons.workspace_premium_rounded
-                                      : Icons.event_repeat_rounded,
-                                  color: state.lastReward.rewarded
-                                      ? cs.tertiary
-                                      : cs.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  state.lastReward.rewarded
-                                      ? '+${state.lastReward.amount} coins unlocked. ${state.lastReward.message}'
-                                      : state.lastReward.message,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: state.lastReward.rewarded
-                                        ? cs.onTertiaryContainer
-                                        : cs.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Text(
-                            'Items',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${state.items.length} unlockables',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      ...state.items.map<Widget>((item) {
-                        final unlocked = state.unlockedIds.contains(item.id);
-                        final equipped = unlocked && _isEquipped(item);
-                        final canBuy = state.coins >= item.cost;
-                        final accent = _itemAccent(item, cs);
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(18),
-                              color: equipped
-                                  ? accent.withValues(alpha: 0.12)
-                                  : cs.surface,
-                              border: Border.all(
-                                color: equipped
-                                    ? accent
-                                    : cs.outlineVariant.withValues(alpha: 0.34),
-                                width: equipped ? 1.6 : 1.0,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: 48,
-                                      height: 48,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: accent.withValues(alpha: 0.14),
-                                        border: Border.all(
-                                          color: accent.withValues(alpha: 0.45),
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        _itemIcon(item),
-                                        color: accent,
-                                        size: 28,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            item.name,
-                                            style: theme.textTheme.titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '${_itemTypeLabel(item.type)} • ${item.description}',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: cs.onSurfaceVariant,
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 8,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: cs.surface.withValues(
-                                          alpha: 0.52,
-                                        ),
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: cs.outlineVariant.withValues(
-                                            alpha: 0.24,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          Icon(
-                                            Icons.monetization_on_rounded,
-                                            size: 18,
-                                            color: cs.primary,
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            '${item.cost}',
-                                            style: theme.textTheme.titleSmall
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 14),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        equipped
-                                            ? 'Equipped now'
-                                            : unlocked
-                                            ? 'Ready to equip'
-                                            : canBuy
-                                            ? 'Available'
-                                            : 'Need ${item.cost - state.coins} more coins',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: equipped
-                                                  ? accent
-                                                  : cs.onSurfaceVariant,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    if (equipped)
-                                      FilledButton(
-                                        onPressed: null,
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: accent.withValues(
-                                            alpha: 0.9,
-                                          ),
-                                          disabledBackgroundColor: accent
-                                              .withValues(alpha: 0.9),
-                                          disabledForegroundColor: cs.onPrimary,
-                                        ),
-                                        child: const Text('Using'),
-                                      )
-                                    else if (unlocked)
-                                      FilledButton(
-                                        onPressed: () => _equip(item),
-                                        child: const Text('Equip'),
-                                      )
-                                    else
-                                      FilledButton.tonal(
-                                        onPressed: canBuy
-                                            ? () => _unlock(item.id)
-                                            : null,
-                                        child: Text(
-                                          canBuy ? 'Unlock' : 'Locked',
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  IconData _itemIcon(MiniMeShopItem item) {
-    switch (item.type) {
-      case MiniMeItemType.hair:
-        return Icons.face_4_rounded;
-      case MiniMeItemType.shirt:
-        return Icons.checkroom_rounded;
-      case MiniMeItemType.bodyScale:
-        return Icons.accessibility_new_rounded;
-    }
-  }
-
-  String _itemTypeLabel(MiniMeItemType type) {
-    switch (type) {
-      case MiniMeItemType.hair:
-        return 'Hair';
-      case MiniMeItemType.shirt:
-        return 'Shirt';
-      case MiniMeItemType.bodyScale:
-        return 'Body';
-    }
-  }
-
-  Color _itemAccent(MiniMeShopItem item, ColorScheme cs) {
-    switch (item.type) {
-      case MiniMeItemType.hair:
-        return cs.secondary;
-      case MiniMeItemType.shirt:
-        return cs.primary;
-      case MiniMeItemType.bodyScale:
-        return cs.tertiary;
-    }
-  }
-}
-
-class _ShopHudPill extends StatelessWidget {
-  const _ShopHudPill({
-    required this.icon,
-    required this.label,
-    required this.background,
-    required this.foreground,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color background;
-  final Color foreground;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: foreground),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: foreground,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SimpleShopInfo extends StatelessWidget {
-  const _SimpleShopInfo({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

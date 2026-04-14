@@ -101,7 +101,8 @@ class OnboardingScreen extends StatelessWidget {
                                   bodyModel: avatarStore.bodyModel,
                                   hairModel: avatarStore.hairModel,
                                   shirtModel: avatarStore.shirtModel,
-                                  bodyWidthScale: avatarStore.bodyWidthScale,
+                                  bodyWidthScale:
+                                      avatarStore.effectiveBodyWidthScale,
                                   companionId: avatarStore.companionId,
                                   size: 118,
                                   degradationLevel:

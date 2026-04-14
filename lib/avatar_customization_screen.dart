@@ -220,7 +220,7 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                             bodyModel: store.bodyModel,
                             hairModel: store.hairModel,
                             shirtModel: store.shirtModel,
-                            bodyWidthScale: store.bodyWidthScale,
+                            bodyWidthScale: store.effectiveBodyWidthScale,
                             companionId: store.companionId,
                             degradationLevel: store.degradationLevel,
                             isHatched: store.isMiniMeHatched,

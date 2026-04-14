@@ -241,52 +241,58 @@ class SymptomSummaryService {
     required List<MapEntry<String, int>> improvingSymptoms,
   }) {
     final frequencyLine = activeDays == 0
-        ? 'No clear symptom pattern showed up in this time.'
+        ? 'You did not log a clear symptom pattern during this time.'
         : activeDays <= (windowDays / 4).round()
-        ? 'Symptoms showed up once in a while.'
+        ? 'Your symptoms showed up once in a while.'
         : activeDays <= (windowDays / 2).round()
-        ? 'Symptoms showed up on several days.'
-        : 'Symptoms showed up on many days.';
+        ? 'Your symptoms showed up on several days.'
+        : 'Your symptoms showed up on many days.';
 
     final topList = topSymptoms
         .take(3)
         .map((item) => _titleCase(item.key))
         .toList();
     final topLine = topList.isEmpty
-        ? 'No single symptom stood out most.'
+        ? 'No one symptom stood out more than the others.'
         : topList.length == 1
-        ? 'Main symptom: ${topList.first}.'
-        : 'Main symptoms: ${topList.join(', ')}.';
+        ? 'The symptom you logged most was ${topList.first}.'
+        : 'The symptoms you logged most were ${topList.join(', ')}.';
 
     String? changeLine;
     if (compareWithPrevious) {
       final changeParts = <String>[];
       if (worseningSymptoms.isNotEmpty) {
-        changeParts.add('More ${_titleCase(worseningSymptoms.first.key)}');
+        changeParts.add(
+          '${_titleCase(worseningSymptoms.first.key)} showed up more often',
+        );
       }
       if (improvingSymptoms.isNotEmpty) {
-        changeParts.add('Less ${_titleCase(improvingSymptoms.first.key)}');
+        changeParts.add(
+          '${_titleCase(improvingSymptoms.first.key)} showed up less often',
+        );
       }
       if (changeParts.isNotEmpty) {
         changeLine =
-            'Compared with the last period: ${changeParts.join('. ')}.';
+            'Compared with the earlier time period, ${changeParts.join('. ')}.';
       }
     }
 
-    final visitTip = topSymptoms.isNotEmpty
-        ? 'At your visit, start with ${_titleCase(topSymptoms.first.key)} and when it tends to happen.'
-        : 'At your visit, share when symptoms tend to happen and what seems to make them better or worse.';
+    final overviewLine = entryCount == 0
+        ? 'There were no symptom entries in this time range.'
+        : entryCount == 1
+        ? 'This summary is based on 1 symptom entry.'
+        : 'This summary is based on $entryCount symptom entries across $activeDays days.';
 
     final lines = <String>[
-      'Symptom summary for $windowLabel',
+      'Here is a simple look at your symptoms for $windowLabel.',
       '${_formatDate(fromDate)} to ${_formatDate(toDate)}',
       if (symptomFocus != null && symptomFocus.isNotEmpty)
-        'Focus: ${_titleCase(symptomFocus)}',
+        'Focused on: ${_titleCase(symptomFocus)}',
       '',
+      overviewLine,
       frequencyLine,
       topLine,
       if (changeLine != null) changeLine,
-      visitTip,
     ];
 
     return lines.join('\n');

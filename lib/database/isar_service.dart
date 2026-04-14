@@ -49,12 +49,14 @@ class IsarService {
         ChatMessageSchema,
       ],
       directory: dir.path,
-      name:      'lifelens',
+      name: 'lifelens',
     );
   }
 
   Isar get _db {
-    if (!isOpen) throw StateError('IsarService not initialised. Call init() first.');
+    if (!isOpen) {
+      throw StateError('IsarService not initialised. Call init() first.');
+    }
     return _isar!;
   }
 
@@ -81,10 +83,7 @@ class IsarService {
 
   /// Most recent mood entry across all dates.
   Future<MoodEntry?> getLastMoodEntry() async {
-    return _db.moodEntrys
-        .where()
-        .sortByTimestampDesc()
-        .findFirst();
+    return _db.moodEntrys.where().sortByTimestampDesc().findFirst();
   }
 
   /// ISO date string of the most recent mood entry.
@@ -97,10 +96,7 @@ class IsarService {
   /// Number of mood entries for a specific date.
   /// Used by the sync repair to detect same-day duplicates lost in a crash.
   Future<int> getMoodCountForDate(String date) async {
-    return _db.moodEntrys
-        .filter()
-        .dateEqualTo(date)
-        .count();
+    return _db.moodEntrys.filter().dateEqualTo(date).count();
   }
 
   /// Mood entries for the last [days] days, ordered newest first.
@@ -133,10 +129,7 @@ class IsarService {
 
   /// All symptom entries, ordered by date descending.
   Future<List<SymptomEntry>> getAllSymptomEntries() async {
-    return _db.symptomEntrys
-        .where()
-        .sortByDateDesc()
-        .findAll();
+    return _db.symptomEntrys.where().sortByDateDesc().findAll();
   }
 
   /// Active and monitoring symptom entries only.
@@ -172,10 +165,7 @@ class IsarService {
   /// Number of symptom entries for a specific date.
   /// Used by the sync repair to detect same-day duplicates lost in a crash.
   Future<int> getSymptomCountForDate(String date) async {
-    return _db.symptomEntrys
-        .filter()
-        .dateEqualTo(date)
-        .count();
+    return _db.symptomEntrys.filter().dateEqualTo(date).count();
   }
 
   /// Symptom entries for the last [days] days, ordered newest first.
@@ -201,13 +191,16 @@ class IsarService {
   /// Update the status of a symptom entry.
   /// Values: "active", "resolved", "monitoring"
   Future<void> updateSymptomStatus(
-      int id, String status, String updatedDate) async {
+    int id,
+    String status,
+    String updatedDate,
+  ) async {
     await _db.writeTxn(() async {
       final entry = await _db.symptomEntrys.get(id);
       if (entry != null) {
-        entry.status            = status;
+        entry.status = status;
         entry.statusUpdatedDate = updatedDate;
-        entry.updatedAt         = DateTime.now();
+        entry.updatedAt = DateTime.now();
         await _db.symptomEntrys.put(entry);
       }
     });
@@ -226,16 +219,23 @@ class IsarService {
 
   /// Most recent fitness entry.
   Future<FitnessEntry?> getLastFitnessEntry() async {
-    return _db.fitnessEntrys
-        .where()
-        .sortByInferenceTimestampDesc()
-        .findFirst();
+    return _db.fitnessEntrys.where().sortByInferenceTimestampDesc().findFirst();
   }
 
   /// Most recent fitness score (0–100). Returns 0 if no entries exist.
   Future<double> getLastFitnessScore() async {
     final entry = await getLastFitnessEntry();
     return entry?.fitnessScore ?? 0.0;
+  }
+
+  /// Recent fitness entries ordered newest first.
+  Future<List<FitnessEntry>> getRecentFitnessEntries({int days = 30}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    return _db.fitnessEntrys
+        .filter()
+        .inferenceTimestampGreaterThan(cutoff)
+        .sortByInferenceTimestampDesc()
+        .findAll();
   }
 
   /// Fitness scores for the last [n] days, one per day (most recent per day).
@@ -284,10 +284,7 @@ class IsarService {
 
   /// EOD entry for a specific date.
   Future<EodEntry?> getEodEntry(String date) async {
-    return _db.eodEntrys
-        .filter()
-        .dateEqualTo(date)
-        .findFirst();
+    return _db.eodEntrys.filter().dateEqualTo(date).findFirst();
   }
 
   /// EOD entries for the last [days] days, ordered newest first.
@@ -315,21 +312,21 @@ class IsarService {
 
   /// Full data snapshot for a single day — used by EOD pipeline.
   Future<DaySnapshot> getDaySnapshot(String date) async {
-    final moods    = await getMoodEntriesForDate(date);
+    final moods = await getMoodEntriesForDate(date);
     final symptoms = await getActiveSymptomEntries();
-    final fitness  = await _db.fitnessEntrys
+    final fitness = await _db.fitnessEntrys
         .filter()
         .dateEqualTo(date)
         .sortByInferenceTimestampDesc()
         .findFirst();
-    final eod      = await getEodEntry(date);
+    final eod = await getEodEntry(date);
 
     return DaySnapshot(
-      date:     date,
-      moods:    moods,
+      date: date,
+      moods: moods,
       symptoms: symptoms,
-      fitness:  fitness,
-      eod:      eod,
+      fitness: fitness,
+      eod: eod,
     );
   }
 
@@ -360,7 +357,7 @@ class IsarService {
           .sessionIdEqualTo(sessionId)
           .findFirst();
       if (session == null) return;
-      session.endTime       = endTime;
+      session.endTime = endTime;
       session.wasInterrupted = false;
       final count = await _db.chatMessages
           .filter()
@@ -388,7 +385,7 @@ class IsarService {
             .sessionIdEqualTo(session.sessionId)
             .sortByTimestampDesc()
             .findFirst();
-        session.endTime        = lastMsg?.timestamp ?? session.startTime;
+        session.endTime = lastMsg?.timestamp ?? session.startTime;
         session.wasInterrupted = true;
         final count = await _db.chatMessages
             .filter()
@@ -458,11 +455,11 @@ class IsarService {
 /// A full data snapshot for a single day.
 /// Used by the EOD pipeline to build Gemma2b/Gemini context.
 class DaySnapshot {
-  final String             date;
-  final List<MoodEntry>    moods;
-  final List<SymptomEntry> symptoms;   // active + monitoring
-  final FitnessEntry?      fitness;
-  final EodEntry?          eod;
+  final String date;
+  final List<MoodEntry> moods;
+  final List<SymptomEntry> symptoms; // active + monitoring
+  final FitnessEntry? fitness;
+  final EodEntry? eod;
 
   const DaySnapshot({
     required this.date,
@@ -472,8 +469,8 @@ class DaySnapshot {
     this.eod,
   });
 
-  bool get hasMood    => moods.isNotEmpty;
+  bool get hasMood => moods.isNotEmpty;
   bool get hasSymptoms => symptoms.isNotEmpty;
-  bool get hasFitness  => fitness != null;
-  bool get hasEod      => eod != null;
+  bool get hasFitness => fitness != null;
+  bool get hasEod => eod != null;
 }
