@@ -2,6 +2,41 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+const Set<String> _canonicalMoodLabels = {
+  'sadness',
+  'joy',
+  'love',
+  'anger',
+  'fear',
+  'surprise',
+};
+
+String _sanitizeMoodLabel(String raw) {
+  final lowered = raw.trim().toLowerCase();
+  if (_canonicalMoodLabels.contains(lowered)) {
+    return lowered;
+  }
+  // Fallback to a neutral canonical class when upstream sources are noisy.
+  return 'surprise';
+}
+
+List<String> _sanitizeRecentMoods(List<String> rawItems) {
+  final seen = <String>{};
+  final normalized = <String>[];
+  for (final item in rawItems) {
+    final match = RegExp(r'(sadness|joy|love|anger|fear|surprise)', caseSensitive: false)
+        .firstMatch(item);
+    final candidate = _sanitizeMoodLabel(match?.group(1) ?? item);
+    if (seen.add(candidate)) {
+      normalized.add(candidate);
+    }
+    if (normalized.length >= 8) {
+      break;
+    }
+  }
+  return normalized;
+}
+
 class MiniMeChatTurn {
   const MiniMeChatTurn({required this.role, required this.text});
 
@@ -374,12 +409,15 @@ class MiniMeBackendService {
     String? summaryContext,
     MiniMeIntelligenceReply? intelligence,
   }) async {
+    final canonicalMoodLabel = _sanitizeMoodLabel(moodLabel);
+    final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+
     final payload = <String, dynamic>{
       'user_message': userMessage,
-      'latest_mood_label': moodLabel,
+      'latest_mood_label': canonicalMoodLabel,
       'latest_mood_intensity': moodIntensity,
       'latest_mood_notes': moodNotes,
-      'recent_moods': recentMoods,
+      'recent_moods': canonicalRecentMoods,
       'active_symptoms': activeSymptoms,
       'chat_history': history.map((e) => e.toJson()).toList(),
     };
@@ -439,11 +477,14 @@ class MiniMeBackendService {
     required List<MiniMeChatTurn> history,
     String? summaryContext,
   }) async {
+    final canonicalMoodLabel = _sanitizeMoodLabel(latestMoodLabel);
+    final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+
     final payload = {
-      'latest_mood_label': latestMoodLabel,
+      'latest_mood_label': canonicalMoodLabel,
       'latest_mood_intensity': latestMoodIntensity,
       'latest_mood_notes': latestMoodNotes,
-      'recent_moods': recentMoods,
+      'recent_moods': canonicalRecentMoods,
       'recent_logs': recentLogs,
       'active_symptoms': activeSymptoms,
       'chat_history': history.map((e) => e.toJson()).toList(),
@@ -493,11 +534,14 @@ class MiniMeBackendService {
     required List<MiniMeExerciseCandidate> exercises,
     String? summaryContext,
   }) async {
+    final canonicalMoodLabel = _sanitizeMoodLabel(latestMoodLabel);
+    final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+
     final payload = {
-      'latest_mood_label': latestMoodLabel,
+      'latest_mood_label': canonicalMoodLabel,
       'latest_mood_intensity': latestMoodIntensity,
       'latest_mood_notes': latestMoodNotes,
-      'recent_moods': recentMoods,
+      'recent_moods': canonicalRecentMoods,
       'recent_logs': recentLogs,
       'active_symptoms': activeSymptoms,
       'chat_history': history.map((e) => e.toJson()).toList(),

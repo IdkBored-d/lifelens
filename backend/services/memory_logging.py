@@ -60,7 +60,6 @@ def log_memory_event(
         "input": _request_snapshot(chat_input),
         "output": {
             "memory_state": memory_state.model_dump(),
-            "memory_diff": memory_diff.model_dump(),
             "validation_passed": validation_passed,
         },
     }

@@ -15,6 +15,28 @@ class UrgencyLevel(str, Enum):
     INFORMATIONAL = "informational"
 
 
+CANONICAL_MOOD_LABELS = {
+    'sadness',
+    'joy',
+    'love',
+    'anger',
+    'fear',
+    'surprise',
+}
+
+
+def _normalize_canonical_mood_label(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    label = value.strip().lower()
+    if not label:
+        return None
+    if label not in CANONICAL_MOOD_LABELS:
+        allowed = ', '.join(sorted(CANONICAL_MOOD_LABELS))
+        raise ValueError(f"Mood label must be one of: {allowed}")
+    return label
+
+
 class SymptomInput(BaseModel):
     """Input model for symptom analysis"""
     symptoms: List[str] = Field(..., min_items=1, max_items=20, description="List of symptoms")
@@ -141,9 +163,16 @@ class MiniMeChatRequest(BaseModel):
     def validate_user_message(cls, v):
         return v.strip()
 
+    @validator('latest_mood_label')
+    def validate_latest_mood_label(cls, v):
+        return _normalize_canonical_mood_label(v)
+
     @validator('recent_moods', each_item=True)
     def validate_recent_mood_item(cls, v):
-        return v.strip()
+        normalized = _normalize_canonical_mood_label(v)
+        if normalized is None:
+            raise ValueError("recent_moods entries must be non-empty canonical mood labels")
+        return normalized
 
     @validator('summary_context')
     def validate_summary_context(cls, v):
@@ -173,9 +202,8 @@ class MiniMeMemoryDiff(BaseModel):
 
 
 class MiniMeMemoryCompileResponse(BaseModel):
-    """Structured memory compilation result with validation and diff info."""
+    """Structured memory compilation result."""
     memory_state: MiniMeMemoryState
-    memory_diff: MiniMeMemoryDiff
     validation_passed: bool = True
 
 
@@ -183,9 +211,8 @@ class MiniMeChatResponse(BaseModel):
     """Response model for Mini-Me chat."""
     opening_suggestion: str
     reply: str
-    source: str = Field(..., description="gemini or fallback")
+    source: str = Field(..., description="Provenance of the reply: gemini or fallback")
     memory_state: Optional[MiniMeMemoryState] = None
-    memory_diff: Optional[MiniMeMemoryDiff] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -209,7 +236,14 @@ class MiniMeSuggestionsRequest(BaseModel):
 
     @validator('recent_moods', each_item=True)
     def validate_suggestion_recent_mood_item(cls, v):
-        return v.strip()
+        normalized = _normalize_canonical_mood_label(v)
+        if normalized is None:
+            raise ValueError("recent_moods entries must be non-empty canonical mood labels")
+        return normalized
+
+    @validator('latest_mood_label')
+    def validate_suggestion_latest_mood_label(cls, v):
+        return _normalize_canonical_mood_label(v)
 
     @validator('summary_context')
     def validate_suggestion_summary_context(cls, v):
@@ -256,7 +290,14 @@ class MiniMeExerciseRecommendationRequest(BaseModel):
 
     @validator('recent_moods', each_item=True)
     def validate_exercise_recent_mood_item(cls, v):
-        return v.strip()
+        normalized = _normalize_canonical_mood_label(v)
+        if normalized is None:
+            raise ValueError("recent_moods entries must be non-empty canonical mood labels")
+        return normalized
+
+    @validator('latest_mood_label')
+    def validate_exercise_latest_mood_label(cls, v):
+        return _normalize_canonical_mood_label(v)
 
     @validator('summary_context')
     def validate_exercise_summary_context(cls, v):

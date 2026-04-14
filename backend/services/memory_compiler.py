@@ -7,27 +7,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from models.schemas import MiniMeChatRequest, MiniMeMemoryDiff, MiniMeMemoryState
 
-NEGATIVE_MOOD_TERMS = {
-    "sad",
-    "down",
-    "anxious",
-    "stressed",
-    "overwhelmed",
-    "angry",
-    "depressed",
-    "tired",
-    "exhausted",
-    "low",
-}
-POSITIVE_MOOD_TERMS = {
-    "good",
-    "better",
-    "calm",
-    "okay",
-    "happy",
-    "focused",
-    "motivated",
-}
+NEGATIVE_MOOD_LABELS = {"sadness", "anger", "fear"}
+POSITIVE_MOOD_LABELS = {"joy", "love"}
+NEUTRAL_MOOD_LABELS = {"surprise"}
 
 RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
 
@@ -42,15 +24,16 @@ def _recent_user_lines(chat_input: MiniMeChatRequest, max_items: int = 8) -> Lis
     return lines
 
 
-def _infer_mood_state(chat_input: MiniMeChatRequest, user_lines: List[str]) -> str:
+def _infer_mood_state(chat_input: MiniMeChatRequest) -> str:
     mood_label = (chat_input.latest_mood_label or "").strip().lower()
     intensity = chat_input.latest_mood_intensity
-    joined = " ".join([mood_label] + user_lines).lower()
 
-    if any(term in joined for term in NEGATIVE_MOOD_TERMS):
+    if mood_label in NEGATIVE_MOOD_LABELS:
         return "negative"
-    if any(term in joined for term in POSITIVE_MOOD_TERMS):
+    if mood_label in POSITIVE_MOOD_LABELS:
         return "positive"
+    if mood_label in NEUTRAL_MOOD_LABELS:
+        return "neutral"
     if intensity is not None and intensity <= 1:
         return "negative"
     if intensity is not None and intensity >= 4:
@@ -82,36 +65,6 @@ def _infer_risk(chat_input: MiniMeChatRequest, mood_state: str) -> str:
     return "low"
 
 
-def _phase_to_mood_hint(phase: str) -> float:
-    value = (phase or "").strip().lower()
-    if value in {"declining", "acute-risk"}:
-        return -1.0
-    if value in {"recovering", "stable"}:
-        return 0.4
-    return 0.0
-
-
-def _infer_weighted_mood_state(chat_input: MiniMeChatRequest, user_lines: List[str]) -> str:
-    chat_mood = _infer_mood_state(chat_input, user_lines)
-    score = 0.0
-
-    score += {"negative": -1.0, "neutral": 0.0, "positive": 1.0}[chat_mood] * 0.55
-    score += _phase_to_mood_hint(chat_input.intelligence_phase or "") * 0.30
-
-    risk_score = chat_input.intelligence_risk_score
-    if risk_score is not None:
-        if risk_score >= 70:
-            score -= 0.35
-        elif risk_score <= 25:
-            score += 0.2
-
-    if score <= -0.35:
-        return "negative"
-    if score >= 0.35:
-        return "positive"
-    return "neutral"
-
-
 def _collect_key_points(chat_input: MiniMeChatRequest, user_lines: List[str]) -> List[str]:
     points: List[str] = []
 
@@ -131,15 +84,6 @@ def _collect_key_points(chat_input: MiniMeChatRequest, user_lines: List[str]) ->
 
     if chat_input.intelligence_phase:
         points.append(f"trend phase: {chat_input.intelligence_phase.strip().lower()}")
-
-    if chat_input.intelligence_risk_score is not None:
-        points.append(f"risk score: {round(float(chat_input.intelligence_risk_score), 1)}")
-
-    if user_lines:
-        compact = " ".join(user_lines[-1].split()).lower()
-        compact = re.sub(r"[^a-z0-9\s]", "", compact)
-        if compact:
-            points.append(f"recent concern: {compact[:80]}")
 
     for insight in chat_input.intelligence_insights[:2]:
         text = " ".join(insight.strip().split()).lower()
@@ -167,10 +111,8 @@ def _primary_key_signal(key_points: List[str]) -> str:
 
     priority_prefixes = [
         "summary context:",
-        "risk score:",
         "trend phase:",
         "symptoms reported:",
-        "recent concern:",
         "mood label:",
         "signal:",
     ]
@@ -183,13 +125,7 @@ def _primary_key_signal(key_points: List[str]) -> str:
 
 def _build_summary(mood_state: str, risk: str, key_points: List[str], trend_label: str) -> str:
     trend = (trend_label or "").strip().lower()
-
-    if risk == "high":
-        lead = f"Current signals indicate high near-term risk with a {mood_state} mood pattern."
-    elif risk == "medium":
-        lead = f"Current signals suggest moderate near-term risk with a {mood_state} mood pattern."
-    else:
-        lead = f"Current signals indicate low near-term risk with a {mood_state} mood pattern."
+    lead = f"Current signals suggest a {mood_state} mood pattern."
 
     if trend in {"declining", "acute-risk"}:
         trend_note = "Trend is moving in a concerning direction."
@@ -210,9 +146,6 @@ def _build_quick_track(chat_input: MiniMeChatRequest) -> Dict[str, Any]:
     return {
         "sleep_slope": None,
         "mood_slope": None,
-        "risk_score": chat_input.intelligence_risk_score,
-        "trend_label": chat_input.intelligence_phase or "",
-        "tier": chat_input.intelligence_tier or "",
         "confidence": chat_input.intelligence_confidence,
         "alert": chat_input.intelligence_alert or "",
         "state_flags": state_flags,
@@ -277,7 +210,7 @@ def _count_contradictions(
         reasons.append("chat_mood_disagrees_with_weighted_mood")
     if risk_score is not None and risk_score >= 70 and weighted_mood == "positive":
         reasons.append("high_numeric_risk_with_positive_mood")
-    if (latest_mood_label or "").strip().lower() in POSITIVE_MOOD_TERMS and risk_score is not None and risk_score >= 70:
+    if (latest_mood_label or "").strip().lower() in POSITIVE_MOOD_LABELS and risk_score is not None and risk_score >= 70:
         reasons.append("positive_self_label_conflicts_with_high_numeric_risk")
     if risk == "high" and weighted_mood == "positive":
         reasons.append("high_merged_risk_with_positive_mood")
@@ -330,7 +263,7 @@ def _fallback_memory(chat_input: MiniMeChatRequest) -> MiniMeMemoryState:
     risk = _infer_risk(chat_input, "neutral")
     quick_track = _build_quick_track(chat_input)
     return MiniMeMemoryState(
-        summary=f"Current signals indicate {risk} near-term risk with limited chat context.",
+        summary="Current signals show limited recent context.",
         key_points=["limited reliable input; fallback memory used"],
         mood_state="neutral",
         risk=risk,
@@ -342,8 +275,8 @@ def compile_minime_memory_with_diff(chat_input: MiniMeChatRequest) -> Tuple[Mini
     previous = _coerce_previous_memory(chat_input.previous_memory)
     user_lines = _recent_user_lines(chat_input)
 
-    chat_mood = _infer_mood_state(chat_input, user_lines)
-    mood_state = _infer_weighted_mood_state(chat_input, user_lines)
+    chat_mood = _infer_mood_state(chat_input)
+    mood_state = chat_mood
 
     inferred_risk = _infer_risk(chat_input, mood_state)
     previous_risk = previous.risk if previous else "low"
