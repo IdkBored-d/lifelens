@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Weaviate
     weaviate_url: str = "http://localhost:8080"
     weaviate_api_key: str = ""
+    weaviate_cloud_url: str = ""
+    weaviate_prefer_cloud: bool = False
+    weaviate_fallback_to_local: bool = True
     
     # Database
     postgres_host: str = "localhost"

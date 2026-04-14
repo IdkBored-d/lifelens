@@ -47,24 +47,42 @@ class WeaviateRAGService:
             parsed = urlparse(raw_url if "://" in raw_url else f"http://{raw_url}")
             host = (parsed.hostname or "localhost").strip()
             port = parsed.port or 8080
-            scheme = (parsed.scheme or "http").lower()
             has_api_key = bool((self.settings.weaviate_api_key or "").strip())
             is_local_host = host in {"localhost", "127.0.0.1", "0.0.0.0", "weaviate"}
+            cloud_url = (self.settings.weaviate_cloud_url or "").strip()
 
-            # Use cloud connection only for non-local endpoints.
-            if has_api_key and not is_local_host:
-                cluster_url = raw_url if "://" in raw_url else f"https://{raw_url}"
-                self.client = weaviate.connect_to_weaviate_cloud(
-                    cluster_url=cluster_url,
-                    auth_credentials=Auth.api_key(self.settings.weaviate_api_key.strip())
-                )
-            else:
+            # Backward-compat: if WEAVIATE_URL is already a non-local endpoint and
+            # an API key is provided, treat it as the cloud target.
+            if not cloud_url and has_api_key and not is_local_host:
+                cloud_url = raw_url
+
+            prefer_cloud = bool(self.settings.weaviate_prefer_cloud or cloud_url)
+            fallback_to_local = bool(self.settings.weaviate_fallback_to_local)
+
+            if prefer_cloud and cloud_url and has_api_key:
+                try:
+                    cluster_url = cloud_url if "://" in cloud_url else f"https://{cloud_url}"
+                    self.client = weaviate.connect_to_weaviate_cloud(
+                        cluster_url=cluster_url,
+                        auth_credentials=Auth.api_key(self.settings.weaviate_api_key.strip())
+                    )
+                    logger.info(f"Successfully connected to Weaviate Cloud at {cluster_url}")
+                except Exception as cloud_error:
+                    if not fallback_to_local:
+                        raise
+                    logger.warning(
+                        "Weaviate Cloud connection failed (%s). Falling back to local endpoint %s",
+                        cloud_error,
+                        raw_url,
+                    )
+
+            if self.client is None:
                 self.client = weaviate.connect_to_local(
                     host=host,
                     port=port
                 )
+                logger.info(f"Successfully connected to local Weaviate at {raw_url}")
             
-            logger.info(f"Successfully connected to Weaviate at {self.settings.weaviate_url}")
             self._create_schema()
             
         except Exception as e:

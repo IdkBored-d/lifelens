@@ -136,18 +136,27 @@ class AppServices {
     disEmbed = DisEmbedService();
     fitnessMlp = FitnessMlpService();
 
-    try {
-      await Future.wait([
-        mobileBert.load(_mobileBertAsset),
-        disEmbed.load(_disEmbedAsset),
-        fitnessMlp.load(_fitnessAsset),
-      ]);
-      debugPrint(
-        '[AppServices] init: ONNX models loaded in ${sw.elapsedMilliseconds - modelsStart}ms',
-      );
-    } catch (e) {
-      debugPrint('[AppServices] init: ONNX model load failed: $e');
+    var loadedCount = 0;
+
+    Future<void> loadModel(String name, Future<void> Function() loader) async {
+      try {
+        await loader();
+        loadedCount += 1;
+        debugPrint('[AppServices] init: $name loaded');
+      } catch (e) {
+        debugPrint('[AppServices] init: $name load failed: $e');
+      }
     }
+
+    await Future.wait([
+      loadModel('MobileBERT', () => mobileBert.load(_mobileBertAsset)),
+      loadModel('DisEmbed', () => disEmbed.load(_disEmbedAsset)),
+      loadModel('FitnessMLP', () => fitnessMlp.load(_fitnessAsset)),
+    ]);
+
+    debugPrint(
+      '[AppServices] init: ONNX models ready $loadedCount/3 in ${sw.elapsedMilliseconds - modelsStart}ms',
+    );
 
     // ── 6. Gemma 2 2B IT (skip gracefully if not yet downloaded) ────────────
     final gemmaStart = sw.elapsedMilliseconds;

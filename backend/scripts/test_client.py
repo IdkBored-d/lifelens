@@ -52,7 +52,7 @@ class LifelensClient:
         self,
         query: str,
         max_results: int = 5,
-        min_certainty: float = 0.7
+        min_certainty: float = 0.0
     ) -> list:
         """Search medical knowledge base"""
         payload = {

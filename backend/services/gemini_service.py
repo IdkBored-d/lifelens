@@ -144,8 +144,17 @@ If with others:
                 max_results=max_results,
                 min_certainty=0.65
             )
-            
+
             results = await self.rag_service.search_similar_conditions(rag_query)
+
+            # Retry with a looser threshold if strict matching returns nothing.
+            if not results:
+                rag_query = RAGQuery(
+                    query_text=query_text,
+                    max_results=max_results,
+                    min_certainty=0.0
+                )
+                results = await self.rag_service.search_similar_conditions(rag_query)
             
             # Format results for prompt
             knowledge_chunks = []
@@ -164,6 +173,53 @@ If with others:
         except Exception as e:
             logger.error(f"Failed to retrieve medical knowledge: {e}")
             return []
+
+    def _build_rag_fallback_analysis(
+        self,
+        symptom_input: SymptomInput,
+        knowledge_chunks: List[Dict[str, Any]],
+        urgency: UrgencyLevel,
+    ) -> str:
+        """Build a useful fallback when Gemini is unavailable/rate-limited."""
+        lines = [
+            "Gemini is temporarily unavailable, so this response is based on your local vetted medical knowledge index.",
+            "",
+            f"Symptoms reported: {', '.join(symptom_input.symptoms)}",
+            f"Urgency level: {urgency.value}",
+            "",
+        ]
+
+        if knowledge_chunks:
+            lines.append("Likely related conditions (from knowledge base):")
+            for chunk in knowledge_chunks[:3]:
+                condition = chunk.get("condition", "Unknown")
+                relevance = float(chunk.get("relevance", 0.0))
+                source = chunk.get("source", "Unknown source")
+                lines.append(f"- {condition} (relevance {relevance:.2f}, source: {source})")
+
+            lines.extend([
+                "",
+                "Recommended next steps:",
+                "- Monitor symptoms closely over the next 24 hours.",
+                "- Seek urgent care if symptoms worsen or new severe symptoms appear.",
+                "- Contact a clinician for diagnosis and treatment confirmation.",
+            ])
+        else:
+            lines.extend([
+                "No close condition match was found in the current knowledge base.",
+                "",
+                "Recommended next steps:",
+                "- Track symptom changes, including fever, pain level, and duration.",
+                "- Arrange medical evaluation if symptoms persist or worsen.",
+                "- Use emergency services immediately for severe warning signs.",
+            ])
+
+        lines.extend([
+            "",
+            "This information is educational only and not a medical diagnosis. Please consult a qualified healthcare provider for proper evaluation and treatment.",
+        ])
+
+        return "\n".join(lines)
     
     def _build_rag_grounded_prompt(
         self,
@@ -336,13 +392,22 @@ Provide a clear, helpful health assessment with the following sections:
         except Exception as e:
             logger.error(f"Symptom analysis failed: {e}")
             response_time = int((time.time() - start_time) * 1000)
-            
-            # Return error result
+
+            # Graceful fallback path: return knowledge-grounded guidance instead
+            # of a raw technical error.
+            fallback_analysis = self._build_rag_fallback_analysis(
+                symptom_input=symptom_input,
+                knowledge_chunks=knowledge_chunks if 'knowledge_chunks' in locals() else [],
+                urgency=urgency if 'urgency' in locals() else UrgencyLevel.INFORMATIONAL,
+            )
+            fallback_sources = [chunk['source'] for chunk in knowledge_chunks] if 'knowledge_chunks' in locals() else []
+
             return SymptomAnalysisResult(
-                urgency=UrgencyLevel.INFORMATIONAL,
-                analysis=f"⚠️ Unable to complete analysis due to technical error: {str(e)}\n\n"
-                         f"Please try again or consult a healthcare provider directly.",
-                source="error",
+                urgency=urgency if 'urgency' in locals() else UrgencyLevel.INFORMATIONAL,
+                analysis=fallback_analysis,
+                knowledge_sources=fallback_sources,
+                confidence_score=self._estimate_confidence(knowledge_chunks) if 'knowledge_chunks' in locals() else 0.3,
+                source="fallback_rag",
                 response_time_ms=response_time
             )
     
