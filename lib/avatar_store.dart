@@ -12,6 +12,7 @@ class AvatarStore extends ChangeNotifier {
   static const String _companionIdKey = 'miniMeCompanionId';
   static const String _isMiniMeHatchedKey = 'isMiniMeHatched';
   static const String _degradationLevelKey = 'miniMeDegradationLevel';
+  static const String _autoBodyWidthScaleKey = 'miniMe.autoBodyWidthScale';
 
   String _bodyModel = miniMeCompanionPresets.first.bodyModel;
   String _hairModel = miniMeCompanionPresets.first.hairModel;
@@ -21,6 +22,7 @@ class AvatarStore extends ChangeNotifier {
   String _companionId = miniMeCompanionPresets.first.id;
   bool _isMiniMeHatched = false;
   double _degradationLevel = 0.0;
+  double _autoBodyWidthScale = 1.0;
 
   AvatarStore() {
     _loadFromPrefs();
@@ -30,6 +32,8 @@ class AvatarStore extends ChangeNotifier {
   String get hairModel => _hairModel;
   String get shirtModel => _shirtModel;
   double get bodyWidthScale => _bodyWidthScale;
+  double get effectiveBodyWidthScale =>
+      (_bodyWidthScale * _autoBodyWidthScale).clamp(0.75, 1.35).toDouble();
   String get miniMeName => _miniMeName;
   String get companionId => _companionId;
   bool get isMiniMeHatched => _isMiniMeHatched;
@@ -41,7 +45,7 @@ class AvatarStore extends ChangeNotifier {
       'bodyModel': _bodyModel,
       'hairModel': _hairModel,
       'shirtModel': _shirtModel,
-      'bodyWidthScale': _bodyWidthScale,
+      'bodyWidthScale': effectiveBodyWidthScale,
       'companionId': _companionId,
       'isHatched': _isMiniMeHatched,
       'degradationLevel': _degradationLevel,
@@ -110,6 +114,12 @@ class AvatarStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setAutoBodyWidthScale(double value) {
+    _autoBodyWidthScale = value.clamp(0.9, 1.1).toDouble();
+    _saveToPrefs();
+    notifyListeners();
+  }
+
   void hydrateFromBackendSnapshot(MiniMeBackendAvatarSnapshot snapshot) {
     if (snapshot.companionId != null &&
         snapshot.companionId!.trim().isNotEmpty) {
@@ -139,6 +149,8 @@ class AvatarStore extends ChangeNotifier {
     _isMiniMeHatched = prefs.getBool(_isMiniMeHatchedKey) ?? _isMiniMeHatched;
     _degradationLevel =
         prefs.getDouble(_degradationLevelKey) ?? _degradationLevel;
+    _autoBodyWidthScale =
+        prefs.getDouble(_autoBodyWidthScaleKey) ?? _autoBodyWidthScale;
 
     if (hasCustomization) {
       _bodyModel = prefs.getString(_bodyModelKey) ?? _bodyModel;
@@ -167,6 +179,7 @@ class AvatarStore extends ChangeNotifier {
     await prefs.setString(_companionIdKey, _companionId);
     await prefs.setBool(_isMiniMeHatchedKey, _isMiniMeHatched);
     await prefs.setDouble(_degradationLevelKey, _degradationLevel);
+    await prefs.setDouble(_autoBodyWidthScaleKey, _autoBodyWidthScale);
     if (markCustomized) {
       await prefs.setBool(_hasAvatarCustomizationKey, true);
     }

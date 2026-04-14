@@ -70,13 +70,26 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     String? syncWarning;
+    var usedFallbackSave = false;
 
     try {
       final online = await AppServices.isOnline();
-      final result = await AppServices.symptomPipeline.analyze(
-        userSymptoms: symptomsForPipeline.join(', '),
-        isOnline: online,
-      );
+      late final SymptomPipelineResult result;
+      try {
+        result = await AppServices.symptomPipeline.analyze(
+          userSymptoms: symptomsForPipeline.join(', '),
+          isOnline: online,
+        );
+      } catch (error) {
+        debugPrint(
+          '[SymptomsScreen] AI analysis failed, saving without analysis: $error',
+        );
+        usedFallbackSave = true;
+        result = await AppServices.symptomPipeline.storeWithoutAnalysis(
+          userSymptoms: symptomsForPipeline.join(', '),
+          isOnline: online,
+        );
+      }
 
       if (!mounted) return;
 
@@ -102,6 +115,16 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
       _symptomsController.clear();
       setState(() => _saveButtonState = LogButtonVisualState.success);
+      if (usedFallbackSave) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Symptoms saved. AI analysis is temporarily unavailable on this device.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
       if (syncWarning != null) {
         messenger.showSnackBar(
           SnackBar(
@@ -174,148 +197,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     return AppServices.isar.watchRecentSymptomEntries();
   }
 
-  _TrendSummary _buildTrendSummary(List<SymptomEntry> docs) {
-    final now = DateTime.now();
-    final weekAgo = now.subtract(const Duration(days: 7));
-    final twoWeeksAgo = now.subtract(const Duration(days: 14));
-
-    final recentCounts = <String, int>{};
-    final previousCounts = <String, int>{};
-
-    for (final doc in docs) {
-      final createdAt = doc.timestamp;
-
-      final symptoms = doc.symptomList
-          .map((s) => s.trim().toLowerCase())
-          .where((s) => s.isNotEmpty)
-          .toList();
-
-      if (createdAt.isAfter(weekAgo)) {
-        for (final symptom in symptoms) {
-          recentCounts[symptom] = (recentCounts[symptom] ?? 0) + 1;
-        }
-      } else if (createdAt.isAfter(twoWeeksAgo)) {
-        for (final symptom in symptoms) {
-          previousCounts[symptom] = (previousCounts[symptom] ?? 0) + 1;
-        }
-      }
-    }
-
-    final topRecent = recentCounts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final totalRecentMentions = recentCounts.values.fold<int>(
-      0,
-      (acc, value) => acc + value,
-    );
-    final totalPreviousMentions = previousCounts.values.fold<int>(
-      0,
-      (acc, value) => acc + value,
-    );
-
-    final worsening = <_WorseningItem>[];
-    final allKeys = <String>{...recentCounts.keys, ...previousCounts.keys};
-    for (final key in allKeys) {
-      final recent = recentCounts[key] ?? 0;
-      final previous = previousCounts[key] ?? 0;
-      if (recent > previous && recent >= 2) {
-        worsening.add(
-          _WorseningItem(symptom: key, increase: recent - previous),
-        );
-      }
-    }
-    worsening.sort((a, b) => b.increase.compareTo(a.increase));
-
-    return _TrendSummary(
-      topRecent: topRecent.take(3).toList(),
-      worsening: worsening.take(3).toList(),
-      totalRecentMentions: totalRecentMentions,
-      totalPreviousMentions: totalPreviousMentions,
-      uniqueSymptomsThisWeek: recentCounts.length,
-    );
-  }
-
-  int _countSymptomInWindow(
-    List<SymptomEntry> docs,
-    String symptom,
-    DateTime start,
-    DateTime end,
-  ) {
-    var count = 0;
-    for (final doc in docs) {
-      final createdAt = doc.timestamp;
-      if (createdAt.isBefore(start) || !createdAt.isBefore(end)) {
-        continue;
-      }
-
-      final hasSymptom = doc.symptomList.any(
-        (s) => s.trim().toLowerCase() == symptom,
-      );
-
-      if (hasSymptom) {
-        count += 1;
-      }
-    }
-    return count;
-  }
-
-  int _activeDaysWithSymptom(
-    List<SymptomEntry> docs,
-    String symptom,
-    int days,
-  ) {
-    final cutoff = DateTime.now().subtract(Duration(days: days));
-    final daySet = <DateTime>{};
-
-    for (final doc in docs) {
-      final createdAt = doc.timestamp;
-      if (!createdAt.isAfter(cutoff)) {
-        continue;
-      }
-
-      final hasSymptom = doc.symptomList.any(
-        (s) => s.trim().toLowerCase() == symptom,
-      );
-
-      if (hasSymptom) {
-        daySet.add(_startOfDay(createdAt));
-      }
-    }
-
-    return daySet.length;
-  }
-
-  List<int> _buildDailySeries(List<SymptomEntry> docs, String symptom) {
-    final now = DateTime.now();
-    final dayStarts = List<DateTime>.generate(
-      14,
-      (i) => _startOfDay(now.subtract(Duration(days: 13 - i))),
-    );
-
-    final countsByDay = <DateTime, int>{for (final day in dayStarts) day: 0};
-
-    for (final doc in docs) {
-      final day = _startOfDay(doc.timestamp);
-      if (!countsByDay.containsKey(day)) {
-        continue;
-      }
-
-      final matches = doc.symptomList.any(
-        (s) => s.trim().toLowerCase() == symptom,
-      );
-
-      if (matches) {
-        countsByDay[day] = (countsByDay[day] ?? 0) + 1;
-      }
-    }
-
-    return dayStarts.map((d) => countsByDay[d] ?? 0).toList();
-  }
-
-  DateTime _startOfDay(DateTime value) {
-    return DateTime(value.year, value.month, value.day);
-  }
-
   String _burdenLabel(SymptomDoctorSummary summary) {
     final activeDays = summary.activeDays;
     final totalDays = summary.windowDays;
@@ -330,6 +211,15 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       return 'Symptoms showed up regularly.';
     }
     return 'Symptoms showed up frequently.';
+  }
+
+  String _summaryReviewTip(SymptomDoctorSummary summary) {
+    if (summary.topSymptoms.isNotEmpty) {
+      final mainSymptom = _titleCase(summary.topSymptoms.first.key);
+      return 'Start with $mainSymptom first. Check how often it showed up, whether it changed over time, and whether anything seems to make it better or worse.';
+    }
+
+    return 'Look for simple patterns like how often symptoms appeared, when they tended to happen, and anything that may have helped or made them worse.';
   }
 
   String _formatDate(DateTime date) {
@@ -348,6 +238,15 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  String _formatDateTime(DateTime date) {
+    final hour = date.hour == 0
+        ? 12
+        : (date.hour > 12 ? date.hour - 12 : date.hour);
+    final minute = date.minute.toString().padLeft(2, '0');
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+    return '${_formatDate(date)} at $hour:$minute $period';
   }
 
   Future<void> _pickCustomSummaryDate({required bool isStart}) async {
@@ -609,7 +508,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                       child: Column(
                         children: [
                           _ReportSectionCard(
-                            title: 'Most common symptoms',
+                            title: 'Symptoms you logged most',
                             body: topSymptoms.isEmpty
                                 ? 'No main symptom stood out in this time.'
                                 : topSymptoms.join(', '),
@@ -619,7 +518,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                                   improvingSymptoms.isNotEmpty)) ...[
                             const SizedBox(height: 10),
                             _ReportSectionCard(
-                              title: 'Simple changes',
+                              title: 'What changed',
                               body:
                                   '${worseningSymptoms.isEmpty ? 'No clear increases.' : 'More: ${worseningSymptoms.take(2).join(', ')}'}\n\n'
                                   '${improvingSymptoms.isEmpty ? 'No clear decreases.' : 'Less: ${improvingSymptoms.take(2).join(', ')}'}',
@@ -627,9 +526,14 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                           ],
                           const SizedBox(height: 10),
                           _ReportSectionCard(
-                            title: 'Plain-language summary',
+                            title: 'Easy summary',
                             body: summary.text,
                             selectable: true,
+                          ),
+                          const SizedBox(height: 10),
+                          _ReportSectionCard(
+                            title: 'Helpful tip',
+                            body: _summaryReviewTip(summary),
                           ),
                         ],
                       ),
@@ -638,91 +542,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                 ],
               ),
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _showTrendDetails(
-    BuildContext context,
-    String symptom,
-    List<SymptomEntry> docs,
-  ) async {
-    final values = _buildDailySeries(docs, symptom);
-    final now = DateTime.now();
-    final weekAgo = now.subtract(const Duration(days: 7));
-    final twoWeeksAgo = now.subtract(const Duration(days: 14));
-
-    final thisWeekCount = _countSymptomInWindow(docs, symptom, weekAgo, now);
-    final lastWeekCount = _countSymptomInWindow(
-      docs,
-      symptom,
-      twoWeeksAgo,
-      weekAgo,
-    );
-    final activeDays14 = _activeDaysWithSymptom(docs, symptom, 14);
-    final delta = thisWeekCount - lastWeekCount;
-    final trendText = delta > 0
-        ? 'Up by $delta vs last week'
-        : delta < 0
-        ? 'Down by ${delta.abs()} vs last week'
-        : 'Same as last week';
-
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        final theme = Theme.of(context);
-        final cs = theme.colorScheme;
-
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _titleCase(symptom),
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Last 14 days',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _MetricChip(label: 'This week', value: '$thisWeekCount'),
-                  _MetricChip(label: 'Last week', value: '$lastWeekCount'),
-                  _MetricChip(label: 'Active days', value: '$activeDays14/14'),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                trendText,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 10),
-              _DailyTrendMiniChart(values: values),
-              const SizedBox(height: 8),
-              Text(
-                'Each bar represents one day. Taller bars mean more entries for this symptom.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
-                ),
-              ),
-            ],
           ),
         );
       },
@@ -796,76 +615,76 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _SectionHeader(title: 'Symptoms Experienced'),
-                      const SizedBox(height: 8),
-                      StreamBuilder<List<SymptomEntry>>(
-                        stream: _trendStream(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: LinearProgressIndicator(minHeight: 3),
-                            );
-                          }
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: _SectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const _SectionHeader(title: 'Saved Symptoms'),
+                          const SizedBox(height: 8),
+                          Text(
+                            'You can view your previously logged symptoms here.',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          StreamBuilder<List<SymptomEntry>>(
+                            stream: _trendStream(),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                  child: LinearProgressIndicator(minHeight: 3),
+                                );
+                              }
 
-                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                            return Text(
-                              'No symptoms experienced yet. Add a few entries to start seeing patterns.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: cs.onSurfaceVariant,
-                              ),
-                            );
-                          }
-
-                          final summary = _buildTrendSummary(snapshot.data!);
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Top symptoms this week',
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              if (summary.topRecent.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                _TrendBarChart(
-                                  items: summary.topRecent,
-                                  onTapSymptom: (symptom) {
-                                    HapticFeedback.selectionClick();
-                                    _showTrendDetails(
-                                      context,
-                                      symptom,
-                                      snapshot.data!,
-                                    );
-                                  },
-                                ),
-                                Text(
-                                  'Tip: tap a symptom bar for a detailed 14-day breakdown.',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
+                              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                                return SizedBox(
+                                  width: double.infinity,
+                                  child: Text(
+                                    'No saved symptoms yet.',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: cs.onSurfaceVariant,
+                                    ),
                                   ),
-                                ),
-                              ] else ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  'No symptoms logged in the last 7 days.',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          );
-                        },
+                                );
+                              }
+
+                              final entries = snapshot.data!.take(8).toList();
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: entries
+                                    .map(
+                                      (entry) => Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 10,
+                                        ),
+                                        child: _LoggedSymptomEntryCard(
+                                          title: entry.symptomList.isEmpty
+                                              ? entry.rawSymptoms
+                                              : entry.symptomList
+                                                    .map(_titleCase)
+                                                    .join(', '),
+                                          subtitle: _formatDateTime(
+                                            entry.timestamp,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -1132,148 +951,11 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _TrendSummary {
-  const _TrendSummary({
-    required this.topRecent,
-    required this.worsening,
-    required this.totalRecentMentions,
-    required this.totalPreviousMentions,
-    required this.uniqueSymptomsThisWeek,
-  });
+class _LoggedSymptomEntryCard extends StatelessWidget {
+  const _LoggedSymptomEntryCard({required this.title, required this.subtitle});
 
-  final List<MapEntry<String, int>> topRecent;
-  final List<_WorseningItem> worsening;
-  final int totalRecentMentions;
-  final int totalPreviousMentions;
-  final int uniqueSymptomsThisWeek;
-}
-
-class _WorseningItem {
-  const _WorseningItem({required this.symptom, required this.increase});
-
-  final String symptom;
-  final int increase;
-}
-
-class _TrendBarChart extends StatelessWidget {
-  const _TrendBarChart({required this.items, required this.onTapSymptom});
-
-  final List<MapEntry<String, int>> items;
-  final ValueChanged<String> onTapSymptom;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxCount = items.fold<int>(
-      0,
-      (max, item) => item.value > max ? item.value : max,
-    );
-
-    return Column(
-      children: items.map((item) {
-        final fraction = maxCount == 0 ? 0.0 : item.value / maxCount;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => onTapSymptom(item.key),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 90,
-                      child: Text(
-                        _titleCase(item.key),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
-                        child: LinearProgressIndicator(
-                          value: fraction,
-                          minHeight: 10,
-                          backgroundColor: Theme.of(
-                            context,
-                          ).colorScheme.outlineVariant.withValues(alpha: 0.35),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('${item.value}'),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  String _titleCase(String text) {
-    return text
-        .split(' ')
-        .where((part) => part.isNotEmpty)
-        .map((part) => part[0].toUpperCase() + part.substring(1))
-        .join(' ');
-  }
-}
-
-class _DailyTrendMiniChart extends StatelessWidget {
-  const _DailyTrendMiniChart({required this.values});
-
-  final List<int> values;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxValue = values.fold<int>(
-      0,
-      (max, value) => value > max ? value : max,
-    );
-    final cs = Theme.of(context).colorScheme;
-
-    return SizedBox(
-      height: 76,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: values.map((value) {
-          final normalized = maxValue == 0 ? 0.0 : value / maxValue;
-          final barHeight = 8 + (normalized * 56);
-
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 1.5),
-              child: Container(
-                height: barHeight,
-                decoration: BoxDecoration(
-                  color: value > 0
-                      ? cs.primary
-                      : cs.outlineVariant.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _MetricChip extends StatelessWidget {
-  const _MetricChip({required this.label, required this.value});
-
-  final String label;
-  final String value;
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1281,26 +963,29 @@ class _MetricChip extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cs.primaryContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.32)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: cs.onPrimaryContainer,
+            title,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
+          const SizedBox(height: 6),
           Text(
-            value,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: cs.onPrimaryContainer,
-              fontWeight: FontWeight.w800,
+            subtitle,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
             ),
           ),
         ],

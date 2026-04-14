@@ -32,7 +32,7 @@ class MiniMeProfileIcon extends StatelessWidget {
           bodyModel: avatarStore.bodyModel,
           hairModel: avatarStore.hairModel,
           shirtModel: avatarStore.shirtModel,
-          bodyWidthScale: avatarStore.bodyWidthScale,
+          bodyWidthScale: avatarStore.effectiveBodyWidthScale,
           companionId: avatarStore.companionId,
           isHatched: avatarStore.isMiniMeHatched,
           degradationLevel: avatarStore.degradationLevel,

@@ -15,6 +15,7 @@ class MiniMeAvatarBadge extends StatelessWidget {
     this.companionId,
     this.isHatched = true,
     this.degradationLevel = 0,
+    this.visualState = const MiniMeVisualState(),
     this.fallbackLabel,
   });
 
@@ -29,6 +30,7 @@ class MiniMeAvatarBadge extends StatelessWidget {
   final String? companionId;
   final bool isHatched;
   final double degradationLevel;
+  final MiniMeVisualState visualState;
   final String? fallbackLabel;
 
   bool get _hasMiniMeSnapshot =>
@@ -68,6 +70,7 @@ class MiniMeAvatarBadge extends StatelessWidget {
                           companionId: companionId,
                           size: avatarSize,
                           degradationLevel: degradationLevel,
+                          visualState: visualState,
                         )
                       : MiniMeAvatar(
                           bodyModel: bodyModel!,
@@ -80,6 +83,7 @@ class MiniMeAvatarBadge extends StatelessWidget {
                           enableInteractions: false,
                           isHatched: isHatched,
                           degradationLevel: degradationLevel,
+                          visualState: visualState,
                         ),
                 )
               : Center(
