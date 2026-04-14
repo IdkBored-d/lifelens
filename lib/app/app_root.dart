@@ -91,7 +91,10 @@ class _AppRootState extends State<AppRoot> {
                 }
 
                 if (userSnapshot.hasError) {
-                  return const IntroScreen();
+                  return _UserProfileErrorScreen(
+                    message: userSnapshot.error.toString(),
+                    onRetry: () => setState(() {}),
+                  );
                 }
 
                 final doc = userSnapshot.data;
@@ -113,6 +116,46 @@ class _AppRootState extends State<AppRoot> {
           },
         );
       },
+    );
+  }
+}
+
+class _UserProfileErrorScreen extends StatelessWidget {
+  const _UserProfileErrorScreen({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_outlined, size: 48),
+              const SizedBox(height: 16),
+              const Text(
+                'Could not load your profile',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

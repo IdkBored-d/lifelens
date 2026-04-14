@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lifelens.local/schemas/evaluation_dataset.schema.json",
+  "title": "LifeLens Evaluation Dataset Row",
+  "description": "Unified JSONL row schema for trend and risk evaluation datasets.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["dataset_type", "id", "signal_type", "recent_avg", "past_avg", "actual_delta", "actual_rate", "label"],
+      "properties": {
+        "dataset_type": { "const": "trend" },
+        "id": { "type": "string", "minLength": 1 },
+        "user_id": { "type": ["string", "null"] },
+        "window_start": { "type": ["string", "null"], "description": "ISO-8601 timestamp or date string." },
+        "window_end": { "type": ["string", "null"], "description": "ISO-8601 timestamp or date string." },
+        "signal_type": {
+          "type": "string",
+          "enum": ["sleep", "mood", "activity", "overall"]
+        },
+        "recent_avg": { "type": "number", "minimum": 0 },
+        "past_avg": { "type": "number", "minimum": 0 },
+        "actual_delta": { "type": "number" },
+        "actual_rate": { "type": "number" },
+        "label": {
+          "type": "string",
+          "enum": ["declining", "stable", "improving"]
+        },
+        "threshold": { "type": ["number", "null"], "minimum": 0 },
+        "comment": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["dataset_type", "id", "risk_bucket", "label"],
+      "properties": {
+        "dataset_type": { "const": "risk" },
+        "id": { "type": "string", "minLength": 1 },
+        "user_id": { "type": ["string", "null"] },
+        "window_start": { "type": ["string", "null"], "description": "ISO-8601 timestamp or date string." },
+        "window_end": { "type": ["string", "null"], "description": "ISO-8601 timestamp or date string." },
+        "sleep_avg_3": { "type": ["number", "null"], "minimum": 0 },
+        "mood_avg_3": { "type": ["number", "null"], "minimum": 0 },
+        "exercise_avg_3": { "type": ["number", "null"], "minimum": 0 },
+        "sleep_avg_7": { "type": ["number", "null"], "minimum": 0 },
+        "mood_avg_7": { "type": ["number", "null"], "minimum": 0 },
+        "exercise_avg_7": { "type": ["number", "null"], "minimum": 0 },
+        "sleep_slope_7": { "type": ["number", "null"] },
+        "mood_slope_7": { "type": ["number", "null"] },
+        "exercise_slope_7": { "type": ["number", "null"] },
+        "symptom_avg_7": { "type": ["number", "null"], "minimum": 0 },
+        "symptom_slope_7": { "type": ["number", "null"] },
+        "sleep_variance_7": { "type": ["number", "null"], "minimum": 0 },
+        "mood_variance_7": { "type": ["number", "null"], "minimum": 0 },
+        "inactive_ratio_7": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "predicted_risk_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "risk_bucket": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "actual_outcome_label": {
+          "type": "string",
+          "enum": ["no_escalation", "minor_escalation", "major_escalation"]
+        },
+        "actual_outcome_severity": { "type": ["number", "null"], "minimum": 0 },
+        "label": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "outcome_comment": { "type": ["string", "null"] },
+        "annotation_confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

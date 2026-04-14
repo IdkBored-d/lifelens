@@ -2,7 +2,7 @@
 Data models for Lifelens API
 """
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -121,6 +121,7 @@ class MiniMeChatRequest(BaseModel):
     latest_mood_label: Optional[str] = Field(None, max_length=80)
     latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
     latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=8)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
@@ -134,6 +135,7 @@ class MiniMeChatRequest(BaseModel):
     intelligence_risk_score: Optional[float] = Field(None, ge=0, le=100)
     intelligence_confidence: Optional[float] = Field(None, ge=0, le=1)
     intelligence_state: Optional[Dict[str, bool]] = Field(None)
+    previous_memory: Optional[Dict[str, Any]] = Field(None)
 
     @validator('user_message')
     def validate_user_message(cls, v):
@@ -143,9 +145,38 @@ class MiniMeChatRequest(BaseModel):
     def validate_recent_mood_item(cls, v):
         return v.strip()
 
+    @validator('summary_context')
+    def validate_summary_context(cls, v):
+        return v.strip() if v is not None else None
+
     @validator('active_symptoms', each_item=True)
     def validate_active_symptom_item(cls, v):
         return v.strip()
+
+
+class MiniMeMemoryState(BaseModel):
+    """Minimal structured memory block used by Mini-Me prompt pipeline."""
+    summary: str = Field('', max_length=320)
+    key_points: List[str] = Field(default_factory=list, max_items=10)
+    mood_state: Literal['positive', 'neutral', 'negative'] = 'neutral'
+    risk: Literal['low', 'medium', 'high'] = 'low'
+    quick_track: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MiniMeMemoryDiff(BaseModel):
+    """Deterministic change log for memory updates."""
+    changed_fields: List[str] = Field(default_factory=list, max_items=12)
+    reason: str = Field('', max_length=500)
+    contradiction_count: int = Field(0, ge=0)
+    contradiction_reasons: List[str] = Field(default_factory=list, max_items=8)
+    stability_score: float = Field(1.0, ge=0.0, le=1.0)
+
+
+class MiniMeMemoryCompileResponse(BaseModel):
+    """Structured memory compilation result with validation and diff info."""
+    memory_state: MiniMeMemoryState
+    memory_diff: MiniMeMemoryDiff
+    validation_passed: bool = True
 
 
 class MiniMeChatResponse(BaseModel):
@@ -153,6 +184,8 @@ class MiniMeChatResponse(BaseModel):
     opening_suggestion: str
     reply: str
     source: str = Field(..., description="gemini or fallback")
+    memory_state: Optional[MiniMeMemoryState] = None
+    memory_diff: Optional[MiniMeMemoryDiff] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -167,6 +200,7 @@ class MiniMeSuggestionsRequest(BaseModel):
     latest_mood_label: Optional[str] = Field(None, max_length=80)
     latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
     latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=10)
     recent_logs: List[str] = Field(default_factory=list, max_items=12)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
@@ -176,6 +210,10 @@ class MiniMeSuggestionsRequest(BaseModel):
     @validator('recent_moods', each_item=True)
     def validate_suggestion_recent_mood_item(cls, v):
         return v.strip()
+
+    @validator('summary_context')
+    def validate_suggestion_summary_context(cls, v):
+        return v.strip() if v is not None else None
 
     @validator('recent_logs', each_item=True)
     def validate_recent_log_item(cls, v):
@@ -208,6 +246,7 @@ class MiniMeExerciseRecommendationRequest(BaseModel):
     latest_mood_label: Optional[str] = Field(None, max_length=80)
     latest_mood_intensity: Optional[int] = Field(None, ge=0, le=5)
     latest_mood_notes: Optional[str] = Field(None, max_length=1000)
+    summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=10)
     recent_logs: List[str] = Field(default_factory=list, max_items=12)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
@@ -218,6 +257,10 @@ class MiniMeExerciseRecommendationRequest(BaseModel):
     @validator('recent_moods', each_item=True)
     def validate_exercise_recent_mood_item(cls, v):
         return v.strip()
+
+    @validator('summary_context')
+    def validate_exercise_summary_context(cls, v):
+        return v.strip() if v is not None else None
 
     @validator('recent_logs', each_item=True)
     def validate_exercise_recent_log_item(cls, v):

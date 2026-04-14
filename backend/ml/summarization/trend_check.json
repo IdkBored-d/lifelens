@@ -1,0 +1,38 @@
+{
+  "total_samples": 100,
+  "accuracy": 0.48,
+  "macro_f1": 0.429,
+  "per_class_metrics": {
+    "declining": {
+      "precision": 1.0,
+      "recall": 0.182,
+      "f1": 0.308,
+      "support": 33
+    },
+    "improving": {
+      "precision": 1.0,
+      "recall": 0.265,
+      "f1": 0.419,
+      "support": 34
+    },
+    "stable": {
+      "precision": 0.388,
+      "recall": 1.0,
+      "f1": 0.559,
+      "support": 33
+    }
+  },
+  "confusion_matrix": {
+    "improving": {
+      "stable": 25,
+      "improving": 9
+    },
+    "stable": {
+      "stable": 33
+    },
+    "declining": {
+      "stable": 27,
+      "declining": 6
+    }
+  }
+}

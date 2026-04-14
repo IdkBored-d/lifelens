@@ -1,0 +1,61 @@
+{
+  "total_samples": 100,
+  "label_accuracy": 1.0,
+  "auc": 1.0,
+  "brier_score": 0.031,
+  "spearman_correlation": 0.894,
+  "calibration": {
+    "expected_calibration_error": 0.106,
+    "bins": [
+      {
+        "bin": 0,
+        "confidence": 0.148,
+        "accuracy": 0.0,
+        "count": 17
+      },
+      {
+        "bin": 1,
+        "confidence": 0.308,
+        "accuracy": 0.167,
+        "count": 24
+      },
+      {
+        "bin": 2,
+        "confidence": 0.489,
+        "accuracy": 0.5,
+        "count": 21
+      },
+      {
+        "bin": 3,
+        "confidence": 0.721,
+        "accuracy": 0.824,
+        "count": 17
+      },
+      {
+        "bin": 4,
+        "confidence": 0.87,
+        "accuracy": 1.0,
+        "count": 21
+      }
+    ]
+  },
+  "per_class_accuracy": {
+    "low": {
+      "accuracy": 1.0,
+      "support": 33
+    },
+    "medium": {
+      "accuracy": 1.0,
+      "support": 35
+    },
+    "high": {
+      "accuracy": 1.0,
+      "support": 32
+    }
+  },
+  "label_counts": {
+    "low": 33,
+    "medium": 35,
+    "high": 32
+  }
+}

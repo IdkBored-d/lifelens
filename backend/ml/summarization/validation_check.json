@@ -1,0 +1,34 @@
+{
+  "total_rows": 200,
+  "type_counts": {
+    "risk": 100,
+    "trend": 100
+  },
+  "trend": {
+    "rows": 100,
+    "label_counts": {
+      "improving": 34,
+      "stable": 33,
+      "declining": 33
+    },
+    "delta_agreement_rate": 0.81,
+    "rate_agreement_rate": 0.56
+  },
+  "risk": {
+    "rows": 100,
+    "label_counts": {
+      "medium": 35,
+      "high": 32,
+      "low": 33
+    },
+    "bucket_counts": {
+      "medium": 35,
+      "high": 32,
+      "low": 33
+    },
+    "score_bucket_agreement_rate": 1.0
+  },
+  "duplicate_rows": 0,
+  "warnings": [],
+  "errors": []
+}

@@ -371,6 +371,7 @@ class MiniMeBackendService {
     required List<String> recentMoods,
     required List<String> activeSymptoms,
     required List<MiniMeChatTurn> history,
+    String? summaryContext,
     MiniMeIntelligenceReply? intelligence,
   }) async {
     final payload = <String, dynamic>{
@@ -382,6 +383,9 @@ class MiniMeBackendService {
       'active_symptoms': activeSymptoms,
       'chat_history': history.map((e) => e.toJson()).toList(),
     };
+    if (summaryContext != null && summaryContext.trim().isNotEmpty) {
+      payload['summary_context'] = summaryContext.trim();
+    }
     if (intelligence != null) {
       payload['intelligence_tier'] = intelligence.interventionTier;
       payload['intelligence_phase'] = intelligence.userPhase;
@@ -433,6 +437,7 @@ class MiniMeBackendService {
     required List<String> recentLogs,
     required List<String> activeSymptoms,
     required List<MiniMeChatTurn> history,
+    String? summaryContext,
   }) async {
     final payload = {
       'latest_mood_label': latestMoodLabel,
@@ -443,6 +448,9 @@ class MiniMeBackendService {
       'active_symptoms': activeSymptoms,
       'chat_history': history.map((e) => e.toJson()).toList(),
     };
+    if (summaryContext != null && summaryContext.trim().isNotEmpty) {
+      payload['summary_context'] = summaryContext.trim();
+    }
 
     Object? lastError;
     for (final baseUrl in _prioritizedBaseUrls()) {
@@ -483,6 +491,7 @@ class MiniMeBackendService {
     required List<String> activeSymptoms,
     required List<MiniMeChatTurn> history,
     required List<MiniMeExerciseCandidate> exercises,
+    String? summaryContext,
   }) async {
     final payload = {
       'latest_mood_label': latestMoodLabel,
@@ -494,6 +503,9 @@ class MiniMeBackendService {
       'chat_history': history.map((e) => e.toJson()).toList(),
       'exercises': exercises.map((e) => e.toJson()).toList(),
     };
+    if (summaryContext != null && summaryContext.trim().isNotEmpty) {
+      payload['summary_context'] = summaryContext.trim();
+    }
 
     Object? lastError;
     for (final baseUrl in _prioritizedBaseUrls()) {

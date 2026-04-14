@@ -7,7 +7,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from artifact_paths import default_artifact_root, training_paths
+try:
+    from .artifact_paths import default_artifact_root, training_paths
+except ImportError:
+    from artifact_paths import default_artifact_root, training_paths
 
 
 def _sha256(file_path: Path) -> str:

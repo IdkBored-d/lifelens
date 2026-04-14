@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'verification_email_service.dart';
 
 class SignupLogin extends StatefulWidget {
@@ -13,6 +14,9 @@ class SignupLogin extends StatefulWidget {
 }
 
 class _SignupLoginState extends State<SignupLogin> {
+  static const _rememberEmailKey = 'signup_login_remembered_email';
+  static const _rememberMeKey = 'signup_login_remember_me';
+
   bool isLogin = true;
   bool rememberMe = false;
   bool _hidePassword = true;
@@ -27,6 +31,12 @@ class _SignupLoginState extends State<SignupLogin> {
   final _confirmPasswordController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _loadRememberedLogin();
+  }
+
+  @override
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
@@ -34,6 +44,21 @@ class _SignupLoginState extends State<SignupLogin> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRememberedLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+
+    final savedRememberMe = prefs.getBool(_rememberMeKey) ?? false;
+    final savedEmail = prefs.getString(_rememberEmailKey) ?? '';
+
+    setState(() {
+      rememberMe = savedRememberMe;
+      if (savedRememberMe && savedEmail.isNotEmpty) {
+        _usernameController.text = savedEmail;
+      }
+    });
   }
 
   Future<void> _submit() async {
@@ -45,6 +70,8 @@ class _SignupLoginState extends State<SignupLogin> {
     try {
       final email = _usernameController.text.trim();
       final password = _passwordController.text;
+
+      final prefs = await SharedPreferences.getInstance();
 
       if (isLogin) {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -71,6 +98,14 @@ class _SignupLoginState extends State<SignupLogin> {
               'onboardingComplete': false,
             });
       }
+
+      if (isLogin && rememberMe) {
+        await prefs.setString(_rememberEmailKey, email);
+        await prefs.setBool(_rememberMeKey, true);
+      } else {
+        await prefs.remove(_rememberEmailKey);
+        await prefs.setBool(_rememberMeKey, false);
+      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -86,10 +121,41 @@ class _SignupLoginState extends State<SignupLogin> {
     }
   }
 
+  Future<void> _forgotPassword() async {
+    final email = _usernameController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Enter your email address first.'),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Password reset email sent to $email.'),
+        ),
+      );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(e.message ?? 'Unable to send password reset email.'),
+        ),
+      );
+    }
+  }
+
   void _toggleMode() {
     setState(() {
       isLogin = !isLogin;
-      rememberMe = false;
       _hidePassword = true;
       _hideConfirm = true;
       _firstNameController.clear();
@@ -181,16 +247,7 @@ class _SignupLoginState extends State<SignupLogin> {
                                   rememberMe: rememberMe,
                                   onRememberChanged: (value) =>
                                       setState(() => rememberMe = value),
-                                  onForgotPassword: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        behavior: SnackBarBehavior.floating,
-                                        content: Text(
-                                          'Forgot password flow is coming soon.',
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  onForgotPassword: _forgotPassword,
                                 ),
                               if (isLogin) const SizedBox(height: 10),
                               FilledButton.icon(
