@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/sleep_store.dart';
 import 'package:lifelens/shared_widgets/section_title.dart';
-import 'package:lifelens/widgets/sleep_insights_widget.dart';
 import 'package:lifelens/widgets/sleep_log_widget.dart';
 import 'package:lifelens/widgets/sleep_tracking_widget.dart';
 
@@ -78,8 +77,6 @@ class _SleepScreenState extends State<SleepScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SleepTrackingWidget(onSleepLogged: _addSleepEntry),
-              const SizedBox(height: 24),
-              SleepInsightsWidget(sleepData: sleepData),
               const SizedBox(height: 24),
               const SectionTitle(title: 'Recent Sleep'),
               const SizedBox(height: 12),

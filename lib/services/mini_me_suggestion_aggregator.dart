@@ -4,17 +4,11 @@ import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 
-/// Generates Mini-Me suggestions from persisted mood logs, quick-track
-/// summaries, and ISAR chat history.
+/// Generates Mini-Me suggestions from persisted mood logs and chat history.
 ///
-/// Hybrid context:
-///   - Quick-track plaintext summaries (mood_summary.txt, symptom_summary.txt)
-///     provide a compact narrative of the last 7–14 days.
-///   - Recent ISAR ChatMessages from the last session provide conversational
-///     continuity without loading the full flat-file.
-///
-/// The primary path sends both to /api/v1/minime/suggestions. A local
-/// fallback remains when the backend is unavailable.
+/// The primary path uses the backend LLM so each suggestion can be written
+/// fresh from the user's actual context. A small local fallback remains so
+/// the UI still has something helpful to show if the backend is unavailable.
 class MiniMeSuggestionAggregator {
   static Future<List<DailySuggestion>> generateDailySuggestions({
     int days = 7,
@@ -26,17 +20,21 @@ class MiniMeSuggestionAggregator {
     );
 
     // ── Quick-track plaintext summaries ──────────────────────────────────────
-    final moodSummary    = await AppServices.quickTrack.buildMoodContext();
+    final moodSummary = await AppServices.quickTrack.buildMoodContext();
     final symptomSummary = await AppServices.quickTrack.buildSymptomContext();
-    final conversationSummary = await AppServices.quickTrack.buildConversationContext();
+    final conversationSummary = await AppServices.quickTrack
+        .buildConversationContext();
     final summaryContext = <String>[
       if (moodSummary.trim().isNotEmpty) 'Mood summary:\n$moodSummary',
       if (symptomSummary.trim().isNotEmpty) 'Symptom summary:\n$symptomSummary',
-      if (conversationSummary.trim().isNotEmpty) 'Conversation summary:\n$conversationSummary',
+      if (conversationSummary.trim().isNotEmpty)
+        'Conversation summary:\n$conversationSummary',
     ].join('\n\n');
 
     // ── Recent ISAR chat history (last session, up to 20 messages) ───────────
-    final recentSessions = await IsarService.instance.getRecentChatSessions(limit: 1);
+    final recentSessions = await IsarService.instance.getRecentChatSessions(
+      limit: 1,
+    );
     final List<MiniMeChatTurn> history;
     if (recentSessions.isNotEmpty) {
       final msgs = await IsarService.instance
@@ -48,12 +46,13 @@ class MiniMeSuggestionAggregator {
     } else {
       history = const [];
     }
-
+    final chatMessages = await _loadRecentChatMessages();
+    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
     final moodEntries = recentEntries
         .where((entry) => entry.resolvedBy != 'minime')
         .toList(growable: false);
 
-    if (moodEntries.isEmpty && history.isEmpty && activeSymptoms.isEmpty) {
+    if (moodEntries.isEmpty && chatMessages.isEmpty && activeSymptoms.isEmpty) {
       return const [
         DailySuggestion(
           title: '',
@@ -75,6 +74,20 @@ class MiniMeSuggestionAggregator {
         .take(8)
         .map((entry) => '${entry.resolvedMood} (${_extractIntensity(entry)}/5)')
         .toList(growable: false);
+    final recentLogs = moodEntries
+        .take(10)
+        .map((entry) => _trim(entry.rawLog, 220))
+        .where((text) => text.isNotEmpty)
+        .toList(growable: false);
+    final symptomLabels = _flattenSymptoms(activeSymptoms);
+    final recentChatMessages = chatMessages.length <= 20
+        ? chatMessages
+        : chatMessages.sublist(chatMessages.length - 20);
+    final backendHistory = recentChatMessages
+        .map(
+          (message) => MiniMeChatTurn(role: message.role, text: message.text),
+        )
+        .toList(growable: false);
 
     try {
       final reply = await MiniMeBackendService.instance.suggestions(
@@ -82,9 +95,9 @@ class MiniMeSuggestionAggregator {
         latestMoodIntensity: latestMoodIntensity,
         latestMoodNotes: latestMoodNotes,
         recentMoods: recentMoods,
-        recentLogs: const [],
-        activeSymptoms: const [],
-        history: history,
+        recentLogs: recentLogs,
+        activeSymptoms: symptomLabels,
+        history: backendHistory.isNotEmpty ? backendHistory : history,
         summaryContext: summaryContext,
       );
 
@@ -110,7 +123,7 @@ class MiniMeSuggestionAggregator {
     return _buildFallbackSuggestions(
       moodEntries: moodEntries,
       summaryContext: summaryContext,
-      chatMessages: history
+      chatMessages: chatMessages
           .map((item) => item.text)
           .toList(growable: false),
     );
@@ -211,4 +224,45 @@ class MiniMeSuggestionAggregator {
     }
     return '${text.substring(0, maxLength - 3).trimRight()}...';
   }
+
+  static List<String> _flattenSymptoms(List<dynamic> activeSymptoms) {
+    final values = <String>{};
+    for (final entry in activeSymptoms) {
+      final dynamic symptomList = (entry as dynamic).symptomList;
+      if (symptomList is Iterable) {
+        for (final symptom in symptomList) {
+          final text = symptom.toString().trim();
+          if (text.isNotEmpty) {
+            values.add(text);
+          }
+        }
+      }
+    }
+    return values.toList(growable: false);
+  }
+
+  static Future<List<_ChatMessageView>> _loadRecentChatMessages() async {
+    final sessions = await IsarService.instance.getRecentChatSessions(limit: 8);
+    if (sessions.isEmpty) return const [];
+
+    final collected = <_ChatMessageView>[];
+    for (final session in sessions.reversed) {
+      final messages = await IsarService.instance.getMessagesForSession(
+        session.sessionId,
+      );
+      collected.addAll(
+        messages.map(
+          (message) => _ChatMessageView(role: message.role, text: message.text),
+        ),
+      );
+    }
+    return collected;
+  }
+}
+
+class _ChatMessageView {
+  const _ChatMessageView({required this.role, required this.text});
+
+  final String role;
+  final String text;
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lifelens/models/mini_me_companion.dart';
 import 'package:provider/provider.dart';
 
 import 'assets/minime/minime_avatar.dart';
@@ -213,14 +214,17 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                   child: Column(
                     children: [
                       SizedBox(
-                        height: 220,
+                        height: 260,
                         child: Center(
                           child: MiniMeAvatar(
                             bodyModel: store.bodyModel,
                             hairModel: store.hairModel,
                             shirtModel: store.shirtModel,
                             bodyWidthScale: store.bodyWidthScale,
-                            size: 210,
+                            companionId: store.companionId,
+                            degradationLevel: store.degradationLevel,
+                            isHatched: store.isMiniMeHatched,
+                            size: 248,
                           ),
                         ),
                       ),
@@ -298,6 +302,105 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                 ),
                 const SizedBox(height: 20),
                 Text(
+                  'Companion',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: miniMeCompanionPresets.map((preset) {
+                    final selected = preset.id == store.companionId;
+                    return GestureDetector(
+                      onTap: () => store.setCompanionId(preset.id),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 132,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? cs.primaryContainer
+                              : cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: selected
+                                ? preset.accentColor
+                                : cs.outlineVariant.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              preset.name,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              preset.subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Creation State',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              store.isMiniMeHatched
+                                  ? '${store.selectedCompanion.name} has been created and appears throughout the UI.'
+                                  : 'Keep the Mini-Me in an egg/creation state until onboarding is finished.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton(
+                        onPressed: store.isMiniMeHatched
+                            ? store.resetHatchState
+                            : store.hatchMiniMe,
+                        child: Text(
+                          store.isMiniMeHatched ? 'Reset Hatch' : 'Hatch',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
                   'Style',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
@@ -328,6 +431,11 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                   assets: shirtAssets,
                   selected: store.shirtModel,
                   onSelected: store.setShirtModel,
+                ),
+                const SizedBox(height: 20),
+                _DegradationSlider(
+                  value: store.degradationLevel,
+                  onChanged: store.setDegradationLevel,
                 ),
               ],
             );
@@ -485,6 +593,54 @@ class _BodyWidthSlider extends StatelessWidget {
             'Left = slimmer, right = rounder',
             style: theme.textTheme.bodySmall?.copyWith(
               color: cs.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DegradationSlider extends StatelessWidget {
+  const _DegradationSlider({required this.value, required this.onChanged});
+
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final percent = (value * 100).round();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Condition / Degradation ($percent%)',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Slider(
+            value: value,
+            min: 0,
+            max: 1,
+            divisions: 10,
+            label: '$percent%',
+            onChanged: onChanged,
+          ),
+          Text(
+            'UI-only for now: this controls how worn or polished the Mini Me looks so backend health signals can connect later.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              height: 1.3,
             ),
           ),
         ],

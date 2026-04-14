@@ -13,10 +13,12 @@ import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/chat_session_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
 import 'package:lifelens/services/mini_me_suggestion_aggregator.dart';
+import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/chat_message.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
+import 'sleep_store.dart';
 
 class MiniMeScreen extends StatefulWidget {
   const MiniMeScreen({super.key, required this.userName});
@@ -39,6 +41,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   final List<_MiniMeChatMessage> _messages = [];
   MiniMeIntelligenceReply? _intelligence;
   final ExerciseStore _exerciseStore = ExerciseStore();
+  int _activeSymptomCount = 0;
 
   // Chat session persistence (ISAR-backed, replaces flat-file MiniMeChatStorageService)
   String? _sessionId;
@@ -48,7 +51,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   @override
   void initState() {
     super.initState();
-    _chatSessionService = ChatSessionService(AppServices.quickTrack, AppServices.gemma);
+    _chatSessionService = ChatSessionService(
+      AppServices.quickTrack,
+      AppServices.gemma,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Intelligence loads first — drives opening message + avatar mood.
       // 3-second timeout so a slow/offline backend doesn't block the screen.
@@ -57,11 +63,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         onTimeout: () {},
       );
       final moodStore = context.read<MoodLogStore>();
-      final moodCtx   = _buildMoodContext(moodStore);
+      final moodCtx = _buildMoodContext(moodStore);
       _sessionId = await _chatSessionService.startSession(
-        moodLabel:     moodCtx.label,
+        moodLabel: moodCtx.label,
         moodIntensity: moodCtx.intensity,
-        moodNotes:     moodCtx.notes.isEmpty ? null : moodCtx.notes,
+        moodNotes: moodCtx.notes.isEmpty ? null : moodCtx.notes,
       );
       _bootstrapMiniMe();
     });
@@ -263,14 +269,18 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     try {
       final moodStore = context.read<MoodLogStore>();
+      final sleepStore = context.read<SleepStore>();
       final recentMoods = moodStore.items.take(7).toList().reversed.toList();
 
       final mood = recentMoods
           .map((item) => item.intensity.clamp(1, 5))
           .toList(growable: false);
 
-      final sleep = recentMoods
-          .map((item) => _estimatedSleepHoursFromMood(item.moodLabel))
+      final recentSleep = sleepStore.items
+          .take(7)
+          .toList()
+          .reversed
+          .map((item) => _sleepHoursFromEntry(item))
           .toList(growable: false);
 
       await _exerciseStore.ensureReady();
@@ -278,20 +288,35 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           .getRecentExerciseActivity(days: 7)
           .reversed
           .toList(growable: false);
+      final activeSymptoms = await IsarService.instance
+          .getActiveSymptomEntries();
+      final symptomCount = activeSymptoms
+          .take(7)
+          .map((entry) => entry.symptomList.length.clamp(0, 8))
+          .toList(growable: false);
 
       final payloadMood = mood.isEmpty ? const [3, 3, 3] : mood;
-      final payloadSleep = sleep.isEmpty ? const [7, 7, 7] : sleep;
+      final payloadSleep = recentSleep.isEmpty
+          ? recentMoods
+                .map((item) => _estimatedSleepHoursFromMood(item.moodLabel))
+                .toList(growable: false)
+          : recentSleep;
       final payloadExercise = exercise.isEmpty ? const [0, 0, 0] : exercise;
+      final payloadSymptoms = symptomCount.isEmpty
+          ? const [0, 0, 0]
+          : symptomCount;
 
       final response = await MiniMeBackendService.instance.analyzeIntelligence(
         sleep: payloadSleep,
         mood: payloadMood,
         exercise: payloadExercise,
+        symptomCount: payloadSymptoms,
       );
 
       if (!mounted) return;
       setState(() {
         _intelligence = response;
+        _activeSymptomCount = activeSymptoms.length;
       });
     } catch (_) {
       // Keep UI functional even if backend is unavailable.
@@ -313,6 +338,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       return 6;
     }
     return 7;
+  }
+
+  int _sleepHoursFromEntry(Sleep sleep) {
+    final hours = sleep.duration.inMinutes / 60;
+    return hours.round().clamp(0, 14);
   }
 
   String? _avatarMoodFromIntelligence(String? baseMoodLabel) {
@@ -350,7 +380,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   Future<void> _bootstrapMiniMe() async {
     // Load recent messages from ISAR (last session) to restore history.
-    final recentSessions = await IsarService.instance.getRecentChatSessions(limit: 1);
+    final recentSessions = await IsarService.instance.getRecentChatSessions(
+      limit: 1,
+    );
     if (!mounted) return;
 
     if (recentSessions.isNotEmpty) {
@@ -384,7 +416,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final moodStore = context.read<MoodLogStore>();
     final moodContext = _buildMoodContext(moodStore);
     final moodLabel = moodContext.label;
-    final summaryContext = await _buildSummaryContext();
 
     setState(() {
       _isCoachExpanded = true;
@@ -433,9 +464,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _scrollToBottom();
 
     try {
-      final suggestions = await MiniMeSuggestionAggregator.generateDailySuggestions(
-        days: 7,
-      );
+      final suggestions =
+          await MiniMeSuggestionAggregator.generateDailySuggestions(days: 7);
 
       final nonEmpty = suggestions
           .where(
@@ -555,7 +585,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final chunks = _splitAssistantReply(reply);
     final safeChunks = chunks.isEmpty ? <String>[reply.trim()] : chunks;
 
-    if (safeChunks.isEmpty || (safeChunks.length == 1 && safeChunks.first.isEmpty)) {
+    if (safeChunks.isEmpty ||
+        (safeChunks.length == 1 && safeChunks.first.isEmpty)) {
       if (mounted) {
         setState(() => _isReplying = false);
       }
@@ -611,7 +642,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }) async {
     if (await _isOnline()) {
       try {
-        final symptomContext = await _buildSymptomContext();
+        final summaryContext = await _buildSummaryContext();
         final history = _messages
             .take(20)
             .map(
@@ -766,9 +797,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (_sessionId == null || _messages.isEmpty) return;
     final last = _messages.last;
     await _chatSessionService.addMessage(
-      sessionId:      _sessionId!,
-      role:           last.role == _ChatRole.user ? 'user' : 'assistant',
-      text:           last.text,
+      sessionId: _sessionId!,
+      role: last.role == _ChatRole.user ? 'user' : 'assistant',
+      text: last.text,
       sequenceNumber: _messageSequence++,
     );
   }
@@ -812,6 +843,273 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       }
     }
     return 'Preparing your daily suggestion...';
+  }
+
+  // ignore: unused_element
+  MiniMeVisualState _buildMiniMeVisualState({
+    required MoodLogStore moodStore,
+    required SleepStore sleepStore,
+    required String? effectiveMoodLabel,
+  }) {
+    final now = DateTime.now();
+    final recentMoodItems = moodStore.items.take(6).toList(growable: false);
+    final recentSleepItems = sleepStore.items.take(6).toList(growable: false);
+
+    final avgMoodRecent = _averageMoodIntensity(
+      recentMoodItems.take(3).toList(),
+    );
+    final avgMoodPrevious = _averageMoodIntensity(
+      recentMoodItems.skip(3).take(3).toList(),
+    );
+    final avgSleepRecent = _averageSleepHours(
+      recentSleepItems.take(3).toList(),
+    );
+    final avgSleepPrevious = _averageSleepHours(
+      recentSleepItems.skip(3).take(3).toList(),
+    );
+    final hasRecentMoodData = recentMoodItems.isNotEmpty;
+    final hasRecentSleepData = recentSleepItems.isNotEmpty;
+    final sleepDebt = hasRecentSleepData
+        ? ((7.5 - avgSleepRecent) / 3.5).clamp(0.0, 1.0)
+        : 0.0;
+    final symptomLevel = (_activeSymptomCount / 5).clamp(0.0, 1.0);
+    final consistency = _trackingConsistency(
+      now: now,
+      moodItems: moodStore.items,
+      sleepItems: sleepStore.items,
+    );
+    final streakStrength = _trackingStreakStrength(
+      now: now,
+      moodItems: moodStore.items,
+      sleepItems: sleepStore.items,
+    );
+
+    final moodLabel = (effectiveMoodLabel ?? '').trim().toLowerCase();
+    final intensity = hasRecentMoodData
+        ? recentMoodItems.first.intensity / 5
+        : 0.0;
+    final moodDrop = avgMoodPrevious > 0
+        ? ((avgMoodPrevious - avgMoodRecent) / 2.2).clamp(0.0, 1.0)
+        : 0.0;
+    final sleepDrop = hasRecentSleepData && avgSleepPrevious > 0
+        ? ((avgSleepPrevious - avgSleepRecent) / 2.2).clamp(0.0, 1.0)
+        : 0.0;
+    var distressLevel = 0.0;
+    if (_containsAny(moodLabel, const ['sad', 'low', 'down', 'distressed'])) {
+      distressLevel += 0.34;
+    }
+    if (_containsAny(moodLabel, const ['anxious', 'stressed', 'overwhelmed'])) {
+      distressLevel += 0.42;
+    }
+    if (_containsAny(moodLabel, const [
+      'tired',
+      'sleepy',
+      'exhausted',
+      'fatigued',
+    ])) {
+      distressLevel += 0.3;
+    }
+    distressLevel += intensity * 0.16;
+    distressLevel += moodDrop * 0.24;
+    if (_intelligence?.lowSleep == true) distressLevel += 0.14;
+    if (_intelligence?.lowMood == true) distressLevel += 0.16;
+    distressLevel = distressLevel.clamp(0.0, 1.0);
+
+    var recoveryLevel = 0.0;
+    if (avgMoodRecent > 0 &&
+        avgMoodPrevious > 0 &&
+        avgMoodRecent > avgMoodPrevious) {
+      recoveryLevel += ((avgMoodRecent - avgMoodPrevious) / 2.0).clamp(
+        0.0,
+        0.3,
+      );
+    }
+    if (avgSleepRecent > 0 &&
+        avgSleepRecent >= avgSleepPrevious &&
+        avgSleepRecent >= 7) {
+      recoveryLevel += 0.24;
+    }
+    recoveryLevel += streakStrength * 0.26;
+    recoveryLevel += consistency * 0.16;
+    if (_containsAny(moodLabel, const ['calm', 'happy', 'joy', 'peaceful'])) {
+      recoveryLevel += 0.16;
+    }
+    recoveryLevel = recoveryLevel.clamp(0.0, 1.0);
+
+    final wearLevel =
+        (sleepDebt * 0.22 +
+                sleepDrop * 0.22 +
+                moodDrop * 0.2 +
+                distressLevel * 0.14 +
+                symptomLevel * 0.12 -
+                recoveryLevel * 0.18)
+            .clamp(0.0, 1.0);
+    final energyLevel =
+        (0.62 +
+                consistency * 0.16 +
+                streakStrength * 0.08 +
+                recoveryLevel * 0.18 -
+                sleepDebt * 0.48 -
+                distressLevel * 0.26 -
+                symptomLevel * 0.16)
+            .clamp(0.0, 1.0);
+
+    final wateryEyes =
+        (_containsAny(moodLabel, const ['sad', 'distressed', 'overwhelmed']) &&
+            distressLevel > 0.42) ||
+        symptomLevel > 0.7;
+    final messyHair =
+        (sleepDebt * 0.56 + distressLevel * 0.26 + symptomLevel * 0.14).clamp(
+          0.0,
+          1.0,
+        );
+    final postureSlump =
+        (sleepDebt * 0.46 + distressLevel * 0.24 + (1 - energyLevel) * 0.22)
+            .clamp(0.0, 1.0);
+    final positiveMoodTrend = avgMoodRecent > 0
+        ? ((avgMoodRecent - 3.0) / 2.0).clamp(0.0, 1.0)
+        : 0.0;
+    final strengtheningTrend =
+        (recoveryLevel * 0.38 +
+                streakStrength * 0.24 +
+                consistency * 0.16 +
+                energyLevel * 0.12 +
+                positiveMoodTrend * 0.18 -
+                distressLevel * 0.12 -
+                sleepDebt * 0.08)
+            .clamp(0.0, 1.0);
+
+    MiniMeAmbientEffect ambientEffect = MiniMeAmbientEffect.none;
+    if (recoveryLevel > 0.68 || streakStrength > 0.72) {
+      ambientEffect = MiniMeAmbientEffect.sparkles;
+    } else if (symptomLevel > 0.6) {
+      ambientEffect = MiniMeAmbientEffect.rainCloud;
+    } else if (_containsAny(moodLabel, const [
+      'anxious',
+      'stressed',
+      'overwhelmed',
+    ])) {
+      ambientEffect = MiniMeAmbientEffect.sweat;
+    } else if (sleepDebt > 0.52 || distressLevel > 0.56) {
+      ambientEffect = MiniMeAmbientEffect.haze;
+    }
+
+    MiniMeAccessoryMood accessoryMood = MiniMeAccessoryMood.none;
+    if (sleepDebt > 0.56) {
+      accessoryMood = MiniMeAccessoryMood.coffee;
+    } else if (symptomLevel > 0.56) {
+      accessoryMood = MiniMeAccessoryMood.bandage;
+    } else if (distressLevel > 0.46 && energyLevel < 0.5) {
+      accessoryMood = MiniMeAccessoryMood.blanket;
+    } else if (streakStrength > 0.84 || recoveryLevel > 0.76) {
+      accessoryMood = MiniMeAccessoryMood.star;
+    }
+
+    MiniMeOutfitMode outfitMode = MiniMeOutfitMode.standard;
+    if (wearLevel > 0.58) {
+      outfitMode = MiniMeOutfitMode.worn;
+    } else if (distressLevel > 0.45 || sleepDebt > 0.42) {
+      outfitMode = MiniMeOutfitMode.comfort;
+    } else if (energyLevel > 0.72 && consistency > 0.5) {
+      outfitMode = MiniMeOutfitMode.active;
+    } else if (recoveryLevel > 0.62 || streakStrength > 0.72) {
+      outfitMode = MiniMeOutfitMode.polished;
+    }
+
+    return MiniMeVisualState(
+      wearLevel: wearLevel,
+      energyLevel: energyLevel,
+      recoveryLevel: recoveryLevel,
+      muscleToneLevel: strengtheningTrend,
+      symptomLevel: symptomLevel,
+      sleepDebtLevel: sleepDebt,
+      distressLevel: distressLevel,
+      streakLevel: streakStrength,
+      messyHairLevel: messyHair,
+      postureSlump: postureSlump,
+      wateryEyes: wateryEyes,
+      ambientEffect: ambientEffect,
+      accessoryMood: accessoryMood,
+      outfitMode: outfitMode,
+      statusText: '',
+    );
+  }
+
+  double _averageMoodIntensity(List<MoodCheckIn> moods) {
+    if (moods.isEmpty) return 0;
+    final total = moods.fold<double>(0, (sum, mood) => sum + mood.intensity);
+    return total / moods.length;
+  }
+
+  double _averageSleepHours(List<Sleep> sleeps) {
+    if (sleeps.isEmpty) return 0;
+    final total = sleeps.fold<double>(
+      0,
+      (sum, sleep) => sum + sleep.duration.inMinutes / 60,
+    );
+    return total / sleeps.length;
+  }
+
+  double _trackingConsistency({
+    required DateTime now,
+    required List<MoodCheckIn> moodItems,
+    required List<Sleep> sleepItems,
+  }) {
+    final cutoff = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(const Duration(days: 6));
+    final trackedDays = <String>{};
+    for (final mood in moodItems) {
+      if (mood.createdAt.isBefore(cutoff)) continue;
+      trackedDays.add(_dayKey(mood.createdAt));
+    }
+    for (final sleep in sleepItems) {
+      if (sleep.date.isBefore(cutoff)) continue;
+      trackedDays.add(_dayKey(sleep.date));
+    }
+    return (trackedDays.length / 7).clamp(0.0, 1.0);
+  }
+
+  double _trackingStreakStrength({
+    required DateTime now,
+    required List<MoodCheckIn> moodItems,
+    required List<Sleep> sleepItems,
+  }) {
+    final trackedDays = <String>{};
+    for (final mood in moodItems) {
+      trackedDays.add(_dayKey(mood.createdAt));
+    }
+    for (final sleep in sleepItems) {
+      trackedDays.add(_dayKey(sleep.date));
+    }
+
+    var streak = 0;
+    for (var i = 0; i < 10; i++) {
+      final day = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: i));
+      if (trackedDays.contains(_dayKey(day))) {
+        streak += 1;
+      } else {
+        break;
+      }
+    }
+    return (streak / 7).clamp(0.0, 1.0);
+  }
+
+  String _dayKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
+
+  bool _containsAny(String source, List<String> values) {
+    for (final value in values) {
+      if (source.contains(value)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _scrollToBottom() {
@@ -926,11 +1224,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       _messageSequence = 0;
                     });
                     final moodStore2 = context.read<MoodLogStore>();
-                    final moodCtx2   = _buildMoodContext(moodStore2);
+                    final moodCtx2 = _buildMoodContext(moodStore2);
                     _sessionId = await _chatSessionService.startSession(
-                      moodLabel:     moodCtx2.label,
+                      moodLabel: moodCtx2.label,
                       moodIntensity: moodCtx2.intensity,
-                      moodNotes:     moodCtx2.notes.isEmpty ? null : moodCtx2.notes,
+                      moodNotes: moodCtx2.notes.isEmpty ? null : moodCtx2.notes,
                     );
                     if (!context.mounted) return;
                     await _loadOpeningSuggestion();
@@ -960,8 +1258,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           ),
         ],
       ),
-      body: Consumer2<MoodLogStore, AvatarStore>(
-        builder: (context, moodStore, avatarStore, _) {
+      body: Consumer3<MoodLogStore, AvatarStore, SleepStore>(
+        builder: (context, moodStore, avatarStore, sleepStore, _) {
           final miniMeName = avatarStore.miniMeName;
           final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
           final intensity = latest?.intensity ?? 0;
@@ -972,6 +1270,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           );
           final avatarAnimationState =
               _intelligence?.miniMeLinkage['animation_state'] as String?;
+          final visualState = _buildMiniMeVisualState(
+            moodStore: moodStore,
+            sleepStore: sleepStore,
+            effectiveMoodLabel: avatarMoodLabel,
+          );
 
           return Container(
             width: double.infinity,
@@ -992,7 +1295,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       glow: glow,
                       moodLabel: avatarMoodLabel,
                       moodEmoji: latest?.emoji,
+                      avatarAnimationState: avatarAnimationState,
                       suggestionText: latestSuggestion,
+                      visualState: visualState,
                       intelligenceState: _intelligence?.state,
                       intelligenceInsights:
                           _intelligence?.insights ?? const <String>[],
@@ -1032,7 +1337,9 @@ class _AvatarPanel extends StatelessWidget {
     required this.glow,
     required this.moodLabel,
     required this.moodEmoji,
+    required this.avatarAnimationState,
     required this.suggestionText,
+    required this.visualState,
     required this.intelligenceState,
     required this.intelligenceInsights,
     required this.intelligenceAlert,
@@ -1057,7 +1364,9 @@ class _AvatarPanel extends StatelessWidget {
   final Color glow;
   final String? moodLabel;
   final String? moodEmoji;
+  final String? avatarAnimationState;
   final String suggestionText;
+  final MiniMeVisualState visualState;
   final Map<String, dynamic>? intelligenceState;
   final List<String> intelligenceInsights;
   final String? intelligenceAlert;
@@ -1090,9 +1399,9 @@ class _AvatarPanel extends StatelessWidget {
           }
         }
         final showPromptBubble =
-          messages.isEmpty || (latestAssistantText?.isNotEmpty ?? false);
+            messages.isEmpty || (latestAssistantText?.isNotEmpty ?? false);
         final promptBubbleText = messages.isEmpty
-          ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
+            ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
             : (latestAssistantText ??
                   'What do you want to work on today, ${_displayFirstName(userName)}?');
         final suggestionBubbleReserve = showPromptBubble ? 72.0 : 16.0;
@@ -1102,8 +1411,8 @@ class _AvatarPanel extends StatelessWidget {
             collapsedBottomInset -
             suggestionBubbleReserve;
         final avatarSize = math.min(
-          constraints.biggest.shortestSide * 1.04,
-          availableAvatarHeight.clamp(320.0, 820.0),
+          constraints.biggest.shortestSide * 1.14,
+          availableAvatarHeight.clamp(360.0, 880.0),
         );
 
         return Stack(
@@ -1115,9 +1424,7 @@ class _AvatarPanel extends StatelessWidget {
                     top: 10,
                     left: 18,
                     right: 18,
-                    child: _AvatarSuggestionBubble(
-                      text: promptBubbleText,
-                    ),
+                    child: _AvatarSuggestionBubble(text: promptBubbleText),
                   ),
                 Positioned.fill(
                   child: Padding(
@@ -1128,17 +1435,22 @@ class _AvatarPanel extends StatelessWidget {
                       chatDockHeight + collapsedBottomInset - 18,
                     ),
                     child: Align(
-                      alignment: const Alignment(0, -0.06),
+                      alignment: const Alignment(0, -0.03),
                       child: MiniMeAvatar(
                         bodyModel: avatarStore.bodyModel,
                         hairModel: avatarStore.hairModel,
                         shirtModel: avatarStore.shirtModel,
-                        bodyWidthScale: avatarStore.bodyWidthScale,
+                        bodyWidthScale: avatarStore.effectiveBodyWidthScale,
+                        companionId: avatarStore.companionId,
                         moodLabel: moodLabel,
                         moodEmoji: moodEmoji,
                         animationState: avatarAnimationState,
                         glow: glow,
                         size: avatarSize,
+                        degradationLevel: visualState.wearLevel,
+                        isHatched: avatarStore.isMiniMeHatched,
+                        visualState: visualState,
+                        onHatchComplete: avatarStore.hatchMiniMe,
                       ),
                     ),
                   ),
@@ -1495,7 +1807,10 @@ class _InlineCoachPanel extends StatelessWidget {
                         const SizedBox(height: 8),
                         FilledButton.tonalIcon(
                           onPressed: onOpenFullChat,
-                          icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                          icon: const Icon(
+                            Icons.open_in_full_rounded,
+                            size: 18,
+                          ),
                           label: const Text('Full chat'),
                           style: FilledButton.styleFrom(
                             visualDensity: VisualDensity.compact,
@@ -1627,7 +1942,8 @@ class _InlineCoachPanel extends StatelessWidget {
                         reverse: true,
                         controller: scrollController,
                         padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-                        itemCount: previewMessages.length + (isReplying ? 1 : 0),
+                        itemCount:
+                            previewMessages.length + (isReplying ? 1 : 0),
                         itemBuilder: (context, index) {
                           if (isReplying && index == 0) {
                             return _TypingBubble(miniMeName: miniMeName);
@@ -1635,7 +1951,9 @@ class _InlineCoachPanel extends StatelessWidget {
 
                           final messageIndex = isReplying ? index - 1 : index;
                           final message =
-                              previewMessages[previewMessages.length - 1 - messageIndex];
+                              previewMessages[previewMessages.length -
+                                  1 -
+                                  messageIndex];
                           return _ChatBubbleCard(
                             miniMeName: miniMeName,
                             message: message,
@@ -2485,7 +2803,6 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
             }
 
             final state = snapshot.data!;
-            final featuredItem = state.items.isEmpty ? null : state.items.first;
 
             return Column(
               children: [
@@ -2500,190 +2817,63 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                 ),
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(18),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(24),
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              cs.primaryContainer,
-                              cs.secondaryContainer,
-                              cs.surfaceContainerHighest,
-                            ],
+                          borderRadius: BorderRadius.circular(20),
+                          color: cs.surface,
+                          border: Border.all(
+                            color: cs.outlineVariant.withValues(alpha: 0.35),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: cs.shadow.withValues(alpha: 0.16),
-                              blurRadius: 24,
-                              offset: const Offset(0, 16),
-                            ),
-                          ],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 7,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: cs.surface.withValues(alpha: 0.36),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.videogame_asset_rounded,
-                                        size: 16,
-                                        color: cs.onSurface,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Loadout Shop',
-                                        style: theme.textTheme.labelLarge
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                      ),
-                                    ],
+                                Text(
+                                  'Mini-Me Store',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
                                 const Spacer(),
                                 _ShopHudPill(
                                   icon: Icons.monetization_on_rounded,
                                   label: '${state.coins}',
-                                  background: cs.primary,
-                                  foreground: cs.onPrimary,
+                                  background: cs.primaryContainer,
+                                  foreground: cs.onPrimaryContainer,
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Upgrade your Mini-Me like a main character.',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w900,
-                                height: 1.05,
-                              ),
-                            ),
                             const SizedBox(height: 8),
                             Text(
-                              'Collect coins from daily check-ins, unlock cosmetics, and equip a stronger look for your next streak.',
+                              'Unlock and equip simple customizations for your Mini-Me.',
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: cs.onSurfaceVariant,
                               ),
                             ),
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 14),
                             Row(
                               children: [
                                 Expanded(
-                                  child: _ShopStatCard(
-                                    title: 'Streak Power',
+                                  child: _SimpleShopInfo(
+                                    label: 'Streak',
                                     value:
-                                        '${widget.streakSnapshot.currentStreak}',
-                                    suffix: 'days',
-                                    icon: Icons.local_fire_department_rounded,
-                                    accent: cs.tertiary,
+                                        '${widget.streakSnapshot.currentStreak} days',
                                   ),
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
-                                  child: _ShopStatCard(
-                                    title: 'Unlocked',
-                                    value: '${state.unlockedIds.length}',
-                                    suffix: 'items',
-                                    icon: Icons.auto_awesome_rounded,
-                                    accent: cs.secondary,
+                                  child: _SimpleShopInfo(
+                                    label: 'Unlocked',
+                                    value: '${state.unlockedIds.length} items',
                                   ),
                                 ),
                               ],
                             ),
-                            if (featuredItem != null) ...[
-                              const SizedBox(height: 18),
-                              Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: cs.surface.withValues(alpha: 0.44),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: cs.outlineVariant.withValues(
-                                      alpha: 0.38,
-                                    ),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 52,
-                                      height: 52,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: RadialGradient(
-                                          colors: [
-                                            _itemAccent(
-                                              featuredItem,
-                                              cs,
-                                            ).withValues(alpha: 0.34),
-                                            cs.surface.withValues(alpha: 0.2),
-                                          ],
-                                        ),
-                                        border: Border.all(
-                                          color: _itemAccent(
-                                            featuredItem,
-                                            cs,
-                                          ).withValues(alpha: 0.5),
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        _itemIcon(featuredItem),
-                                        color: _itemAccent(featuredItem, cs),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            'Featured Drop',
-                                            style: theme.textTheme.labelLarge
-                                                ?.copyWith(
-                                                  color: cs.primary,
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            featuredItem.name,
-                                            style: theme.textTheme.titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            _rarityLabel(featuredItem),
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: cs.onSurfaceVariant,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -2747,11 +2937,11 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Text(
-                            'Inventory',
+                            'Items',
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w900,
                             ),
@@ -2773,33 +2963,20 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                         final accent = _itemAccent(item, cs);
 
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.only(bottom: 10),
                           child: Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(22),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  accent.withValues(alpha: 0.18),
-                                  cs.surfaceContainerHighest,
-                                  cs.surfaceContainer,
-                                ],
-                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              color: equipped
+                                  ? accent.withValues(alpha: 0.12)
+                                  : cs.surface,
                               border: Border.all(
                                 color: equipped
                                     ? accent
                                     : cs.outlineVariant.withValues(alpha: 0.34),
                                 width: equipped ? 1.6 : 1.0,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: accent.withValues(alpha: 0.12),
-                                  blurRadius: 22,
-                                  offset: const Offset(0, 14),
-                                ),
-                              ],
                             ),
                             child: Column(
                               children: [
@@ -2807,16 +2984,11 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Container(
-                                      width: 58,
-                                      height: 58,
+                                      width: 48,
+                                      height: 48,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        gradient: RadialGradient(
-                                          colors: [
-                                            accent.withValues(alpha: 0.34),
-                                            accent.withValues(alpha: 0.08),
-                                          ],
-                                        ),
+                                        color: accent.withValues(alpha: 0.14),
                                         border: Border.all(
                                           color: accent.withValues(alpha: 0.45),
                                         ),
@@ -2833,67 +3005,6 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
-                                          Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: [
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 9,
-                                                      vertical: 4,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: accent.withValues(
-                                                    alpha: 0.14,
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                ),
-                                                child: Text(
-                                                  _itemTypeLabel(item.type),
-                                                  style: theme
-                                                      .textTheme
-                                                      .labelSmall
-                                                      ?.copyWith(
-                                                        color: accent,
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                      ),
-                                                ),
-                                              ),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 9,
-                                                      vertical: 4,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: cs.surface.withValues(
-                                                    alpha: 0.56,
-                                                  ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                ),
-                                                child: Text(
-                                                  _rarityLabel(item),
-                                                  style: theme
-                                                      .textTheme
-                                                      .labelSmall
-                                                      ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        color: cs.onSurface,
-                                                      ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 8),
                                           Text(
                                             item.name,
                                             style: theme.textTheme.titleMedium
@@ -2903,7 +3014,7 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            item.description,
+                                            '${_itemTypeLabel(item.type)} • ${item.description}',
                                             style: theme.textTheme.bodySmall
                                                 ?.copyWith(
                                                   color: cs.onSurfaceVariant,
@@ -2955,11 +3066,11 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                                     Expanded(
                                       child: Text(
                                         equipped
-                                            ? 'Currently in loadout'
+                                            ? 'Equipped now'
                                             : unlocked
-                                            ? 'Owned and ready to equip'
+                                            ? 'Ready to equip'
                                             : canBuy
-                                            ? 'Available for unlock'
+                                            ? 'Available'
                                             : 'Need ${item.cost - state.coins} more coins',
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
@@ -2982,30 +3093,20 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
                                               .withValues(alpha: 0.9),
                                           disabledForegroundColor: cs.onPrimary,
                                         ),
-                                        child: const Text('Equipped'),
+                                        child: const Text('Using'),
                                       )
                                     else if (unlocked)
-                                      FilledButton.icon(
+                                      FilledButton(
                                         onPressed: () => _equip(item),
-                                        icon: const Icon(
-                                          Icons.flash_on_rounded,
-                                          size: 18,
-                                        ),
-                                        label: const Text('Equip'),
+                                        child: const Text('Equip'),
                                       )
                                     else
-                                      FilledButton.tonalIcon(
+                                      FilledButton.tonal(
                                         onPressed: canBuy
                                             ? () => _unlock(item.id)
                                             : null,
-                                        icon: const Icon(
-                                          Icons.lock_open_rounded,
-                                          size: 18,
-                                        ),
-                                        label: Text(
-                                          canBuy
-                                              ? 'Unlock for ${item.cost}'
-                                              : 'Locked',
+                                        child: Text(
+                                          canBuy ? 'Unlock' : 'Locked',
                                         ),
                                       ),
                                   ],
@@ -3040,18 +3141,12 @@ class _MiniMeShopSheetState extends State<_MiniMeShopSheet> {
   String _itemTypeLabel(MiniMeItemType type) {
     switch (type) {
       case MiniMeItemType.hair:
-        return 'Headgear';
+        return 'Hair';
       case MiniMeItemType.shirt:
-        return 'Outfit';
+        return 'Shirt';
       case MiniMeItemType.bodyScale:
-        return 'Stance';
+        return 'Body';
     }
-  }
-
-  String _rarityLabel(MiniMeShopItem item) {
-    if (item.cost >= 30) return 'Epic Drop';
-    if (item.cost >= 20) return 'Rare Skin';
-    return 'Starter Gear';
   }
 
   Color _itemAccent(MiniMeShopItem item, ColorScheme cs) {
@@ -3105,20 +3200,11 @@ class _ShopHudPill extends StatelessWidget {
   }
 }
 
-class _ShopStatCard extends StatelessWidget {
-  const _ShopStatCard({
-    required this.title,
-    required this.value,
-    required this.suffix,
-    required this.icon,
-    required this.accent,
-  });
+class _SimpleShopInfo extends StatelessWidget {
+  const _SimpleShopInfo({required this.label, required this.value});
 
-  final String title;
+  final String label;
   final String value;
-  final String suffix;
-  final IconData icon;
-  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -3128,55 +3214,25 @@ class _ShopStatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cs.surface.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(18),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: accent.withValues(alpha: 0.16),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
-            child: Icon(icon, color: accent, size: 20),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                RichText(
-                  text: TextSpan(
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: cs.onSurface,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: value,
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      TextSpan(
-                        text: ' $suffix',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],

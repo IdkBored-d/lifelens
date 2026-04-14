@@ -9,8 +9,11 @@ class HealthSnapshot {
     this.heartRateUnit,
     this.weight,
     this.weightUnit,
+    this.height,
+    this.heightUnit,
     this.sleepHours,
     this.workoutSummary,
+    this.workoutCount14d,
   });
 
   final String source;
@@ -19,13 +22,18 @@ class HealthSnapshot {
   final String? heartRateUnit;
   final double? weight;
   final String? weightUnit;
+  final double? height;
+  final String? heightUnit;
   final double? sleepHours;
   final String? workoutSummary;
+  final int? workoutCount14d;
 
   bool get hasAnyData =>
       heartRate != null ||
       weight != null ||
+      height != null ||
       sleepHours != null ||
+      (workoutCount14d != null && workoutCount14d! > 0) ||
       (workoutSummary != null && workoutSummary!.isNotEmpty);
 
   Map<String, dynamic> toFirestore() {
@@ -36,15 +44,21 @@ class HealthSnapshot {
       'heartRateUnit': heartRateUnit,
       'weight': weight,
       'weightUnit': weightUnit,
+      'height': height,
+      'heightUnit': heightUnit,
       'sleepHours': sleepHours,
       'sleepUnit': sleepHours == null ? null : 'hours',
       'workoutSummary': workoutSummary,
+      'workoutCount14d': workoutCount14d,
     };
   }
 }
 
 class HealthService {
   final Health _health = Health();
+
+  static const Duration _authorizationTimeout = Duration(seconds: 20);
+  static const Duration _queryTimeout = Duration(seconds: 8);
 
   Future<HealthSnapshot> fetchSnapshot() async {
     if (kIsWeb) {
@@ -60,22 +74,24 @@ class HealthService {
       }
     }
 
-    const types = [
+    const coreTypes = [
       HealthDataType.HEART_RATE,
       HealthDataType.WEIGHT,
-      HealthDataType.SLEEP_ASLEEP,
-      HealthDataType.WORKOUT,
+      HealthDataType.HEIGHT,
     ];
+
+    const optionalTypes = [HealthDataType.SLEEP_ASLEEP, HealthDataType.WORKOUT];
+
+    const types = [...coreTypes, ...optionalTypes];
 
     final permissions = List<HealthDataAccess>.filled(
       types.length,
       HealthDataAccess.READ,
     );
 
-    final granted = await _health.requestAuthorization(
-      types,
-      permissions: permissions,
-    );
+    final granted = await _health
+        .requestAuthorization(types, permissions: permissions)
+        .timeout(_authorizationTimeout);
 
     if (!granted) {
       throw Exception('Permission is needed to import data.');
@@ -84,28 +100,62 @@ class HealthService {
     final now = DateTime.now();
     final start = now.subtract(const Duration(days: 14));
 
-    final points = await _health.getHealthDataFromTypes(
-      types: types,
-      startTime: start,
-      endTime: now,
+    final heartRatePoints = await _readType(
+      type: HealthDataType.HEART_RATE,
+      start: start,
+      end: now,
+    );
+    final weightPoints = await _readType(
+      type: HealthDataType.WEIGHT,
+      start: start,
+      end: now,
+    );
+    final heightPoints = await _readType(
+      type: HealthDataType.HEIGHT,
+      start: start,
+      end: now,
+    );
+    final sleepPoints = await _readType(
+      type: HealthDataType.SLEEP_ASLEEP,
+      start: start,
+      end: now,
+    );
+    final workoutPoints = await _readType(
+      type: HealthDataType.WORKOUT,
+      start: start,
+      end: now,
     );
 
+    final points = [
+      ...heartRatePoints,
+      ...weightPoints,
+      ...heightPoints,
+      ...sleepPoints,
+      ...workoutPoints,
+    ];
     final deduped = _health.removeDuplicates(points);
 
     final heartRatePoint = _latestPoint(deduped, HealthDataType.HEART_RATE);
     final weightPoint = _latestPoint(deduped, HealthDataType.WEIGHT);
+    final heightPoint = _latestPoint(deduped, HealthDataType.HEIGHT);
     final workoutPoint = _latestPoint(deduped, HealthDataType.WORKOUT);
     final sleepHours = _recentSleepHours(deduped, now);
+    final workoutCount14d = _workoutCount(deduped);
 
     final snapshot = HealthSnapshot(
-      source: 'Phone',
+      source: defaultTargetPlatform == TargetPlatform.iOS
+          ? 'Apple Health'
+          : 'Health Connect',
       capturedAt: now,
       heartRate: _numericValue(heartRatePoint),
       heartRateUnit: heartRatePoint?.unitString,
       weight: _numericValue(weightPoint),
       weightUnit: weightPoint?.unitString,
+      height: _numericValue(heightPoint),
+      heightUnit: heightPoint?.unitString,
       sleepHours: sleepHours,
       workoutSummary: _workoutSummary(workoutPoint),
+      workoutCount14d: workoutCount14d,
     );
 
     if (!snapshot.hasAnyData) {
@@ -113,6 +163,21 @@ class HealthService {
     }
 
     return snapshot;
+  }
+
+  Future<List<HealthDataPoint>> _readType({
+    required HealthDataType type,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    try {
+      final points = await _health
+          .getHealthDataFromTypes(types: [type], startTime: start, endTime: end)
+          .timeout(_queryTimeout);
+      return _health.removeDuplicates(points);
+    } catch (_) {
+      return const [];
+    }
   }
 
   HealthDataPoint? _latestPoint(
@@ -175,5 +240,9 @@ class HealthService {
     }
 
     return '$activity - $durationMinutes min';
+  }
+
+  int _workoutCount(List<HealthDataPoint> points) {
+    return points.where((point) => point.type == HealthDataType.WORKOUT).length;
   }
 }

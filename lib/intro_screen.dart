@@ -1,8 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/fitness_entry.dart';
+import 'package:lifelens/onboarding_screen.dart';
+import 'package:lifelens/services/health_service.dart';
 
 class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key});
@@ -16,17 +20,18 @@ class _IntroScreenState extends State<IntroScreen> {
 
   int _index = 0;
   bool _saving = false;
+  bool _importingHealth = false;
+  String? _healthImportMessage;
+  HealthSnapshot? _importedHealthSnapshot;
 
   final _formKey = GlobalKey<FormState>();
 
   final _weightController = TextEditingController();
   final _heightController = TextEditingController();
-  final _heartRateController = TextEditingController();
   final _sleepController = TextEditingController();
 
   String _weightUnit = 'kg';
-  String _heightUnit = 'cm';
-  String _heartRateUnit = 'bpm';
+  String _heightUnit = 'in';
   String? _selectedWorkoutFrequency;
 
   static const List<String> _workoutFrequencyOptions = [
@@ -42,7 +47,6 @@ class _IntroScreenState extends State<IntroScreen> {
     _pageController.dispose();
     _weightController.dispose();
     _heightController.dispose();
-    _heartRateController.dispose();
     _sleepController.dispose();
     super.dispose();
   }
@@ -80,13 +84,11 @@ class _IntroScreenState extends State<IntroScreen> {
 
     final weight = double.tryParse(_weightController.text.trim());
     final height = double.tryParse(_heightController.text.trim());
-    final heartRate = double.tryParse(_heartRateController.text.trim());
     final sleepHours = double.tryParse(_sleepController.text.trim());
     final workoutInfo = _selectedWorkoutFrequency;
 
     if (weight == null ||
         height == null ||
-        heartRate == null ||
         sleepHours == null ||
         workoutInfo == null ||
         workoutInfo.isEmpty) {
@@ -112,36 +114,42 @@ class _IntroScreenState extends State<IntroScreen> {
 
       // Write health snapshot to ISAR (source of truth for health data).
       const activityMap = {
-        'Rarely or never':    0.0,
+        'Rarely or never': 0.0,
         '1-2 times per week': 0.25,
         '3-4 times per week': 0.5,
         '5-6 times per week': 0.75,
-        'Daily':              1.0,
+        'Daily': 1.0,
       };
-      final weightKg      = (_weightUnit == 'lb') ? weight * 0.453592 : weight;
-      final heightM       = (_heightUnit == 'in') ? height * 0.0254 : height / 100.0;
-      final bmi           = weightKg / (heightM * heightM);
+      final weightKg = (_weightUnit == 'lb') ? weight * 0.453592 : weight;
+      final heightM = (_heightUnit == 'in') ? height * 0.0254 : height / 100.0;
+      final bmi = weightKg / (heightM * heightM);
       final activityIndex = activityMap[workoutInfo] ?? 0.25;
-      final now           = DateTime.now();
-      final snapshot      = FitnessEntry()
-        ..date                 = now.toIso8601String().split('T').first
-        ..fitnessScore         = 0.0
-        ..fitProbability       = 0.0
-        ..isFit                = false
-        ..confidenceOk         = false
+      final now = DateTime.now();
+      final snapshot = FitnessEntry()
+        ..date = now.toIso8601String().split('T').first
+        ..fitnessScore = 0.0
+        ..fitProbability = 0.0
+        ..isFit = false
+        ..confidenceOk = false
         ..dataFreshnessFlagged = true
         ..isOnboardingSnapshot = true
-        ..age                  = 0.0
-        ..bmi                  = bmi
-        ..heartRate            = heartRate
-        ..sleepHours           = sleepHours
-        ..smokes               = false
-        ..nutritionQuality     = 0.5
-        ..activityIndex        = activityIndex
-        ..isMale               = false
-        ..healthDataTimestamp  = now
-        ..inferenceTimestamp   = now;
+        ..age = 0.0
+        ..bmi = bmi
+        ..heartRate = 0.0
+        ..sleepHours = sleepHours
+        ..smokes = false
+        ..nutritionQuality = 0.5
+        ..activityIndex = activityIndex
+        ..isMale = false
+        ..healthDataTimestamp = _importedHealthSnapshot?.capturedAt ?? now
+        ..inferenceTimestamp = now;
       await AppServices.isar.writeFitnessEntry(snapshot);
+
+      if (_importedHealthSnapshot != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'onboardingHealthImport': _importedHealthSnapshot!.toFirestore(),
+        }, SetOptions(merge: true));
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -154,10 +162,127 @@ class _IntroScreenState extends State<IntroScreen> {
     }
   }
 
+  Future<void> _importFromAppleHealth() async {
+    if (_importingHealth) return;
+
+    setState(() {
+      _importingHealth = true;
+      _healthImportMessage = null;
+    });
+
+    try {
+      final snapshot = await HealthService().fetchSnapshot();
+      if (!mounted) return;
+
+      _applyImportedHealthSnapshot(snapshot);
+      setState(() {
+        _importedHealthSnapshot = snapshot;
+        _healthImportMessage = 'Imported data from ${snapshot.source}.';
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _healthImportMessage =
+            'Apple Health took too long to respond. Please return to LifeLens and try again.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _healthImportMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _importingHealth = false);
+      }
+    }
+  }
+
+  void _applyImportedHealthSnapshot(HealthSnapshot snapshot) {
+    if (snapshot.weight != null) {
+      if ((snapshot.weightUnit ?? '').toLowerCase().contains('lb')) {
+        _weightUnit = 'lb';
+        _weightController.text = snapshot.weight!.toStringAsFixed(1);
+      } else {
+        _weightUnit = 'kg';
+        _weightController.text = snapshot.weight!.toStringAsFixed(1);
+      }
+    }
+
+    if (snapshot.height != null) {
+      final unit = (snapshot.heightUnit ?? '').toLowerCase();
+      if (unit.contains('m')) {
+        _heightUnit = 'cm';
+        _heightController.text = (snapshot.height! * 100).round().toString();
+      } else if (unit.contains('cm')) {
+        _heightUnit = 'cm';
+        _heightController.text = snapshot.height!.round().toString();
+      }
+    }
+
+    if (snapshot.sleepHours != null) {
+      _sleepController.text = snapshot.sleepHours!.toStringAsFixed(1);
+    }
+
+    final workoutCount = snapshot.workoutCount14d ?? 0;
+    if (workoutCount > 0) {
+      _selectedWorkoutFrequency = _mapWorkoutCountToFrequency(workoutCount);
+    }
+  }
+
+  String _mapWorkoutCountToFrequency(int count14d) {
+    if (count14d >= 12) return 'Daily';
+    if (count14d >= 8) return '5-6 times per week';
+    if (count14d >= 5) return '3-4 times per week';
+    if (count14d >= 2) return '1-2 times per week';
+    return 'Rarely or never';
+  }
+
   String _safeText(String text, String fallback) {
     final value = text.trim();
     if (value.isEmpty) return fallback;
     return value;
+  }
+
+  String _heightDisplayText() {
+    final raw = _heightController.text.trim();
+    if (raw.isEmpty) return '-';
+
+    final height = double.tryParse(raw);
+    if (height == null) return raw;
+
+    if (_heightUnit == 'in') {
+      final totalInches = height.round();
+      final feet = totalInches ~/ 12;
+      final inches = totalInches % 12;
+      return '$feet\'$inches"';
+    }
+
+    return '${height.round()} cm';
+  }
+
+  Future<void> _pickHeight() async {
+    final initialHeight =
+        double.tryParse(_heightController.text.trim()) ??
+        (_heightUnit == 'in' ? 69.0 : 170.0);
+
+    final selected = await showModalBottomSheet<double>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (context) {
+        return _HeightPickerSheet(
+          unit: _heightUnit,
+          initialHeight: initialHeight,
+        );
+      },
+    );
+
+    if (selected == null || !mounted) return;
+    setState(() {
+      _heightController.text = _heightUnit == 'in'
+          ? selected.round().toString()
+          : selected.toStringAsFixed(0);
+    });
   }
 
   Widget _buildProgressDots(ThemeData theme) {
@@ -173,7 +298,7 @@ class _IntroScreenState extends State<IntroScreen> {
           decoration: BoxDecoration(
             color: active
                 ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant.withValues(alpha:0.7),
+                : theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
             borderRadius: BorderRadius.circular(99),
           ),
         );
@@ -196,8 +321,14 @@ class _IntroScreenState extends State<IntroScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   cs.surface,
-                  Color.alphaBlend(cs.primary.withValues(alpha:0.10), cs.surface),
-                  Color.alphaBlend(cs.secondary.withValues(alpha:0.08), cs.surface),
+                  Color.alphaBlend(
+                    cs.primary.withValues(alpha: 0.10),
+                    cs.surface,
+                  ),
+                  Color.alphaBlend(
+                    cs.secondary.withValues(alpha: 0.08),
+                    cs.surface,
+                  ),
                 ],
               ),
             ),
@@ -216,10 +347,12 @@ class _IntroScreenState extends State<IntroScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest.withValues(alpha:0.9),
+                          color: cs.surfaceContainerHighest.withValues(
+                            alpha: 0.9,
+                          ),
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(
-                            color: cs.outlineVariant.withValues(alpha:0.6),
+                            color: cs.outlineVariant.withValues(alpha: 0.6),
                           ),
                         ),
                         child: Row(
@@ -266,7 +399,6 @@ class _IntroScreenState extends State<IntroScreen> {
                           formKey: _formKey,
                           weightController: _weightController,
                           heightController: _heightController,
-                          heartRateController: _heartRateController,
                           sleepController: _sleepController,
                           workoutFrequencyOptions: _workoutFrequencyOptions,
                           selectedWorkoutFrequency: _selectedWorkoutFrequency,
@@ -275,23 +407,32 @@ class _IntroScreenState extends State<IntroScreen> {
                           },
                           weightUnit: _weightUnit,
                           heightUnit: _heightUnit,
-                          heartRateUnit: _heartRateUnit,
+                          heightDisplayValue: _heightDisplayText(),
                           onWeightUnitChanged: (value) =>
                               setState(() => _weightUnit = value),
-                          onHeightUnitChanged: (value) =>
-                              setState(() => _heightUnit = value),
-                          onHeartRateUnitChanged: (value) =>
-                              setState(() => _heartRateUnit = value),
+                          onHeightUnitChanged: (value) {
+                            setState(() {
+                              _heightUnit = value;
+                              _heightController.clear();
+                            });
+                          },
+                          onHeightPressed: _pickHeight,
+                          showAppleHealthImport:
+                              !kIsWeb &&
+                              defaultTargetPlatform == TargetPlatform.iOS,
+                          isImportingHealth: _importingHealth,
+                          healthImportMessage: _healthImportMessage,
+                          importedSource: _importedHealthSnapshot?.source,
+                          onImportAppleHealth: _importFromAppleHealth,
                         ),
                         _ReviewStep(
                           weight: _safeText(_weightController.text, '-'),
                           weightUnit: _weightUnit,
-                          height: _safeText(_heightController.text, '-'),
+                          height: _heightDisplayText(),
                           heightUnit: _heightUnit,
-                          heartRate: _safeText(_heartRateController.text, '-'),
-                          heartRateUnit: _heartRateUnit,
                           sleepHours: _safeText(_sleepController.text, '-'),
                           workoutInfo: _selectedWorkoutFrequency ?? '-',
+                          importedSource: _importedHealthSnapshot?.source,
                         ),
                       ],
                     ),
@@ -334,69 +475,12 @@ class _WelcomeStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ListView(
+      physics: const BouncingScrollPhysics(),
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.alphaBlend(
-                  cs.primary.withValues(alpha:0.55),
-                  cs.primaryContainer,
-                ),
-                Color.alphaBlend(
-                  cs.secondary.withValues(alpha:0.35),
-                  cs.primaryContainer,
-                ),
-              ],
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Let\'s set up your health baseline',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: cs.onPrimaryContainer,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'We will ask for your heart rate, weight, sleep hours, and workout frequency to personalize your insights.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: cs.onPrimaryContainer.withValues(alpha:0.9),
-                  height: 1.3,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: onContinuePressed,
-                  icon: const Icon(Icons.arrow_forward_rounded),
-                  label: const Text('Start setup'),
-                ),
-              ],
-            ),
-          ),
+        OnboardingScreen(
+          onGetStarted: onContinuePressed,
+          ctaLabel: 'Start setup',
         ),
       ],
     );
@@ -408,33 +492,41 @@ class _HealthFormStep extends StatelessWidget {
     required this.formKey,
     required this.weightController,
     required this.heightController,
-    required this.heartRateController,
     required this.sleepController,
     required this.workoutFrequencyOptions,
     required this.selectedWorkoutFrequency,
     required this.onWorkoutFrequencyChanged,
     required this.weightUnit,
     required this.heightUnit,
-    required this.heartRateUnit,
+    required this.heightDisplayValue,
     required this.onWeightUnitChanged,
     required this.onHeightUnitChanged,
-    required this.onHeartRateUnitChanged,
+    required this.onHeightPressed,
+    required this.showAppleHealthImport,
+    required this.isImportingHealth,
+    required this.healthImportMessage,
+    required this.importedSource,
+    required this.onImportAppleHealth,
   });
 
   final GlobalKey<FormState> formKey;
   final TextEditingController weightController;
   final TextEditingController heightController;
-  final TextEditingController heartRateController;
   final TextEditingController sleepController;
   final List<String> workoutFrequencyOptions;
   final String? selectedWorkoutFrequency;
   final ValueChanged<String?> onWorkoutFrequencyChanged;
   final String weightUnit;
   final String heightUnit;
-  final String heartRateUnit;
+  final String heightDisplayValue;
   final ValueChanged<String> onWeightUnitChanged;
   final ValueChanged<String> onHeightUnitChanged;
-  final ValueChanged<String> onHeartRateUnitChanged;
+  final Future<void> Function() onHeightPressed;
+  final bool showAppleHealthImport;
+  final bool isImportingHealth;
+  final String? healthImportMessage;
+  final String? importedSource;
+  final Future<void> Function() onImportAppleHealth;
 
   @override
   Widget build(BuildContext context) {
@@ -453,27 +545,116 @@ class _HealthFormStep extends StatelessWidget {
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
+              if (showAppleHealthImport) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.favorite_rounded, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              importedSource == null
+                                  ? 'Import from Apple Health'
+                                  : 'Imported from $importedSource',
+                              style: Theme.of(context).textTheme.labelLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: isImportingHealth
+                                ? null
+                                : onImportAppleHealth,
+                            child: Text(
+                              isImportingHealth ? 'Importing...' : 'Import',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'This can fill in your weight, height, sleep, and workout activity automatically.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if ((healthImportMessage ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          healthImportMessage!,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
-                    child: TextFormField(
-                      controller: heightController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Height',
-                        hintText: '170',
-                        prefixIcon: Icon(Icons.height_rounded),
-                      ),
-                      validator: (value) {
-                        final v = value?.trim() ?? '';
+                    child: FormField<String>(
+                      initialValue: heightController.text,
+                      validator: (_) {
+                        final v = heightController.text.trim();
                         if (v.isEmpty) return 'Required';
                         final parsed = double.tryParse(v);
                         if (parsed == null) return 'Invalid number';
-                        if (parsed <= 0 || parsed > 300) return 'Check value';
+                        if (heightUnit == 'in' &&
+                            (parsed < 36 || parsed > 96)) {
+                          return 'Check value';
+                        }
+                        if (heightUnit == 'cm' &&
+                            (parsed < 90 || parsed > 250)) {
+                          return 'Check value';
+                        }
                         return null;
+                      },
+                      builder: (field) {
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () async {
+                            await onHeightPressed();
+                            field.didChange(heightController.text);
+                          },
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'Height',
+                              hintText: heightUnit == 'in' ? '5\'9"' : '170 cm',
+                              prefixIcon: const Icon(Icons.height_rounded),
+                              suffixIcon: const Icon(Icons.unfold_more_rounded),
+                              errorText: field.errorText,
+                            ),
+                            child: Text(
+                              heightDisplayValue == '-'
+                                  ? 'Scroll to select'
+                                  : heightDisplayValue,
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(
+                                    color: heightDisplayValue == '-'
+                                        ? Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant
+                                        : null,
+                                  ),
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -492,6 +673,17 @@ class _HealthFormStep extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
+              if (heightDisplayValue != '-')
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    'Selected: $heightDisplayValue',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               Row(
                 children: [
                   Expanded(
@@ -523,41 +715,6 @@ class _HealthFormStep extends StatelessWidget {
                     ],
                     onChanged: (value) {
                       if (value != null) onWeightUnitChanged(value);
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: heartRateController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Resting heart rate',
-                        hintText: '62',
-                        prefixIcon: Icon(Icons.favorite_border_rounded),
-                      ),
-                      validator: (value) {
-                        final v = value?.trim() ?? '';
-                        if (v.isEmpty) return 'Required';
-                        final parsed = double.tryParse(v);
-                        if (parsed == null) return 'Invalid number';
-                        if (parsed < 20 || parsed > 220) return 'Check value';
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  DropdownButton<String>(
-                    value: heartRateUnit,
-                    underline: const SizedBox.shrink(),
-                    items: const [
-                      DropdownMenuItem(value: 'bpm', child: Text('bpm')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) onHeartRateUnitChanged(value);
                     },
                   ),
                 ],
@@ -617,20 +774,18 @@ class _ReviewStep extends StatelessWidget {
     required this.weightUnit,
     required this.height,
     required this.heightUnit,
-    required this.heartRate,
-    required this.heartRateUnit,
     required this.sleepHours,
     required this.workoutInfo,
+    required this.importedSource,
   });
 
   final String weight;
   final String weightUnit;
   final String height;
   final String heightUnit;
-  final String heartRate;
-  final String heartRateUnit;
   final String sleepHours;
   final String workoutInfo;
+  final String? importedSource;
 
   @override
   Widget build(BuildContext context) {
@@ -642,7 +797,7 @@ class _ReviewStep extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha:0.7),
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -687,10 +842,10 @@ class _ReviewStep extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             row('Weight', '$weight $weightUnit'),
-            row('Height', '$height $heightUnit'),
-            row('Heart rate', '$heartRate $heartRateUnit'),
+            row('Height', height),
             row('Sleep', '$sleepHours hours'),
             row('Workout', workoutInfo),
+            if (importedSource != null) row('Imported from', importedSource!),
             const SizedBox(height: 4),
             Text(
               'Tap Finish onboarding to save this data and continue.',
@@ -701,6 +856,164 @@ class _ReviewStep extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _HeightPickerSheet extends StatefulWidget {
+  const _HeightPickerSheet({required this.unit, required this.initialHeight});
+
+  final String unit;
+  final double initialHeight;
+
+  @override
+  State<_HeightPickerSheet> createState() => _HeightPickerSheetState();
+}
+
+class _HeightPickerSheetState extends State<_HeightPickerSheet> {
+  late int _selectedFeet;
+  late int _selectedInches;
+  late int _selectedCentimeters;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.unit == 'in') {
+      final totalInches = widget.initialHeight.round().clamp(36, 96);
+      _selectedFeet = totalInches ~/ 12;
+      _selectedInches = totalInches % 12;
+      _selectedCentimeters = 170;
+    } else {
+      _selectedCentimeters = widget.initialHeight.round().clamp(90, 250);
+      _selectedFeet = 5;
+      _selectedInches = 9;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return SafeArea(
+      child: SizedBox(
+        height: 340,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Choose your height',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.unit == 'in'
+                    ? 'Scroll to a height like 5\'9".'
+                    : 'Scroll to your height in centimeters.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: widget.unit == 'in'
+                    ? Row(
+                        children: [
+                          Expanded(
+                            child: _NumberWheel(
+                              min: 3,
+                              max: 8,
+                              initialValue: _selectedFeet,
+                              labelBuilder: (value) => '$value ft',
+                              onChanged: (value) =>
+                                  setState(() => _selectedFeet = value),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _NumberWheel(
+                              min: 0,
+                              max: 11,
+                              initialValue: _selectedInches,
+                              labelBuilder: (value) => '$value in',
+                              onChanged: (value) =>
+                                  setState(() => _selectedInches = value),
+                            ),
+                          ),
+                        ],
+                      )
+                    : _NumberWheel(
+                        min: 90,
+                        max: 250,
+                        initialValue: _selectedCentimeters,
+                        labelBuilder: (value) => '$value cm',
+                        onChanged: (value) =>
+                            setState(() => _selectedCentimeters = value),
+                      ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  final result = widget.unit == 'in'
+                      ? (_selectedFeet * 12 + _selectedInches).toDouble()
+                      : _selectedCentimeters.toDouble();
+                  Navigator.of(context).pop(result);
+                },
+                child: const Text('Use this height'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NumberWheel extends StatelessWidget {
+  const _NumberWheel({
+    required this.min,
+    required this.max,
+    required this.initialValue,
+    required this.labelBuilder,
+    required this.onChanged,
+  });
+
+  final int min;
+  final int max;
+  final int initialValue;
+  final String Function(int value) labelBuilder;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final values = List<int>.generate(max - min + 1, (index) => min + index);
+    final initialIndex = (initialValue - min).clamp(0, values.length - 1);
+
+    return ListWheelScrollView.useDelegate(
+      controller: FixedExtentScrollController(initialItem: initialIndex),
+      itemExtent: 48,
+      diameterRatio: 1.3,
+      perspective: 0.004,
+      physics: const FixedExtentScrollPhysics(),
+      onSelectedItemChanged: (index) => onChanged(values[index]),
+      childDelegate: ListWheelChildBuilderDelegate(
+        childCount: values.length,
+        builder: (context, index) {
+          final value = values[index];
+          return Center(
+            child: Text(
+              labelBuilder(value),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          );
+        },
       ),
     );
   }

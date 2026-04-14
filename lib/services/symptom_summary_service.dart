@@ -1,13 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-enum SymptomSummaryRange {
-  last7,
-  last14,
-  last30,
-  last90,
-  custom,
-}
+enum SymptomSummaryRange { last7, last14, last30, last90, custom }
 
 extension SymptomSummaryRangeX on SymptomSummaryRange {
   int get days {
@@ -77,8 +71,8 @@ class SymptomDoctorSummary {
 
 class SymptomSummaryService {
   SymptomSummaryService({FirebaseFirestore? firestore, FirebaseAuth? auth})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
@@ -161,8 +155,7 @@ class SymptomSummaryService {
         for (final symptom in symptoms) {
           currentCounts[symptom] = (currentCounts[symptom] ?? 0) + 1;
         }
-      } else if (
-          compareWithPrevious &&
+      } else if (compareWithPrevious &&
           !createdAt.isBefore(prevStart) &&
           createdAt.isBefore(start)) {
         for (final symptom in symptoms) {
@@ -194,7 +187,10 @@ class SymptomSummaryService {
     worsening.sort((a, b) => b.value.compareTo(a.value));
     improving.sort((a, b) => b.value.compareTo(a.value));
 
-    final totalMentions = currentCounts.values.fold<int>(0, (acc, v) => acc + v);
+    final totalMentions = currentCounts.values.fold<int>(
+      0,
+      (acc, v) => acc + v,
+    );
     final summaryText = _buildSummaryText(
       windowLabel: windowLabel,
       windowDays: windowDays,
@@ -244,75 +240,54 @@ class SymptomSummaryService {
     required List<MapEntry<String, int>> worseningSymptoms,
     required List<MapEntry<String, int>> improvingSymptoms,
   }) {
-    final burdenLevel = activeDays == 0
-      ? 'No clear symptom activity in this time period.'
+    final frequencyLine = activeDays == 0
+        ? 'No clear symptom pattern showed up in this time.'
         : activeDays <= (windowDays / 4).round()
-        ? 'Symptoms showed up occasionally.'
-            : activeDays <= (windowDays / 2).round()
-          ? 'Symptoms showed up regularly.'
-          : 'Symptoms showed up frequently.';
+        ? 'Symptoms showed up once in a while.'
+        : activeDays <= (windowDays / 2).round()
+        ? 'Symptoms showed up on several days.'
+        : 'Symptoms showed up on many days.';
 
-    final topSymptomText = topSymptoms.isEmpty
-        ? 'No predominant symptom identified in this interval.'
-        : topSymptoms
+    final topList = topSymptoms
+        .take(3)
         .map((item) => _titleCase(item.key))
-            .join(', ');
+        .toList();
+    final topLine = topList.isEmpty
+        ? 'No single symptom stood out most.'
+        : topList.length == 1
+        ? 'Main symptom: ${topList.first}.'
+        : 'Main symptoms: ${topList.join(', ')}.';
 
-    final worseningText = worseningSymptoms.isEmpty
-        ? 'No symptom clearly increased compared with the previous time period.'
-        : worseningSymptoms
-        .map((item) => _titleCase(item.key))
-            .join(', ');
-
-    final improvingText = improvingSymptoms.isEmpty
-        ? 'No symptom clearly decreased compared with the previous time period.'
-        : improvingSymptoms
-        .map((item) => _titleCase(item.key))
-            .join(', ');
-
-    final focusPoints = <String>[
-      'Discuss when symptoms happen most often (morning, evening, after activity, after meals, or around sleep).',
-      'Talk through possible triggers such as sleep quality, stress, hydration, food, and activity.',
-    ];
-
-    if (topSymptoms.isNotEmpty) {
-      focusPoints.insert(
-        0,
-        'Start with your most common symptom: ${_titleCase(topSymptoms.first.key)}.',
-      );
+    String? changeLine;
+    if (compareWithPrevious) {
+      final changeParts = <String>[];
+      if (worseningSymptoms.isNotEmpty) {
+        changeParts.add('More ${_titleCase(worseningSymptoms.first.key)}');
+      }
+      if (improvingSymptoms.isNotEmpty) {
+        changeParts.add('Less ${_titleCase(improvingSymptoms.first.key)}');
+      }
+      if (changeParts.isNotEmpty) {
+        changeLine =
+            'Compared with the last period: ${changeParts.join('. ')}.';
+      }
     }
 
-    if (worseningSymptoms.isNotEmpty) {
-      focusPoints.insert(
-        1,
-        'Point out the symptom that seems to be increasing: ${_titleCase(worseningSymptoms.first.key)}.',
-      );
-    }
+    final visitTip = topSymptoms.isNotEmpty
+        ? 'At your visit, start with ${_titleCase(topSymptoms.first.key)} and when it tends to happen.'
+        : 'At your visit, share when symptoms tend to happen and what seems to make them better or worse.';
 
     final lines = <String>[
-      'Your Symptom Summary ($windowLabel)',
-      'Time period: ${_formatDate(fromDate)} to ${_formatDate(toDate)}',
+      'Symptom summary for $windowLabel',
+      '${_formatDate(fromDate)} to ${_formatDate(toDate)}',
       if (symptomFocus != null && symptomFocus.isNotEmpty)
-        'Focused symptom: ${_titleCase(symptomFocus)}',
+        'Focus: ${_titleCase(symptomFocus)}',
       '',
-      'What we noticed',
-      '- $burdenLevel',
-      '',
-      'Symptoms showing up most often',
-      '- $topSymptomText',
-      '',
-      if (compareWithPrevious) ...[
-        'Compared with the previous $windowDays days',
-        '- Symptoms that increased: $worseningText',
-        '- Symptoms that improved: $improvingText',
-        '',
-      ],
-      'Helpful topics for your next visit',
+      frequencyLine,
+      topLine,
+      if (changeLine != null) changeLine,
+      visitTip,
     ];
-
-    for (final item in focusPoints) {
-      lines.add('- $item');
-    }
 
     return lines.join('\n');
   }

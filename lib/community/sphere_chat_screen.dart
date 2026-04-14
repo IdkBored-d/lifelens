@@ -2,7 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:lifelens/community/community_prompt_service.dart';
+import 'package:lifelens/shared_widgets/mini_me_avatar_badge.dart';
+import 'package:provider/provider.dart';
 
+import '../avatar_store.dart';
 import '../models/sphere.dart';
 import '../services/content_moderation_service.dart';
 
@@ -41,6 +44,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
 
   Future<void> _bootstrapSphere() async {
     await _loadUserNickname();
+    await _syncMemberMiniMe();
     await _refreshDailyPromptIfNeeded();
     await _ensureSphereStarterContent();
     await _markSphereSeen();
@@ -147,9 +151,21 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     }, SetOptions(merge: true));
   }
 
+  Future<void> _syncMemberMiniMe() async {
+    final userId = _userId;
+    if (userId == null) return;
+
+    final avatarStore = context.read<AvatarStore>();
+    await _membersRef.doc(userId).set({
+      'miniMe': avatarStore.toCommunityAvatarMap(),
+      'miniMeName': avatarStore.miniMeName,
+    }, SetOptions(merge: true));
+  }
+
   Future<void> _createPost({required String type, required String text}) async {
     final userId = _userId;
     final nickname = _userNickname;
+    final avatarStore = context.read<AvatarStore>();
     if (userId == null || nickname == null) return;
 
     final moderationResult = ContentModerationService.checkMessage(text);
@@ -167,6 +183,8 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
       'text': text,
       'userId': userId,
       'nickname': nickname,
+      'miniMe': avatarStore.toCommunityAvatarMap(),
+      'miniMeName': avatarStore.miniMeName,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'latestActivityAt': FieldValue.serverTimestamp(),
@@ -192,6 +210,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
   Future<void> _addReply({required String postId, required String text}) async {
     final userId = _userId;
     final nickname = _userNickname;
+    final avatarStore = context.read<AvatarStore>();
     if (userId == null || nickname == null) return;
 
     final moderationResult = ContentModerationService.checkMessage(text);
@@ -209,6 +228,8 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
       'text': text,
       'userId': userId,
       'nickname': nickname,
+      'miniMe': avatarStore.toCommunityAvatarMap(),
+      'miniMeName': avatarStore.miniMeName,
       'createdAt': FieldValue.serverTimestamp(),
     });
 
@@ -228,47 +249,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Reply added')));
-  }
-
-  Future<void> _toggleReaction({
-    required String postId,
-    required String reaction,
-  }) async {
-    final userId = _userId;
-    if (userId == null) return;
-
-    final reactionRef = _postsRef
-        .doc(postId)
-        .collection('reactions')
-        .doc(userId);
-    final snapshot = await reactionRef.get();
-
-    if (!snapshot.exists) {
-      await reactionRef.set({
-        'type': reaction,
-        'userId': userId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      await _postsRef.doc(postId).set({
-        'reactionCounts.$reaction': FieldValue.increment(1),
-      }, SetOptions(merge: true));
-    } else {
-      final currentReaction = snapshot.data()?['type'] as String?;
-      if (currentReaction == reaction) {
-        await reactionRef.delete();
-        await _postsRef.doc(postId).set({
-          'reactionCounts.$reaction': FieldValue.increment(-1),
-        }, SetOptions(merge: true));
-      } else {
-        await reactionRef.update({'type': reaction});
-        if (currentReaction != null) {
-          await _postsRef.doc(postId).set({
-            'reactionCounts.$currentReaction': FieldValue.increment(-1),
-            'reactionCounts.$reaction': FieldValue.increment(1),
-          }, SetOptions(merge: true));
-        }
-      }
-    }
   }
 
   Future<void> _reportPost({
@@ -293,6 +273,48 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Report submitted')));
+  }
+
+  Future<void> _toggleLike(String postId) async {
+    final userId = _userId;
+    if (userId == null) return;
+
+    final reactionRef = _postsRef
+        .doc(postId)
+        .collection('reactions')
+        .doc(userId);
+    final snapshot = await reactionRef.get();
+
+    if (!snapshot.exists) {
+      await reactionRef.set({
+        'type': 'like',
+        'userId': userId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await _postsRef.doc(postId).set({
+        'reactionCounts.like': FieldValue.increment(1),
+      }, SetOptions(merge: true));
+    } else {
+      final currentReaction = snapshot.data()?['type'] as String?;
+      if (currentReaction == 'like') {
+        await reactionRef.delete();
+        await _postsRef.doc(postId).set({
+          'reactionCounts.like': FieldValue.increment(-1),
+        }, SetOptions(merge: true));
+      } else {
+        await reactionRef.set({'type': 'like'}, SetOptions(merge: true));
+        if (currentReaction != null && currentReaction.isNotEmpty) {
+          await _postsRef.doc(postId).set({
+            'reactionCounts.$currentReaction': FieldValue.increment(-1),
+            'reactionCounts.like': FieldValue.increment(1),
+          }, SetOptions(merge: true));
+        } else {
+          await _postsRef.doc(postId).set({
+            'reactionCounts.like': FieldValue.increment(1),
+          }, SetOptions(merge: true));
+        }
+      }
+    }
   }
 
   Future<void> _deletePost(String postId) async {
@@ -616,6 +638,9 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                         itemCount: replies.length,
                         itemBuilder: (context, index) {
                           final reply = replies[index].data();
+                          final miniMe = Map<String, dynamic>.from(
+                            reply['miniMe'] as Map? ?? {},
+                          );
                           return Container(
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.all(12),
@@ -625,24 +650,63 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                               ),
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: Column(
+                            child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  reply['nickname'] ?? 'Anonymous',
-                                  style: Theme.of(context).textTheme.labelLarge
-                                      ?.copyWith(fontWeight: FontWeight.w800),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(reply['text'] ?? ''),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _timeLabel(
-                                    (reply['createdAt'] as Timestamp?)
-                                        ?.toDate(),
+                                MiniMeAvatarBadge(
+                                  size: 48,
+                                  padding: 4,
+                                  backgroundColor: cs.primaryContainer,
+                                  borderColor: cs.outlineVariant.withValues(
+                                    alpha: 0.35,
                                   ),
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(color: cs.onSurfaceVariant),
+                                  bodyModel: miniMe['bodyModel'] as String?,
+                                  hairModel: miniMe['hairModel'] as String?,
+                                  shirtModel: miniMe['shirtModel'] as String?,
+                                  bodyWidthScale:
+                                      (miniMe['bodyWidthScale'] as num?)
+                                          ?.toDouble(),
+                                  companionId: miniMe['companionId'] as String?,
+                                  isHatched:
+                                      miniMe['isHatched'] as bool? ?? true,
+                                  degradationLevel:
+                                      (miniMe['degradationLevel'] as num?)
+                                          ?.toDouble() ??
+                                      0,
+                                  fallbackLabel: reply['nickname'] as String?,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        reply['nickname'] ?? 'Anonymous',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(reply['text'] ?? ''),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        _timeLabel(
+                                          (reply['createdAt'] as Timestamp?)
+                                              ?.toDate(),
+                                        ),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: cs.onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -754,17 +818,30 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                       itemCount: members.length,
                       itemBuilder: (context, index) {
                         final member = members[index].data();
+                        final miniMe = Map<String, dynamic>.from(
+                          member['miniMe'] as Map? ?? {},
+                        );
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
+                          leading: MiniMeAvatarBadge(
+                            size: 52,
+                            padding: 4,
                             backgroundColor: cs.primaryContainer,
-                            child: Text(
-                              ((member['nickname'] ?? '?') as String)
-                                  .characters
-                                  .first
-                                  .toUpperCase(),
-                              style: TextStyle(color: cs.onPrimaryContainer),
+                            borderColor: cs.outlineVariant.withValues(
+                              alpha: 0.35,
                             ),
+                            bodyModel: miniMe['bodyModel'] as String?,
+                            hairModel: miniMe['hairModel'] as String?,
+                            shirtModel: miniMe['shirtModel'] as String?,
+                            bodyWidthScale: (miniMe['bodyWidthScale'] as num?)
+                                ?.toDouble(),
+                            companionId: miniMe['companionId'] as String?,
+                            isHatched: miniMe['isHatched'] as bool? ?? true,
+                            degradationLevel:
+                                (miniMe['degradationLevel'] as num?)
+                                    ?.toDouble() ??
+                                0,
+                            fallbackLabel: member['nickname'] as String?,
                           ),
                           title: Text(member['nickname'] ?? 'Anonymous'),
                           subtitle: Text(
@@ -844,7 +921,12 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     final userId = _userId;
     if (userId == null) return;
 
-    await _membersRef.doc(userId).update({'nickname': newNickname});
+    final avatarStore = context.read<AvatarStore>();
+    await _membersRef.doc(userId).update({
+      'nickname': newNickname,
+      'miniMe': avatarStore.toCommunityAvatarMap(),
+      'miniMeName': avatarStore.miniMeName,
+    });
     if (!mounted) return;
     setState(() => _userNickname = newNickname);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -938,21 +1020,9 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                 _showChangeNicknameDialog();
               } else if (value == 'leave_sphere') {
                 _showLeaveSphereDialog();
-              } else if (value == 'new_post') {
-                _showCreatePostSheet();
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'new_post',
-                child: Row(
-                  children: [
-                    Icon(Icons.add_comment_outlined),
-                    SizedBox(width: 12),
-                    Text('New Post'),
-                  ],
-                ),
-              ),
               PopupMenuItem(
                 value: 'change_nickname',
                 child: Row(
@@ -1006,19 +1076,8 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                           final posts = snapshot.data!.docs;
                           return ListView(
                             controller: _scrollController,
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
                             children: [
-                              _PinnedCard(
-                                title:
-                                    (sphereData['pinnedTitle'] as String?) ??
-                                    widget.sphere.pinnedTitle ??
-                                    'Community focus',
-                                body:
-                                    (sphereData['pinnedBody'] as String?) ??
-                                    widget.sphere.pinnedBody ??
-                                    'Introduce yourself, protect your privacy, and keep replies practical and kind.',
-                              ),
-                              const SizedBox(height: 12),
                               _PromptCard(
                                 prompt:
                                     CommunityPromptService.isCurrentPrompt(
@@ -1039,7 +1098,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                                       ),
                                 onPost: _showCreatePostSheet,
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12),
                               if (posts.isEmpty)
                                 _EmptyCommunityState(
                                   sphereName: widget.sphere.name,
@@ -1060,14 +1119,11 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                                             postDoc.data()['nickname'] ??
                                             'Anonymous',
                                       ),
-                                      onReact: (reaction) => _toggleReaction(
-                                        postId: postDoc.id,
-                                        reaction: reaction,
-                                      ),
                                       onReport: () => _showReportDialog(
                                         postId: postDoc.id,
                                         text: postDoc.data()['text'] ?? '',
                                       ),
+                                      onLike: () => _toggleLike(postDoc.id),
                                       onDelete: () => _deletePost(postDoc.id),
                                       onPin: () => _pinPost(
                                         postDoc.id,
@@ -1099,65 +1155,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
   }
 }
 
-class _PinnedCard extends StatelessWidget {
-  const _PinnedCard({required this.title, required this.body});
-
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [cs.secondaryContainer, cs.primaryContainer],
-        ),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: cs.surface.withValues(alpha: 0.45),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.push_pin_rounded, color: cs.onSurface),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: cs.onSecondaryContainer,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  body,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: cs.onSecondaryContainer,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _PromptCard extends StatelessWidget {
   const _PromptCard({required this.prompt, required this.onPost});
 
@@ -1167,29 +1164,46 @@ class _PromptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.wb_sunny_outlined, color: cs.primary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              prompt,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          Row(
+            children: [
+              Icon(Icons.wb_sunny_outlined, color: cs.primary, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Today\'s prompt',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            prompt,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(width: 10),
-          FilledButton.tonal(onPressed: onPost, child: const Text('Respond')),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onPost,
+              child: const Text('Write a post'),
+            ),
+          ),
         ],
       ),
     );
@@ -1210,7 +1224,7 @@ class _EmptyCommunityState extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(24),
@@ -1227,7 +1241,7 @@ class _EmptyCommunityState extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Start with a check-in, question, win, tip, or support request.',
+            'Start with a simple check-in or question.',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -1256,7 +1270,7 @@ class _ComposerDock extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
       decoration: BoxDecoration(
         color: cs.surface,
         boxShadow: [
@@ -1272,15 +1286,15 @@ class _ComposerDock extends StatelessWidget {
           Expanded(
             child: InkWell(
               onTap: onTap,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(18),
               child: Ink(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 14,
+                  vertical: 13,
                 ),
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Row(
                   children: [
@@ -1290,7 +1304,7 @@ class _ComposerDock extends StatelessWidget {
                       child: Text(
                         userNickname == null
                             ? 'Join with a nickname to post'
-                            : 'Share a check-in or ask for support...',
+                            : 'Write a post...',
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                     ),
@@ -1298,12 +1312,6 @@ class _ComposerDock extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          FilledButton.icon(
-            onPressed: userNickname == null ? null : onTap,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Post'),
           ),
         ],
       ),
@@ -1317,7 +1325,7 @@ class _PostCard extends StatelessWidget {
     required this.currentUserId,
     required this.canPin,
     required this.onReply,
-    required this.onReact,
+    required this.onLike,
     required this.onReport,
     required this.onDelete,
     required this.onPin,
@@ -1327,7 +1335,7 @@ class _PostCard extends StatelessWidget {
   final String? currentUserId;
   final bool canPin;
   final VoidCallback onReply;
-  final void Function(String reaction) onReact;
+  final VoidCallback onLike;
   final VoidCallback onReport;
   final VoidCallback onDelete;
   final VoidCallback onPin;
@@ -1342,13 +1350,18 @@ class _PostCard extends StatelessWidget {
     final reactionCounts = Map<String, dynamic>.from(
       data['reactionCounts'] as Map? ?? {},
     );
-    final isPinned = data['isPinned'] == true;
+    final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
+    final String displayName =
+        (type == 'system_join'
+            ? (data['miniMeName'] ?? data['nickname'])
+            : data['nickname']) ??
+        'Anonymous';
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
       ),
       child: Column(
@@ -1357,50 +1370,38 @@ class _PostCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.primaryContainer,
-                ),
-                child: Center(
-                  child: Text(
-                    ((data['nickname'] ?? '?') as String).characters.first
-                        .toUpperCase(),
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: cs.onPrimaryContainer,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
+              MiniMeAvatarBadge(
+                size: 52,
+                padding: 4,
+                backgroundColor: cs.primaryContainer,
+                borderColor: cs.outlineVariant.withValues(alpha: 0.35),
+                bodyModel: miniMe['bodyModel'] as String?,
+                hairModel: miniMe['hairModel'] as String?,
+                shirtModel: miniMe['shirtModel'] as String?,
+                bodyWidthScale: (miniMe['bodyWidthScale'] as num?)?.toDouble(),
+                companionId: miniMe['companionId'] as String?,
+                isHatched: miniMe['isHatched'] as bool? ?? true,
+                degradationLevel:
+                    (miniMe['degradationLevel'] as num?)?.toDouble() ?? 0,
+                fallbackLabel: displayName,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      data['nickname'] ?? 'Anonymous',
+                      displayName,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _TypeChip(type: type),
-                        _TinyPill(
-                          label: _timeLabel(
-                            (data['createdAt'] as Timestamp?)?.toDate(),
-                          ),
-                        ),
-                        if (isPinned) const _TinyPill(label: 'Pinned'),
-                        if (data['userId'] == 'system')
-                          const _TinyPill(label: 'Auto-seeded'),
-                      ],
+                    const SizedBox(height: 2),
+                    Text(
+                      _timeLabel((data['createdAt'] as Timestamp?)?.toDate()),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -1418,12 +1419,13 @@ class _PostCard extends StatelessWidget {
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'reply', child: Text('Reply')),
-                  if (!isMine)
+                  if (type != 'system_join')
+                    const PopupMenuItem(value: 'reply', child: Text('Reply')),
+                  if (!isMine && type != 'system_join')
                     const PopupMenuItem(value: 'report', child: Text('Report')),
-                  if (isMine)
+                  if (isMine && type != 'system_join')
                     const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  if (canPin)
+                  if (canPin && type != 'system_join')
                     const PopupMenuItem(
                       value: 'pin',
                       child: Text('Pin to header'),
@@ -1432,274 +1434,61 @@ class _PostCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Text(
             data['text'] ?? '',
             style: theme.textTheme.bodyLarge?.copyWith(height: 1.35),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _PostReactionBar(
-                  postDoc: postDoc,
-                  currentUserId: currentUserId,
-                  reactionCounts: reactionCounts,
-                  onReact: onReact,
+          if (type != 'system_join') ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: onReply,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Ink(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.surface.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.reply_rounded,
+                            color: cs.primary,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${data['replyCount'] ?? 0} replies',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: onReply,
-            borderRadius: BorderRadius.circular(14),
-            child: Ink(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: cs.surface.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.reply_rounded, color: cs.primary, size: 18),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${data['replyCount'] ?? 0} replies',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Open thread',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PostReactionBar extends StatelessWidget {
-  const _PostReactionBar({
-    required this.postDoc,
-    required this.currentUserId,
-    required this.reactionCounts,
-    required this.onReact,
-  });
-
-  final QueryDocumentSnapshot<Map<String, dynamic>> postDoc;
-  final String? currentUserId;
-  final Map<String, dynamic> reactionCounts;
-  final void Function(String reaction) onReact;
-
-  @override
-  Widget build(BuildContext context) {
-    if (currentUserId == null) {
-      return Row(
-        children: [
-          _ReactionButton(
-            icon: Icons.favorite_border_rounded,
-            label: 'Support',
-            count: (reactionCounts['support'] ?? 0) as int,
-            isSelected: false,
-            onTap: () => onReact('support'),
-          ),
-          const SizedBox(width: 8),
-          _ReactionButton(
-            icon: Icons.lightbulb_outline_rounded,
-            label: 'Helpful',
-            count: (reactionCounts['helpful'] ?? 0) as int,
-            isSelected: false,
-            onTap: () => onReact('helpful'),
-          ),
-          const SizedBox(width: 8),
-          _ReactionButton(
-            icon: Icons.celebration_outlined,
-            label: 'Celebrate',
-            count: (reactionCounts['celebrate'] ?? 0) as int,
-            isSelected: false,
-            onTap: () => onReact('celebrate'),
-          ),
-        ],
-      );
-    }
-
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: postDoc.reference
-          .collection('reactions')
-          .doc(currentUserId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        final currentReaction = snapshot.data?.data()?['type'] as String?;
-        return Row(
-          children: [
-            _ReactionButton(
-              icon: Icons.favorite_border_rounded,
-              label: 'Support',
-              count: (reactionCounts['support'] ?? 0) as int,
-              isSelected: currentReaction == 'support',
-              onTap: () => onReact('support'),
-            ),
-            const SizedBox(width: 8),
-            _ReactionButton(
-              icon: Icons.lightbulb_outline_rounded,
-              label: 'Helpful',
-              count: (reactionCounts['helpful'] ?? 0) as int,
-              isSelected: currentReaction == 'helpful',
-              onTap: () => onReact('helpful'),
-            ),
-            const SizedBox(width: 8),
-            _ReactionButton(
-              icon: Icons.celebration_outlined,
-              label: 'Celebrate',
-              count: (reactionCounts['celebrate'] ?? 0) as int,
-              isSelected: currentReaction == 'celebrate',
-              onTap: () => onReact('celebrate'),
+                const SizedBox(width: 10),
+                _LikeButton(
+                  postRef: postDoc.reference,
+                  currentUserId: currentUserId,
+                  count: (reactionCounts['like'] ?? 0) as int,
+                  onTap: onLike,
+                ),
+              ],
             ),
           ],
-        );
-      },
-    );
-  }
-}
-
-class _ReactionButton extends StatelessWidget {
-  const _ReactionButton({
-    required this.icon,
-    required this.label,
-    required this.count,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final int count;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? cs.primaryContainer
-              : cs.surface.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: isSelected
-                ? cs.primary.withValues(alpha: 0.35)
-                : Colors.transparent,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isSelected ? cs.onPrimaryContainer : cs.primary,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '$label $count',
-              style: TextStyle(
-                color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TypeChip extends StatelessWidget {
-  const _TypeChip({required this.type});
-
-  final String type;
-
-  @override
-  Widget build(BuildContext context) {
-    final meta = _postTypes[type] ?? _postTypes['check_in']!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: meta.background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(meta.icon, size: 14, color: meta.foreground),
-          const SizedBox(width: 6),
-          Text(
-            meta.label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: meta.foreground,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
         ],
       ),
     );
   }
-}
-
-class _TinyPill extends StatelessWidget {
-  const _TinyPill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: cs.surface.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: cs.onSurfaceVariant,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _PostTypeMeta {
-  const _PostTypeMeta({
-    required this.label,
-    required this.hint,
-    required this.icon,
-    required this.background,
-    required this.foreground,
-  });
-
-  final String label;
-  final String hint;
-  final IconData icon;
-  final Color background;
-  final Color foreground;
 }
 
 String _timeLabel(DateTime? time) {
@@ -1712,40 +1501,114 @@ String _timeLabel(DateTime? time) {
   return '${time.month}/${time.day}/${time.year}';
 }
 
+class _PostTypeMeta {
+  const _PostTypeMeta({required this.label, required this.hint});
+
+  final String label;
+  final String hint;
+}
+
 final Map<String, _PostTypeMeta> _postTypes = {
   'check_in': const _PostTypeMeta(
     label: 'Check-in',
-    hint: 'How are you doing today, and what pattern are you noticing?',
-    icon: Icons.waving_hand_rounded,
-    background: Color(0xFFE7F2FF),
-    foreground: Color(0xFF245A94),
+    hint: 'Share a quick update on how you are doing.',
   ),
   'question': const _PostTypeMeta(
     label: 'Question',
-    hint: 'What would you like the community to help you figure out?',
-    icon: Icons.help_outline_rounded,
-    background: Color(0xFFFFF1DB),
-    foreground: Color(0xFF9A5B00),
+    hint: 'Ask the sphere something simple and specific.',
   ),
   'win': const _PostTypeMeta(
     label: 'Win',
-    hint: 'Celebrate a small win so others can cheer you on.',
-    icon: Icons.emoji_events_outlined,
-    background: Color(0xFFE5F8E9),
-    foreground: Color(0xFF207245),
+    hint: 'Share a small win from today or this week.',
   ),
   'tip': const _PostTypeMeta(
     label: 'Tip',
-    hint: 'Share a practical tip that genuinely helped.',
-    icon: Icons.tips_and_updates_outlined,
-    background: Color(0xFFF1E9FF),
-    foreground: Color(0xFF6E42C1),
+    hint: 'Share something that helped you.',
   ),
   'support': const _PostTypeMeta(
     label: 'Support',
-    hint: 'What kind of support do you need from the sphere right now?',
-    icon: Icons.favorite_outline_rounded,
-    background: Color(0xFFFFE6ED),
-    foreground: Color(0xFFB3265C),
+    hint: 'Tell the sphere what support you need.',
   ),
 };
+
+class _LikeButton extends StatelessWidget {
+  const _LikeButton({
+    required this.postRef,
+    required this.currentUserId,
+    required this.count,
+    required this.onTap,
+  });
+
+  final DocumentReference<Map<String, dynamic>> postRef;
+  final String? currentUserId;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    if (currentUserId == null) {
+      return InkWell(
+        onTap: null,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: cs.surface.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.favorite_border_rounded, color: cs.primary, size: 18),
+              if (count > 0) ...[const SizedBox(width: 6), Text('$count')],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: postRef.collection('reactions').doc(currentUserId).snapshots(),
+      builder: (context, snapshot) {
+        final liked = snapshot.data?.data()?['type'] == 'like';
+        return InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: liked
+                  ? cs.primaryContainer.withValues(alpha: 0.8)
+                  : cs.surface.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  liked
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: liked ? cs.primary : cs.onSurfaceVariant,
+                  size: 18,
+                ),
+                if (count > 0) ...[
+                  const SizedBox(width: 6),
+                  Text(
+                    '$count',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: liked ? cs.primary : cs.onSurface,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
