@@ -5,6 +5,7 @@ import 'package:lifelens/exercises/exercise_screen.dart';
 import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/moodlog_store.dart';
+import 'package:lifelens/screens/history_calendar_screen.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
 import 'package:lifelens/screens/suggestions_screen.dart';
 import 'package:lifelens/screens/symptoms_screen.dart';
@@ -23,6 +24,7 @@ class LogHubScreen extends StatefulWidget {
 
 class _LogHubScreenState extends State<LogHubScreen> {
   int _dashboardRefreshTick = 0;
+  DateTime _selectedHistoryDate = DateTime.now();
 
   Future<void> _openTracker(Widget screen) async {
     final moodStore = context.read<MoodLogStore>();
@@ -35,6 +37,16 @@ class _LogHubScreenState extends State<LogHubScreen> {
     await sleepStore.refresh();
     if (!mounted) return;
     setState(() => _dashboardRefreshTick += 1);
+  }
+
+  Future<void> _openSelectedDayLogs(DateTime date) async {
+    _selectedHistoryDate = date;
+    await _openTracker(
+      HistoryCalendarScreen(
+        initialDate: date,
+        showCalendar: false,
+      ),
+    );
   }
 
   @override
@@ -62,6 +74,16 @@ class _LogHubScreenState extends State<LogHubScreen> {
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: cs.onSurfaceVariant,
                 ),
+              ),
+              const SizedBox(height: 18),
+              const _SectionHeader(title: 'Calendar'),
+              const SizedBox(height: 12),
+              HistoryCalendarView(
+                showIntro: false,
+                embedded: true,
+                showDetails: false,
+                initialDate: _selectedHistoryDate,
+                onDateSelected: _openSelectedDayLogs,
               ),
               const SizedBox(height: 18),
               _TodayDashboard(

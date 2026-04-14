@@ -136,8 +136,6 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                   onRetry: _loadSuggestions,
                 ),
               ] else if (_snapshot != null) ...[
-                _SuggestionsSummaryCard(snapshot: _snapshot!),
-                const SizedBox(height: 16),
                 ..._snapshot!.suggestions.map(
                   (item) => Padding(
                     padding: const EdgeInsets.only(bottom: 14),
@@ -153,66 +151,6 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
         ),
       ),
     );
-  }
-}
-
-class _SuggestionsSummaryCard extends StatelessWidget {
-  const _SuggestionsSummaryCard({required this.snapshot});
-
-  final DailySuggestionsSnapshot snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            cs.primaryContainer.withValues(alpha: 0.9),
-            cs.secondaryContainer.withValues(alpha: 0.7),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Current snapshot',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-              color: cs.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            snapshot.summary,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Updated ${_formatTime(snapshot.generatedAt)}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onPrimaryContainer.withValues(alpha: 0.8),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _formatTime(DateTime value) {
-    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
-    final minute = value.minute.toString().padLeft(2, '0');
-    final suffix = value.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $suffix';
   }
 }
 
