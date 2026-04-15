@@ -447,10 +447,12 @@ class _CalendarCard extends StatelessWidget {
               final inMonth = day.month == visibleMonth.month;
               final isSelected = _isSameDay(day, selectedDate);
               final isToday = _isSameDay(day, today);
+              final isFutureDay = day.isAfter(today);
+              final isEnabled = inMonth && !isFutureDay;
 
               return InkWell(
                 borderRadius: BorderRadius.circular(14),
-                onTap: inMonth ? () => onDateSelected(day) : null,
+                onTap: isEnabled ? () => onDateSelected(day) : null,
                 child: Container(
                   decoration: BoxDecoration(
                     color: isSelected
@@ -458,7 +460,7 @@ class _CalendarCard extends StatelessWidget {
                         : isToday
                             ? cs.secondaryContainer.withValues(alpha: 0.45)
                             : cs.surfaceContainerHighest.withValues(
-                                alpha: inMonth ? 0.25 : 0.08,
+                                alpha: isEnabled ? 0.25 : 0.08,
                               ),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
@@ -476,7 +478,7 @@ class _CalendarCard extends StatelessWidget {
                         fontWeight: isSelected || isToday
                             ? FontWeight.w800
                             : FontWeight.w600,
-                        color: inMonth
+                        color: isEnabled
                             ? cs.onSurface
                             : cs.onSurfaceVariant.withValues(alpha: 0.45),
                       ),

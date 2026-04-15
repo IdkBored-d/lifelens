@@ -37,6 +37,47 @@ List<String> _sanitizeRecentMoods(List<String> rawItems) {
   return normalized;
 }
 
+String _truncateText(String value, int maxLength) {
+  final trimmed = value.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return trimmed.substring(0, maxLength).trimRight();
+}
+
+List<String> _truncateListItems(
+  List<String> values, {
+  required int maxItems,
+  required int maxItemLength,
+}) {
+  return values
+      .map((item) => _truncateText(item, maxItemLength))
+      .where((item) => item.isNotEmpty)
+      .take(maxItems)
+      .toList(growable: false);
+}
+
+List<MiniMeChatTurn> _truncateHistory(
+  List<MiniMeChatTurn> history, {
+  int maxItems = 20,
+  int maxItemLength = 2000,
+}) {
+  final trimmed = history
+      .map(
+        (item) => MiniMeChatTurn(
+          role: item.role.trim().toLowerCase(),
+          text: _truncateText(item.text, maxItemLength),
+        ),
+      )
+      .where((item) => item.text.isNotEmpty)
+      .toList(growable: false);
+
+  if (trimmed.length <= maxItems) {
+    return trimmed;
+  }
+  return trimmed.sublist(trimmed.length - maxItems);
+}
+
 class MiniMeChatTurn {
   const MiniMeChatTurn({required this.role, required this.text});
 
@@ -411,18 +452,29 @@ class MiniMeBackendService {
   }) async {
     final canonicalMoodLabel = _sanitizeMoodLabel(moodLabel);
     final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+    final sanitizedHistory = _truncateHistory(history);
+    final sanitizedSymptoms = _truncateListItems(
+      activeSymptoms,
+      maxItems: 20,
+      maxItemLength: 120,
+    );
+    final sanitizedMoodNotes = _truncateText(moodNotes, 1000);
+    final sanitizedSummaryContext = summaryContext == null
+        ? null
+        : _truncateText(summaryContext, 8000);
+    final sanitizedUserMessage = _truncateText(userMessage, 2000);
 
     final payload = <String, dynamic>{
-      'user_message': userMessage,
+      'user_message': sanitizedUserMessage,
       'latest_mood_label': canonicalMoodLabel,
       'latest_mood_intensity': moodIntensity,
-      'latest_mood_notes': moodNotes,
+      'latest_mood_notes': sanitizedMoodNotes,
       'recent_moods': canonicalRecentMoods,
-      'active_symptoms': activeSymptoms,
-      'chat_history': history.map((e) => e.toJson()).toList(),
+      'active_symptoms': sanitizedSymptoms,
+      'chat_history': sanitizedHistory.map((e) => e.toJson()).toList(),
     };
-    if (summaryContext != null && summaryContext.trim().isNotEmpty) {
-      payload['summary_context'] = summaryContext.trim();
+    if (sanitizedSummaryContext != null && sanitizedSummaryContext.isNotEmpty) {
+      payload['summary_context'] = sanitizedSummaryContext;
     }
     if (intelligence != null) {
       payload['intelligence_tier'] = intelligence.interventionTier;
@@ -479,18 +531,33 @@ class MiniMeBackendService {
   }) async {
     final canonicalMoodLabel = _sanitizeMoodLabel(latestMoodLabel);
     final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+    final sanitizedRecentLogs = _truncateListItems(
+      recentLogs,
+      maxItems: 12,
+      maxItemLength: 1000,
+    );
+    final sanitizedSymptoms = _truncateListItems(
+      activeSymptoms,
+      maxItems: 20,
+      maxItemLength: 120,
+    );
+    final sanitizedHistory = _truncateHistory(history);
+    final sanitizedMoodNotes = _truncateText(latestMoodNotes, 1000);
+    final sanitizedSummaryContext = summaryContext == null
+        ? null
+        : _truncateText(summaryContext, 8000);
 
     final payload = {
       'latest_mood_label': canonicalMoodLabel,
       'latest_mood_intensity': latestMoodIntensity,
-      'latest_mood_notes': latestMoodNotes,
+      'latest_mood_notes': sanitizedMoodNotes,
       'recent_moods': canonicalRecentMoods,
-      'recent_logs': recentLogs,
-      'active_symptoms': activeSymptoms,
-      'chat_history': history.map((e) => e.toJson()).toList(),
+      'recent_logs': sanitizedRecentLogs,
+      'active_symptoms': sanitizedSymptoms,
+      'chat_history': sanitizedHistory.map((e) => e.toJson()).toList(),
     };
-    if (summaryContext != null && summaryContext.trim().isNotEmpty) {
-      payload['summary_context'] = summaryContext.trim();
+    if (sanitizedSummaryContext != null && sanitizedSummaryContext.isNotEmpty) {
+      payload['summary_context'] = sanitizedSummaryContext;
     }
 
     Object? lastError;
@@ -536,19 +603,34 @@ class MiniMeBackendService {
   }) async {
     final canonicalMoodLabel = _sanitizeMoodLabel(latestMoodLabel);
     final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+    final sanitizedRecentLogs = _truncateListItems(
+      recentLogs,
+      maxItems: 12,
+      maxItemLength: 1000,
+    );
+    final sanitizedSymptoms = _truncateListItems(
+      activeSymptoms,
+      maxItems: 20,
+      maxItemLength: 120,
+    );
+    final sanitizedHistory = _truncateHistory(history);
+    final sanitizedMoodNotes = _truncateText(latestMoodNotes, 1000);
+    final sanitizedSummaryContext = summaryContext == null
+        ? null
+        : _truncateText(summaryContext, 8000);
 
     final payload = {
       'latest_mood_label': canonicalMoodLabel,
       'latest_mood_intensity': latestMoodIntensity,
-      'latest_mood_notes': latestMoodNotes,
+      'latest_mood_notes': sanitizedMoodNotes,
       'recent_moods': canonicalRecentMoods,
-      'recent_logs': recentLogs,
-      'active_symptoms': activeSymptoms,
-      'chat_history': history.map((e) => e.toJson()).toList(),
+      'recent_logs': sanitizedRecentLogs,
+      'active_symptoms': sanitizedSymptoms,
+      'chat_history': sanitizedHistory.map((e) => e.toJson()).toList(),
       'exercises': exercises.map((e) => e.toJson()).toList(),
     };
-    if (summaryContext != null && summaryContext.trim().isNotEmpty) {
-      payload['summary_context'] = summaryContext.trim();
+    if (sanitizedSummaryContext != null && sanitizedSummaryContext.isNotEmpty) {
+      payload['summary_context'] = sanitizedSummaryContext;
     }
 
     Object? lastError;

@@ -25,6 +25,7 @@ class LogHubScreen extends StatefulWidget {
 class _LogHubScreenState extends State<LogHubScreen> {
   int _dashboardRefreshTick = 0;
   DateTime _selectedHistoryDate = DateTime.now();
+  final ExerciseStore _exerciseStore = ExerciseStore();
 
   Future<void> _openTracker(Widget screen) async {
     final moodStore = context.read<MoodLogStore>();
@@ -47,6 +48,15 @@ class _LogHubScreenState extends State<LogHubScreen> {
         showCalendar: false,
       ),
     );
+  }
+
+  Future<bool> _hasAnyExerciseLogsToday() async {
+    await _exerciseStore.ensureReady();
+    final today = DateTime.now();
+    return _exerciseStore.getRecentExerciseHistory(limit: 30).any((item) {
+      final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
+      return timestamp != null && _isSameDay(timestamp, today);
+    });
   }
 
   @override
@@ -84,11 +94,6 @@ class _LogHubScreenState extends State<LogHubScreen> {
                 showDetails: false,
                 initialDate: _selectedHistoryDate,
                 onDateSelected: _openSelectedDayLogs,
-              ),
-              const SizedBox(height: 18),
-              _TodayDashboard(
-                key: ValueKey(_dashboardRefreshTick),
-                refreshTick: _dashboardRefreshTick,
               ),
               const SizedBox(height: 18),
               const _SectionHeader(title: 'Trackers'),
@@ -129,10 +134,70 @@ class _LogHubScreenState extends State<LogHubScreen> {
                   ),
                 ],
               ),
+              _DashboardVisibilityGate(
+                refreshKey: ValueKey(_dashboardRefreshTick),
+                hasAnyExerciseLogsToday: _hasAnyExerciseLogsToday,
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DashboardVisibilityGate extends StatelessWidget {
+  const _DashboardVisibilityGate({
+    required this.refreshKey,
+    required this.hasAnyExerciseLogsToday,
+  });
+
+  final Key refreshKey;
+  final Future<bool> Function() hasAnyExerciseLogsToday;
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<MoodLogStore, SleepStore>(
+      builder: (context, moodStore, sleepStore, _) {
+        return StreamBuilder<List<SymptomEntry>>(
+          stream: AppServices.isar.watchRecentSymptomEntries(limit: 1),
+          builder: (context, symptomSnapshot) {
+            return FutureBuilder<bool>(
+              future: hasAnyExerciseLogsToday(),
+              builder: (context, exerciseSnapshot) {
+                final now = DateTime.now();
+                final hasMoodLogs = moodStore.items.any(
+                  (item) => _isSameDay(item.createdAt, now),
+                );
+                final hasSleepLogs = sleepStore.items.any(
+                  (item) =>
+                      _isSameDay(item.date, now) ||
+                      _isSameDay(item.wakeTime, now),
+                );
+                final hasSymptomLogs = (symptomSnapshot.data ?? const <SymptomEntry>[])
+                    .any((entry) => _isSameDay(entry.timestamp, now));
+                final hasExerciseLogs = exerciseSnapshot.data ?? false;
+                final hasAnyLogsToday = hasMoodLogs ||
+                    hasSleepLogs ||
+                    hasSymptomLogs ||
+                    hasExerciseLogs;
+
+                if (!hasAnyLogsToday) {
+                  return const SizedBox.shrink();
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: 18),
+                  child: _TodayDashboard(
+                    key: refreshKey,
+                    refreshTick: 0,
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -267,10 +332,6 @@ class _TodayDashboardState extends State<_TodayDashboard> {
                                     _isSameDay(latestMood.createdAt, now)
                                 ? latestMood.moodLabel
                                 : 'Not logged',
-                            detail: latestMood != null &&
-                                    _isSameDay(latestMood.createdAt, now)
-                                ? '${latestMood.intensity}/5'
-                                : null,
                           ),
                           _TodayMetricTile(
                             icon: Icons.nightlight_round,

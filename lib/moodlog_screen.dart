@@ -23,7 +23,6 @@ class MoodLogScreen extends StatefulWidget {
 
 class _MoodLogScreenState extends State<MoodLogScreen> {
   int selectedMood = -1;
-  double intensity = 3;
   LogButtonVisualState _buttonState = LogButtonVisualState.idle;
   final notesCtrl = TextEditingController();
   final Set<String> tags = {};
@@ -71,7 +70,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     if (draft != null && draft.hasContent) {
       setState(() {
         selectedMood = draft.selectedMood;
-        intensity = draft.intensity.clamp(1, 5);
         notesCtrl.text = draft.notes;
         tags
           ..clear()
@@ -92,7 +90,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     return MoodLogDraftStorageService.instance.save(
       MoodLogDraft(
         selectedMood: selectedMood,
-        intensity: intensity,
         notes: notesCtrl.text.trim(),
         tags: tags.toList(growable: false),
       ),
@@ -101,21 +98,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
 
   Future<void> _clearDraft() async {
     await MoodLogDraftStorageService.instance.clear();
-  }
-
-  String get intensityLabel {
-    switch (intensity.toInt()) {
-      case 1:
-        return "Very low";
-      case 2:
-        return "Low";
-      case 3:
-        return "Moderate";
-      case 4:
-        return "High";
-      default:
-        return "Very high";
-    }
   }
 
   String moodHint(String label) {
@@ -139,16 +121,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     }
   }
 
-  BoxShadow intensityGlow(ColorScheme cs) {
-    final t = (intensity - 1) / 4;
-
-    return BoxShadow(
-      color: cs.primary.withOpacity(0.20 + t * 0.45),
-      blurRadius: 10 + t * 18,
-      spreadRadius: 1 + t * 2.5,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -166,7 +138,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
             onPressed: () async {
               setState(() {
                 selectedMood = -1;
-                intensity = 3;
                 notesCtrl.clear();
                 tags.clear();
               });
@@ -201,8 +172,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                 if (!_restoringDraft &&
                     (selectedMood != -1 ||
                         notesCtrl.text.trim().isNotEmpty ||
-                        tags.isNotEmpty ||
-                        intensity != 3)) ...[
+                        tags.isNotEmpty)) ...[
                   const SizedBox(height: 10),
                   Text(
                     "Draft saved automatically",
@@ -315,59 +285,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _SectionHeader(
-                        title: "Intensity",
-                        trailing: "$intensityLabel · ${intensity.toInt()}/5",
-                      ),
-                      const SizedBox(height: 8),
-
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(999),
-                          boxShadow: [intensityGlow(cs)],
-                        ),
-                        child: Text(
-                          intensityLabel,
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: cs.onPrimaryContainer,
-                          ),
-                        ),
-                      ),
-
-                      Slider(
-                        value: intensity,
-                        min: 1,
-                        max: 5,
-                        divisions: 4,
-                        onChanged: (v) {
-                          HapticFeedback.selectionClick();
-                          setState(() => intensity = v);
-                          _persistDraft();
-                        },
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("1", style: theme.textTheme.labelMedium),
-                          Text("5", style: theme.textTheme.labelMedium),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                _SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
                       const _SectionHeader(title: "Context (optional)"),
                       const SizedBox(height: 10),
 
@@ -434,18 +351,18 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             final m = moods[selectedMood];
                             final notes = notesCtrl.text.trim();
 
-                            // Compose log text: notes are primary, tags + intensity appended for ML context.
+                            // Compose log text: notes are primary, tags appended for context.
                             final tagPart = tags.isNotEmpty
                                 ? ' [context: ${tags.join(', ')}]'
                                 : '';
                             final userLog =
-                                '${notes.isNotEmpty ? notes : m.label}$tagPart [intensity: ${intensity.toInt()}/5]';
+                                '${notes.isNotEmpty ? notes : m.label}$tagPart';
 
                             try {
                               final now = DateTime.now();
                               final persistedSummary = notes.isEmpty
-                                  ? 'Intensity ${intensity.toInt()}/5'
-                                  : 'Intensity ${intensity.toInt()}/5 · $notes';
+                                  ? m.label
+                                  : notes;
                               final moodEntry = MoodEntry()
                                 ..date = now.toIso8601String().substring(0, 10)
                                 ..rawLog = userLog
@@ -467,7 +384,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                   MoodCheckIn(
                                     moodLabel: m.label,
                                     emoji: m.emoji,
-                                    intensity: intensity.toInt(),
+                                    intensity: 3,
                                     tags: tags.toList(growable: false),
                                     notes: notes,
                                     createdAt: now,
@@ -477,7 +394,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               try {
                                 await _syncMoodToCloud(
                                   entry: moodEntry,
-                                  intensityValue: intensity.toInt(),
                                   selectedTags: tags.toList(growable: false),
                                 );
                               } catch (_) {
@@ -531,7 +447,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 selectedMood = -1;
                                 notesCtrl.clear();
                                 tags.clear();
-                                intensity = 3;
                                 _restoringDraft = false;
                                 _buttonState = LogButtonVisualState.idle;
                               });
@@ -557,7 +472,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
 
   Future<void> _syncMoodToCloud({
     required MoodEntry entry,
-    required int intensityValue,
     required List<String> selectedTags,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -580,7 +494,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
           'userConfirmed': entry.userConfirmed,
           'responseText': entry.responseText,
           'fitnessScoreSnapshot': entry.fitnessScoreSnapshot,
-          'intensity': intensityValue,
           'tags': selectedTags,
           'createdAt': Timestamp.fromDate(entry.timestamp),
         });

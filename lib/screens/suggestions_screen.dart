@@ -135,6 +135,11 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                   message: _errorMessage!,
                   onRetry: _loadSuggestions,
                 ),
+              ] else if (_snapshot != null &&
+                  _snapshot!.suggestions.isEmpty) ...[
+                _SuggestionsEmptyCard(
+                  onRefresh: _loadSuggestions,
+                ),
               ] else if (_snapshot != null) ...[
                 ..._snapshot!.suggestions.map(
                   (item) => Padding(
@@ -275,6 +280,48 @@ class _SuggestionLoadingCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(22),
+      ),
+    );
+  }
+}
+
+class _SuggestionsEmptyCard extends StatelessWidget {
+  const _SuggestionsEmptyCard({
+    required this.onRefresh,
+  });
+
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'No suggestions are ready yet.',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try refreshing after you log a little more or after the backend finishes starting up.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: onRefresh,
+            child: const Text('Refresh'),
+          ),
+        ],
       ),
     );
   }
