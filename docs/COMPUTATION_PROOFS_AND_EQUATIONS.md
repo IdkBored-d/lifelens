@@ -38,6 +38,128 @@ You only need those if the professor asks for deeper math.
 
 "LifeLens uses local AI plus deterministic trend logic. For mood, we compute softmax probabilities and only accept predictions after three confidence checks: floor, class threshold, and ambiguity margin. Trends are computed from stored entries using daily deduplication, run grouping, and fitness deltas. Streaks are computed from consecutive logged days. Reliability is local-first: write to Isar first, then cloud sync. So even if cloud fails, the local source of truth remains correct and summaries can be regenerated."
 
+## Professor 5-Step Trace (Exact LifeLens Version)
+
+Use this section if you want one clean end-to-end explanation with real app constants.
+
+### 1) Data goes in -> numeric vector
+
+The app converts raw user input (mood text, symptom text, logs, health signals) into numeric tensors/vectors used by the models.
+
+```text
+x = f(x_raw)
+```
+
+Where `f` is preprocessing + tokenization + feature construction.
+
+### 2) Model predicts -> probabilities
+
+Mood model output is converted to probabilities and ranked.
+
+```text
+p_i = exp(z_i) / sum_j exp(z_j)
+hat{y} = argmax_i p_i
+p_max = max_i p_i
+p_2 = second-largest probability
+Delta = p_max - p_2
+```
+
+Real class index mapping in LifeLens:
+
+```text
+index 0: sadness
+index 1: joy
+index 2: love
+index 3: anger
+index 4: fear
+index 5: surprise
+```
+
+### 3) Deterministic rules filter the prediction
+
+The app accepts only if all three checks pass.
+
+```text
+rule1: p_max >= 0.50
+rule2: p_max >= tau_class
+rule3: Delta >= 0.15
+accept = rule1 AND rule2 AND rule3
+```
+
+Real class thresholds used:
+
+```text
+sadness: 0.62
+joy: 0.62
+anger: 0.63
+fear: 0.65
+love: 0.67
+surprise: 0.71
+```
+
+### 4) Real runtime row + gate check
+
+Captured runtime probabilities:
+
+```text
+all_probs = [0.009, 0.000, 0.029, 0.001, 0.872, 0.088]
+```
+
+Mapped by class:
+
+```text
+sadness=0.009, joy=0.000, love=0.029, anger=0.001, fear=0.872, surprise=0.088
+```
+
+Computed values:
+
+```text
+p_max = 0.872 (fear)
+p_2   = 0.088 (surprise)
+Delta = 0.872 - 0.088 = 0.784
+```
+
+Gate results:
+
+```text
+rule1: 0.872 >= 0.50  -> pass
+rule2: 0.872 >= 0.65  -> pass  (fear threshold)
+rule3: 0.784 >= 0.15  -> pass
+accept = true
+```
+
+Final decision for this real row:
+
+```text
+predicted class = fear
+confidence status = accepted
+```
+
+### 5) Trend logic runs separately and deterministically
+
+After classification, trend/streak logic uses stored history and fixed formulas.
+
+```text
+delta_f = recent_fitness - oldest_fitness
+current_run = (start_days_ago - end_days_ago) + 1
+```
+
+Interpretation:
+
+```text
+delta_f > 0 -> up
+delta_f < 0 -> down
+delta_f = 0 -> stable
+```
+
+Key defense point:
+
+```text
+Same input -> same probabilities -> same gate checks -> same output.
+```
+
+This is why the system is deterministic and not arbitrary.
+
 ## 1) Symbols
 
 - `z_i`: raw logit for class `i`.

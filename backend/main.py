@@ -11,6 +11,7 @@ from typing import List, Any
 import time
 import json
 import asyncio
+import re
 
 from models.schemas import (
     SymptomInput,
@@ -285,11 +286,7 @@ async def get_disclaimer():
 
 
 def _build_minime_prompt(chat_input: MiniMeChatRequest, memory_state: MiniMeMemoryState) -> str:
-    latest_mood = chat_input.latest_mood_label or 'Unknown'
-    intensity = chat_input.latest_mood_intensity
-    mood_notes = chat_input.latest_mood_notes or 'None'
-    recent_moods = chat_input.recent_moods or ['No recent mood logs']
-    summary_context = (chat_input.summary_context or '').strip() or 'No summary context available.'
+    summary_context, context_block, persona_style = _resolve_companion_context(chat_input, memory_state)
 
     history_lines = []
     for item in chat_input.chat_history[-4:]:
@@ -309,38 +306,12 @@ def _build_minime_prompt(chat_input: MiniMeChatRequest, memory_state: MiniMeMemo
             'Do not claim a diagnosis.'
         )
 
-    # Build intelligence block — PRIMARY context when available
-    intel_block = ''
-    if chat_input.intelligence_tier:
-        state = chat_input.intelligence_state or {}
-        state_flags = [k.replace('_', ' ') for k, v in state.items() if v]
-        insights_text = ' | '.join(chat_input.intelligence_insights) if chat_input.intelligence_insights else 'none'
-        actions_text = ', '.join(
-            a.replace('_', ' ') for a in chat_input.intelligence_actions
-        ) if chat_input.intelligence_actions else 'none'
-        alert_text = chat_input.intelligence_alert or 'none'
-        intel_block = f"""
-Behavioral intelligence (supporting context only — never mention this analysis to the user):
-- Active flags: {', '.join(state_flags) if state_flags else 'none'}
-- Key patterns: {insights_text}
-- Suggested focus areas: {actions_text}
-- Alert: {alert_text}
-"""
-
     return f"""You are Mini-Me, a friendly personal wellness coach in the LifeLens app.
 
 {task}
-{intel_block}
-Memory context (PRIMARY truth for this turn):
-{_memory_state_to_structured_context(memory_state)}
-
-Supporting context:
-- Summary context (primary source from the summarization layer):
-{summary_context}
-- Latest mood: {latest_mood}
-- Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
-- Mood notes: {mood_notes}
-- Recent moods: {' | '.join(recent_moods)}
+{persona_style}
+Use this context block as truth for this turn:
+{context_block}
 
 Conversation so far:
 {history_text}
@@ -349,82 +320,136 @@ Current user message:
 {chat_input.user_message or '[none: opening suggestion requested]'}
 
 Rules:
-- Your response should be driven by the memory state and summary context above.
+- Your response should be driven by the context block above.
 - If an alert is present, gently check in — do not alarm, but ensure the user feels supported.
 - Keep response concise and relevant to current logs.
-- If the summary context suggests possible risk, recommend professional care calmly.
+- If the summary indicates possible risk, recommend professional care calmly.
 - Weave behavioral signals naturally into your guidance — never expose internal analysis or scores to the user.
 - Never output markdown lists unless asked.
 - Return plain text only.
 """
 
 
-def _memory_state_to_natural_context(memory_state: MiniMeMemoryState) -> str:
-    quick_track = memory_state.quick_track or {}
+def _sanitize_chat_summary_context(summary_context: str | None, max_words: int = 80) -> str:
+    text = (summary_context or '').strip()
+    if not text:
+        return 'No summary context available.'
 
-    confidence = quick_track.get("confidence")
-    state_flags = quick_track.get("state_flags") or []
-    actions = quick_track.get("actions") or []
-
-    key_points_text = "; ".join(memory_state.key_points[:4]) if memory_state.key_points else "none"
-    flags_text = ", ".join(str(item) for item in state_flags) if state_flags else "none"
-    actions_text = ", ".join(str(item).replace("_", " ") for item in actions) if actions else "none"
-
-    if isinstance(confidence, (int, float)):
-        confidence_text = f"{confidence:.2f}"
-    else:
-        confidence_text = "unknown"
-
-    return (
-        f"Summary: {memory_state.summary}\n"
-        f"Mood state: {memory_state.mood_state}. Risk level: {memory_state.risk}.\n"
-        f"Confidence: {confidence_text}.\n"
-        f"Key points: {key_points_text}.\n"
-        f"Active state flags: {flags_text}. Suggested focus actions: {actions_text}."
+    text = ' '.join(text.split())
+    text = re.sub(
+        r"\b(?:sleep_avg_3|mood_avg_3|sleep_slope|mood_slope|risk|trend)\s*=\s*-?\d+(?:\.\d+)?\b",
+        '',
+        text,
+        flags=re.IGNORECASE,
     )
+    text = re.sub(r"\s+", ' ', text).strip(' .,')
+
+    words = [w for w in text.split(' ') if w]
+    if len(words) > max_words:
+        text = ' '.join(words[:max_words]).rstrip(' ,') + '.'
+
+    return text or 'No summary context available.'
 
 
-def _memory_state_to_structured_context(memory_state: MiniMeMemoryState) -> str:
-    """Build a structured context card from memory state for chat prompt."""
-    quick_track = memory_state.quick_track or {}
-    
-    # Extract risk context
-    risk_level = memory_state.risk.upper()
-    alert = (quick_track.get("alert") or "").strip()
-    actions = quick_track.get("actions") or []
-    
-    # Build context line with actionable guidance
-    if memory_state.risk == "high":
-        risk_context = f"RISK: {risk_level}."
-        if alert:
-            risk_context += f" Alert: {alert}"
-        else:
-            risk_context += " Consider reaching out to someone you trust or a professional."
-    elif memory_state.risk == "medium":
-        risk_context = f"RISK: {risk_level}. Stay mindful of patterns."
-    else:
-        risk_context = f"RISK: {risk_level}."
-    
-    # Extract mood and symptoms from key_points
-    mood_label = "Unknown"
-    symptoms_list = []
-    
-    for key_point in (memory_state.key_points or []):
-        if key_point.startswith("mood label:"):
-            mood_label = key_point.replace("mood label:", "").strip().title()
-        if key_point.startswith("symptoms reported:"):
-            symptoms_str = key_point.replace("symptoms reported:", "").strip()
-            symptoms_list = [s.strip().title() for s in symptoms_str.split(",") if s.strip()]
-    
-    symptoms_text = ", ".join(symptoms_list) if symptoms_list else "None"
-    
-    # Build structured card
+def _build_companion_context_block(
+    chat_input: MiniMeChatRequest,
+    memory_state: MiniMeMemoryState,
+    summary_context: str,
+) -> str:
+    risk_line = _memory_state_to_risk_line(memory_state)
+    condition_text = ', '.join([c for c in chat_input.condition_labels if c]) or 'None reported'
+
+    symptom_values = [s.strip() for s in chat_input.active_symptoms if s.strip()]
+    symptoms_text = ', '.join(symptom_values) if symptom_values else 'None reported'
+
+    step_chunks = []
+    for symptom in symptom_values[:4]:
+        step_text = (chat_input.symptom_steps or {}).get(symptom, '').strip()
+        if not step_text:
+            continue
+        step_chunks.append(f"For {symptom} - {step_text}.")
+    symptom_steps_text = ' '.join(step_chunks) if step_chunks else 'N/A'
+
+    mood = chat_input.latest_mood_label or 'Unknown'
+    general = [g.strip() for g in chat_input.general_steps if g.strip()]
+    general_text = ' '.join(general[:4]) if general else 'Drink water. Take a short breathing pause. Reassess in 20 minutes.'
+
     return (
-        f"[CONTEXT: {risk_context}\n"
+        f"[CONTEXT: {risk_line}\n"
+        f"CONDITION: {condition_text}.\n"
         f"SYMPTOMS: {symptoms_text}.\n"
-        f"MOOD: {mood_label}.\n"
-        f"SUMMARY: {memory_state.summary}]"
+        f"SYMPTOM STEPS: {symptom_steps_text}\n"
+        f"MOOD: {mood}.\n"
+        f"GENERAL STEPS: {general_text}\n"
+        f"SUMMARY: {summary_context}]"
     )
+
+
+def _memory_state_to_risk_line(memory_state: MiniMeMemoryState) -> str:
+    quick_track = memory_state.quick_track or {}
+    alert = (quick_track.get('alert') or '').strip()
+    risk = (memory_state.risk or 'low').upper()
+
+    if memory_state.risk == 'high':
+        if alert:
+            return f"RISK: {risk}. Alert: {alert}"
+        return f"RISK: {risk}. Trend may be worsening and needs close support."
+    if memory_state.risk == 'medium':
+        return f"RISK: {risk}. Trends need active monitoring."
+    return f"RISK: {risk}."
+
+
+def _resolve_minime_persona_style(summary_context: str, risk_level: str, intelligence_tier: str | None) -> str:
+    text = (summary_context or "").lower()
+    tier = (intelligence_tier or "").strip().lower()
+    risk = (risk_level or "low").strip().lower()
+
+    declining_markers = (
+        "declin",
+        "worsen",
+        "downward",
+        "fatigue risk",
+        "high risk",
+        "alert",
+    )
+    improving_markers = (
+        "improv",
+        "recover",
+        "stable",
+        "momentum",
+    )
+
+    if risk == "high" or tier == "high" or any(marker in text for marker in declining_markers):
+        return (
+            "Persona mode: Warm-Supportive. Start with empathy and emotional validation. "
+            "Use gentle, low-pressure guidance and safety-aware language when risk appears elevated."
+        )
+
+    if risk == "medium" or tier == "medium":
+        return (
+            "Persona mode: Steady-Coaching. Be calm and practical, balancing reassurance with one concrete next step."
+        )
+
+    if any(marker in text for marker in improving_markers):
+        return (
+            "Persona mode: Encouraging-Progress. Reinforce wins without overhyping, then suggest one sustainable next action."
+        )
+
+    return "Persona mode: Neutral-Coaching. Keep tone supportive, clear, and grounded in the current summary context."
+
+
+def _resolve_companion_context(
+    chat_input: MiniMeChatRequest,
+    memory_state: MiniMeMemoryState,
+) -> tuple[str, str, str]:
+    summary_context = _sanitize_chat_summary_context(chat_input.summary_context)
+    context_block = _build_companion_context_block(chat_input, memory_state, summary_context)
+    persona_style = _resolve_minime_persona_style(
+        summary_context=summary_context,
+        risk_level=memory_state.risk,
+        intelligence_tier=chat_input.intelligence_tier,
+    )
+    return summary_context, context_block, persona_style
 
 
 def _build_opening_fallback(chat_input: MiniMeChatRequest) -> str:
@@ -461,12 +486,63 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
     )
 
 
-def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str:
-    latest_mood = suggestion_input.latest_mood_label or 'Unknown'
-    intensity = suggestion_input.latest_mood_intensity
-    mood_notes = suggestion_input.latest_mood_notes or 'None'
-    recent_moods = suggestion_input.recent_moods or ['No recent mood logs']
-    summary_context = (suggestion_input.summary_context or '').strip() or 'No summary context available.'
+def _suggestions_to_chat_request(suggestion_input: MiniMeSuggestionsRequest) -> MiniMeChatRequest:
+    return MiniMeChatRequest(
+        user_message='',
+        latest_mood_label=suggestion_input.latest_mood_label,
+        latest_mood_intensity=suggestion_input.latest_mood_intensity,
+        latest_mood_notes=suggestion_input.latest_mood_notes,
+        summary_context=suggestion_input.summary_context,
+        recent_moods=suggestion_input.recent_moods,
+        active_symptoms=suggestion_input.active_symptoms,
+        condition_labels=suggestion_input.condition_labels,
+        symptom_steps=suggestion_input.symptom_steps,
+        general_steps=suggestion_input.general_steps,
+        chat_history=suggestion_input.chat_history,
+        user_id_hash=suggestion_input.user_id_hash,
+        intelligence_tier=suggestion_input.intelligence_tier,
+        intelligence_phase=suggestion_input.intelligence_phase,
+        intelligence_insights=suggestion_input.intelligence_insights,
+        intelligence_actions=suggestion_input.intelligence_actions,
+        intelligence_alert=suggestion_input.intelligence_alert,
+        intelligence_risk_score=suggestion_input.intelligence_risk_score,
+        intelligence_confidence=suggestion_input.intelligence_confidence,
+        intelligence_state=suggestion_input.intelligence_state,
+        previous_memory=suggestion_input.previous_memory,
+    )
+
+
+def _exercise_to_chat_request(recommendation_input: MiniMeExerciseRecommendationRequest) -> MiniMeChatRequest:
+    return MiniMeChatRequest(
+        user_message='',
+        latest_mood_label=recommendation_input.latest_mood_label,
+        latest_mood_intensity=recommendation_input.latest_mood_intensity,
+        latest_mood_notes=recommendation_input.latest_mood_notes,
+        summary_context=recommendation_input.summary_context,
+        recent_moods=recommendation_input.recent_moods,
+        active_symptoms=recommendation_input.active_symptoms,
+        condition_labels=recommendation_input.condition_labels,
+        symptom_steps=recommendation_input.symptom_steps,
+        general_steps=recommendation_input.general_steps,
+        chat_history=recommendation_input.chat_history,
+        user_id_hash=recommendation_input.user_id_hash,
+        intelligence_tier=recommendation_input.intelligence_tier,
+        intelligence_phase=recommendation_input.intelligence_phase,
+        intelligence_insights=recommendation_input.intelligence_insights,
+        intelligence_actions=recommendation_input.intelligence_actions,
+        intelligence_alert=recommendation_input.intelligence_alert,
+        intelligence_risk_score=recommendation_input.intelligence_risk_score,
+        intelligence_confidence=recommendation_input.intelligence_confidence,
+        intelligence_state=recommendation_input.intelligence_state,
+        previous_memory=recommendation_input.previous_memory,
+    )
+
+
+def _build_suggestions_prompt(
+    suggestion_input: MiniMeSuggestionsRequest,
+    context_block: str,
+    persona_style: str,
+) -> str:
 
     history_lines = []
     for item in suggestion_input.chat_history[-12:]:
@@ -477,6 +553,7 @@ def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str
     return f"""You are Mini-Me, a supportive wellness coach in the LifeLens app.
 
 Write 3 UNIQUE daily suggestions for this specific user based on their summarized context and chat history.
+{persona_style}
 
 Requirements:
 - Each suggestion must feel freshly written for this user's context.
@@ -484,6 +561,7 @@ Requirements:
 - Use clear, casual, easy-to-understand language.
 - Each suggestion should be practical, specific, and warm.
 - Avoid medical claims or diagnosis.
+- Use the context block below as source-of-truth.
 - Do not use markdown.
 - Return valid JSON only.
 
@@ -497,11 +575,7 @@ Return exactly this JSON shape:
 }}
 
 Current context:
-- Summary context (primary source): {summary_context}
-- Latest mood: {latest_mood}
-- Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
-- Mood notes: {mood_notes}
-- Recent moods: {' | '.join(recent_moods)}
+{context_block}
 
 Mini-Me conversation history:
 {history_text}
@@ -510,9 +584,11 @@ Mini-Me conversation history:
 
 def _build_suggestions_fallback(
     suggestion_input: MiniMeSuggestionsRequest,
+    memory_state: MiniMeMemoryState | None = None,
 ) -> MiniMeSuggestionsResponse:
     mood = (suggestion_input.latest_mood_label or 'neutral').lower()
     summary_context = (suggestion_input.summary_context or '').lower()
+    risk = (memory_state.risk if memory_state else 'low').lower()
     symptoms = ''
     for line in summary_context.split('\n'):
         trimmed = line.strip()
@@ -522,8 +598,16 @@ def _build_suggestions_fallback(
 
     suggestions = [
         MiniMeSuggestionItem(
-            action=f"Keep today simple and choose one small habit that supports your {mood} baseline.",
-            reason="Your recent logs suggest consistency will help more than doing a lot at once.",
+            action=(
+                f"Keep today simple and choose one low-effort habit that supports your {mood} baseline."
+                if risk != 'high'
+                else f"Keep today very gentle and choose one stabilizing step that supports your {mood} baseline."
+            ),
+            reason=(
+                "Your recent logs suggest consistency will help more than doing a lot at once."
+                if risk != 'high'
+                else "Risk signals look elevated, so a small stabilizing action is safer than a big plan right now."
+            ),
         ),
         MiniMeSuggestionItem(
             action="Notice what happens right before your next mood shift and log one short detail.",
@@ -547,13 +631,9 @@ def _build_suggestions_fallback(
 
 def _build_exercise_recommendations_prompt(
     recommendation_input: MiniMeExerciseRecommendationRequest,
+    context_block: str,
+    persona_style: str,
 ) -> str:
-    latest_mood = recommendation_input.latest_mood_label or 'Unknown'
-    intensity = recommendation_input.latest_mood_intensity
-    mood_notes = recommendation_input.latest_mood_notes or 'None'
-    recent_moods = recommendation_input.recent_moods or ['No recent mood logs']
-    summary_context = (recommendation_input.summary_context or '').strip() or 'No summary context available.'
-
     history_lines = []
     for item in recommendation_input.chat_history[-12:]:
         speaker = 'User' if item.role == 'user' else 'Mini-Me'
@@ -570,10 +650,11 @@ def _build_exercise_recommendations_prompt(
     return f"""You are Mini-Me, a supportive wellness coach in the LifeLens app.
 
 Choose the BEST 3 exercises for this user right now from the provided catalog.
+{persona_style}
 
 Requirements:
 - Only recommend exercises from the provided catalog.
-- Match the user's mood, intensity, summarized context, and Mini-Me context.
+- Match the user's context block and Mini-Me context.
 - Prefer realistic, low-friction choices when the user seems stressed, low-energy, or physically uncomfortable.
 - Avoid recommending intense exercise when the summarized context suggests caution.
 - Use clear, casual, easy-to-understand language.
@@ -591,11 +672,7 @@ Return exactly this JSON shape:
 }}
 
 Current context:
-- Summary context (primary source): {summary_context}
-- Latest mood: {latest_mood}
-- Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
-- Mood notes: {mood_notes}
-- Recent moods: {' | '.join(recent_moods)}
+{context_block}
 
 Mini-Me conversation history:
 {history_text}
@@ -607,15 +684,17 @@ Available exercise catalog:
 
 def _build_exercise_recommendations_fallback(
     recommendation_input: MiniMeExerciseRecommendationRequest,
+    memory_state: MiniMeMemoryState | None = None,
 ) -> MiniMeExerciseRecommendationResponse:
     exercises = recommendation_input.exercises
     mood = (recommendation_input.latest_mood_label or 'neutral').lower()
+    risk = (memory_state.risk if memory_state else 'low').lower()
     summary_context = (recommendation_input.summary_context or '').lower()
     symptoms_text = summary_context
     cautious = any(
         word in symptoms_text
         for word in ['pain', 'injury', 'dizzy', 'fatigue', 'tired', 'headache']
-    ) or (recommendation_input.latest_mood_intensity or 0) >= 4
+    ) or (recommendation_input.latest_mood_intensity or 0) >= 4 or risk in {'medium', 'high'}
 
     def score(exercise):
         score_value = 0
@@ -658,7 +737,11 @@ def _build_exercise_recommendations_fallback(
     ]
 
     return MiniMeExerciseRecommendationResponse(
-        headline='Mini-Me picked a few exercises that look realistic for how you have been feeling.',
+        headline=(
+            'Mini-Me picked a few gentle exercises that look realistic for how you have been feeling.'
+            if cautious
+            else 'Mini-Me picked a few exercises that look realistic for how you have been feeling.'
+        ),
         recommendations=recommendations,
         source='fallback',
     )
@@ -774,8 +857,16 @@ async def minime_suggestions(
     analysis_service: GeminiAnalysisService = Depends(get_analysis_service)
 ):
     """Generate user-specific Mini-Me suggestions from logs and chat history."""
+    chat_context = _suggestions_to_chat_request(suggestion_input)
+    memory_state, memory_diff, validation_passed = compile_minime_memory_with_diff(chat_context)
     try:
-        prompt = _build_suggestions_prompt(suggestion_input)
+        log_memory_event(chat_context, memory_state, memory_diff, validation_passed)
+    except Exception as e:
+        logger.warning(f"Mini-Me memory logging failed (suggestions endpoint): {e}")
+
+    _summary_context, context_block, persona_style = _resolve_companion_context(chat_context, memory_state)
+    try:
+        prompt = _build_suggestions_prompt(suggestion_input, context_block, persona_style)
         response = analysis_service.client.models.generate_content(
             model='gemini-2.5-flash-lite',
             contents=prompt,
@@ -813,7 +904,7 @@ async def minime_suggestions(
         )
     except Exception as e:
         logger.warning(f"Mini-Me suggestions fallback used: {e}")
-        return _build_suggestions_fallback(suggestion_input)
+        return _build_suggestions_fallback(suggestion_input, memory_state)
 
 
 @app.post(
@@ -827,8 +918,16 @@ async def minime_exercise_recommendations(
     analysis_service: GeminiAnalysisService = Depends(get_analysis_service)
 ):
     """Generate exercise picks grounded in mood logs, symptoms, and chat history."""
+    chat_context = _exercise_to_chat_request(recommendation_input)
+    memory_state, memory_diff, validation_passed = compile_minime_memory_with_diff(chat_context)
     try:
-        prompt = _build_exercise_recommendations_prompt(recommendation_input)
+        log_memory_event(chat_context, memory_state, memory_diff, validation_passed)
+    except Exception as e:
+        logger.warning(f"Mini-Me memory logging failed (exercise endpoint): {e}")
+
+    _summary_context, context_block, persona_style = _resolve_companion_context(chat_context, memory_state)
+    try:
+        prompt = _build_exercise_recommendations_prompt(recommendation_input, context_block, persona_style)
         response = analysis_service.client.models.generate_content(
             model='gemini-2.5-flash-lite',
             contents=prompt,
@@ -875,7 +974,7 @@ async def minime_exercise_recommendations(
         )
     except Exception as e:
         logger.warning(f"Mini-Me exercise recommendation fallback used: {e}")
-        return _build_exercise_recommendations_fallback(recommendation_input)
+        return _build_exercise_recommendations_fallback(recommendation_input, memory_state)
 
 
 # Knowledge Base Management Endpoints

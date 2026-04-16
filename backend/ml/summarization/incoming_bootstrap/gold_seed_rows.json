@@ -1,0 +1,1802 @@
+[
+  {
+    "input": "sleep_avg_3=5.37 mood_avg_3=2.01 sleep_slope=-0.112 mood_slope=-0.368 risk=92.13 trend=-0.399",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.30 mood_avg_3=3.81 sleep_slope=0.337 mood_slope=0.245 risk=32.67 trend=0.546",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.19 mood_avg_3=3.11 sleep_slope=0.517 mood_slope=0.201 risk=28.27 trend=0.215",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.10 mood_avg_3=4.25 sleep_slope=0.236 mood_slope=0.275 risk=43.07 trend=0.271",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.74 mood_avg_3=2.71 sleep_slope=-0.001 mood_slope=-0.163 risk=48.02 trend=-0.087",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.57 mood_avg_3=4.75 sleep_slope=0.287 mood_slope=0.283 risk=28.26 trend=0.156",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.48 mood_avg_3=0.81 sleep_slope=-0.338 mood_slope=-0.546 risk=99.52 trend=-0.472",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.85 mood_avg_3=2.94 sleep_slope=0.585 mood_slope=0.234 risk=45.28 trend=0.291",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.27 mood_avg_3=3.61 sleep_slope=-0.049 mood_slope=-0.040 risk=44.52 trend=-0.024",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.99 mood_avg_3=4.00 sleep_slope=-0.214 mood_slope=0.115 risk=49.88 trend=-0.113",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.37 mood_avg_3=2.27 sleep_slope=-0.442 mood_slope=-0.560 risk=99.00 trend=-0.165",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.86 mood_avg_3=2.28 sleep_slope=-0.226 mood_slope=-0.331 risk=81.96 trend=-0.578",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.44 mood_avg_3=4.41 sleep_slope=0.101 mood_slope=0.500 risk=37.25 trend=0.125",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=2.96 mood_avg_3=4.12 sleep_slope=-0.236 mood_slope=-0.174 risk=79.08 trend=0.039",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.57 mood_avg_3=3.00 sleep_slope=0.404 mood_slope=0.392 risk=38.23 trend=0.142",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.79 mood_avg_3=4.02 sleep_slope=0.026 mood_slope=0.154 risk=48.12 trend=-0.026",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.14 mood_avg_3=2.55 sleep_slope=-0.421 mood_slope=-0.567 risk=79.26 trend=-0.196",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.79 mood_avg_3=1.11 sleep_slope=-0.514 mood_slope=-0.321 risk=78.30 trend=-0.114",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.69 mood_avg_3=3.18 sleep_slope=0.066 mood_slope=-0.045 risk=63.69 trend=-0.033",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.76 mood_avg_3=2.12 sleep_slope=-0.501 mood_slope=-0.319 risk=79.61 trend=-0.563",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.48 mood_avg_3=2.38 sleep_slope=-0.363 mood_slope=-0.393 risk=79.70 trend=-0.331",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.33 mood_avg_3=1.56 sleep_slope=-0.051 mood_slope=-0.274 risk=46.46 trend=-0.119",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.45 mood_avg_3=4.52 sleep_slope=0.329 mood_slope=0.342 risk=37.08 trend=0.432",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.38 mood_avg_3=0.64 sleep_slope=-0.126 mood_slope=-0.075 risk=67.65 trend=-0.052",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.34 mood_avg_3=1.66 sleep_slope=-0.235 mood_slope=-0.212 risk=75.92 trend=-0.103",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.15 mood_avg_3=3.40 sleep_slope=0.008 mood_slope=-0.012 risk=50.86 trend=0.017",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.66 mood_avg_3=4.35 sleep_slope=0.020 mood_slope=0.029 risk=68.78 trend=-0.212",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.73 mood_avg_3=4.00 sleep_slope=0.339 mood_slope=0.407 risk=51.66 trend=0.314",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.30 mood_avg_3=3.50 sleep_slope=0.034 mood_slope=0.063 risk=54.16 trend=-0.043",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.80 mood_avg_3=1.05 sleep_slope=0.073 mood_slope=-0.179 risk=82.58 trend=0.026",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.60 mood_avg_3=2.00 sleep_slope=-0.317 mood_slope=-0.392 risk=87.38 trend=-0.375",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.28 mood_avg_3=2.32 sleep_slope=-0.590 mood_slope=-0.591 risk=80.78 trend=-0.541",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.51 mood_avg_3=1.01 sleep_slope=-0.373 mood_slope=-0.464 risk=94.65 trend=-0.448",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.56 mood_avg_3=1.34 sleep_slope=0.012 mood_slope=0.046 risk=66.72 trend=-0.135",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.58 mood_avg_3=4.12 sleep_slope=-0.031 mood_slope=-0.069 risk=63.18 trend=-0.058",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.70 mood_avg_3=2.85 sleep_slope=-0.456 mood_slope=-0.189 risk=76.71 trend=-0.576",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.53 mood_avg_3=3.96 sleep_slope=-0.053 mood_slope=0.068 risk=57.39 trend=-0.021",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.14 mood_avg_3=2.86 sleep_slope=-0.233 mood_slope=-0.537 risk=74.51 trend=-0.497",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.64 mood_avg_3=3.11 sleep_slope=0.503 mood_slope=0.120 risk=46.58 trend=0.424",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.86 mood_avg_3=3.55 sleep_slope=0.065 mood_slope=-0.035 risk=60.16 trend=-0.054",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.40 mood_avg_3=3.35 sleep_slope=0.043 mood_slope=0.027 risk=46.26 trend=0.008",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.09 mood_avg_3=1.81 sleep_slope=-0.126 mood_slope=-0.070 risk=55.20 trend=-0.004",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.03 mood_avg_3=3.81 sleep_slope=0.383 mood_slope=0.309 risk=32.62 trend=0.187",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.92 mood_avg_3=2.99 sleep_slope=-0.624 mood_slope=-0.373 risk=83.70 trend=-0.187",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.82 mood_avg_3=1.41 sleep_slope=-0.089 mood_slope=-0.081 risk=80.98 trend=-0.152",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.55 mood_avg_3=1.69 sleep_slope=-0.003 mood_slope=-0.197 risk=45.80 trend=-0.196",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.19 mood_avg_3=3.42 sleep_slope=0.331 mood_slope=0.537 risk=50.23 trend=0.146",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.44 mood_avg_3=3.76 sleep_slope=0.049 mood_slope=-0.060 risk=44.51 trend=0.018",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.24 mood_avg_3=0.78 sleep_slope=0.011 mood_slope=0.004 risk=78.09 trend=-0.094",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.30 mood_avg_3=1.31 sleep_slope=-0.104 mood_slope=-0.230 risk=49.69 trend=-0.007",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.01 mood_avg_3=3.76 sleep_slope=-0.156 mood_slope=0.066 risk=69.29 trend=0.052",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.74 mood_avg_3=1.75 sleep_slope=-0.539 mood_slope=-0.541 risk=58.11 trend=-0.253",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=3.30 mood_avg_3=2.68 sleep_slope=-0.225 mood_slope=0.107 risk=48.74 trend=0.011",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.67 mood_avg_3=1.00 sleep_slope=-0.050 mood_slope=-0.283 risk=61.21 trend=-0.006",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.88 mood_avg_3=4.21 sleep_slope=0.027 mood_slope=0.020 risk=47.18 trend=0.041",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.27 mood_avg_3=4.06 sleep_slope=-0.006 mood_slope=0.053 risk=64.48 trend=-0.026",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.37 mood_avg_3=1.38 sleep_slope=-0.630 mood_slope=-0.466 risk=88.57 trend=-0.218",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.34 mood_avg_3=3.25 sleep_slope=0.489 mood_slope=0.181 risk=26.36 trend=0.348",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.10 mood_avg_3=2.43 sleep_slope=-0.162 mood_slope=-0.137 risk=60.58 trend=-0.186",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.73 mood_avg_3=1.00 sleep_slope=0.109 mood_slope=-0.056 risk=49.69 trend=-0.034",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.81 mood_avg_3=4.20 sleep_slope=0.048 mood_slope=-0.031 risk=57.22 trend=-0.002",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.10 mood_avg_3=4.15 sleep_slope=0.001 mood_slope=0.046 risk=49.18 trend=0.056",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.96 mood_avg_3=1.26 sleep_slope=-0.257 mood_slope=-0.427 risk=84.39 trend=-0.487",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.44 mood_avg_3=1.12 sleep_slope=-0.120 mood_slope=-0.439 risk=90.09 trend=-0.148",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.94 sleep_slope=0.036 mood_slope=0.014 risk=64.32 trend=0.047",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.39 mood_avg_3=2.49 sleep_slope=-0.130 mood_slope=0.065 risk=80.87 trend=-0.037",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.45 mood_avg_3=4.73 sleep_slope=0.139 mood_slope=0.460 risk=30.75 trend=0.387",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.21 mood_avg_3=1.21 sleep_slope=-0.468 mood_slope=-0.560 risk=84.59 trend=-0.427",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.11 mood_avg_3=4.47 sleep_slope=0.038 mood_slope=-0.005 risk=58.90 trend=0.013",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.72 mood_avg_3=3.12 sleep_slope=0.018 mood_slope=-0.062 risk=35.22 trend=0.009",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.15 mood_avg_3=3.69 sleep_slope=0.051 mood_slope=-0.045 risk=39.11 trend=-0.024",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.22 mood_avg_3=4.44 sleep_slope=0.016 mood_slope=-0.028 risk=49.18 trend=-0.070",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.85 mood_avg_3=4.20 sleep_slope=-0.063 mood_slope=0.063 risk=37.85 trend=-0.060",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.12 mood_avg_3=4.50 sleep_slope=0.505 mood_slope=0.548 risk=52.05 trend=0.443",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.21 mood_avg_3=2.57 sleep_slope=-0.350 mood_slope=-0.489 risk=83.20 trend=-0.335",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.93 mood_avg_3=2.94 sleep_slope=-0.546 mood_slope=-0.299 risk=71.59 trend=-0.129",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.48 mood_avg_3=1.15 sleep_slope=-0.549 mood_slope=-0.508 risk=83.04 trend=-0.275",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.75 mood_avg_3=1.22 sleep_slope=-0.289 mood_slope=-0.114 risk=88.20 trend=-0.502",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.99 mood_avg_3=4.67 sleep_slope=0.360 mood_slope=0.327 risk=24.65 trend=0.118",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.51 mood_avg_3=1.08 sleep_slope=-0.097 mood_slope=0.002 risk=57.09 trend=0.056",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.48 mood_avg_3=0.80 sleep_slope=-0.125 mood_slope=0.031 risk=79.43 trend=-0.126",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.95 mood_avg_3=1.72 sleep_slope=-0.351 mood_slope=-0.152 risk=83.05 trend=-0.441",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.30 mood_avg_3=1.53 sleep_slope=-0.368 mood_slope=-0.372 risk=73.62 trend=-0.380",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.46 mood_avg_3=2.68 sleep_slope=0.136 mood_slope=0.390 risk=52.39 trend=0.559",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.08 mood_avg_3=3.82 sleep_slope=-0.222 mood_slope=0.010 risk=68.81 trend=-0.121",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.90 mood_avg_3=1.17 sleep_slope=-0.244 mood_slope=-0.175 risk=73.04 trend=-0.141",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.78 mood_avg_3=3.70 sleep_slope=0.330 mood_slope=0.124 risk=30.81 trend=0.160",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.64 mood_avg_3=1.21 sleep_slope=-0.295 mood_slope=-0.590 risk=68.66 trend=-0.576",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.15 mood_avg_3=2.52 sleep_slope=-0.191 mood_slope=-0.502 risk=63.53 trend=-0.216",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.57 mood_avg_3=2.70 sleep_slope=-0.273 mood_slope=-0.505 risk=59.09 trend=-0.449",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.83 mood_avg_3=1.48 sleep_slope=-0.377 mood_slope=-0.114 risk=98.36 trend=-0.271",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.69 mood_avg_3=0.80 sleep_slope=0.042 mood_slope=-0.027 risk=45.43 trend=-0.238",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.10 mood_avg_3=0.60 sleep_slope=-0.034 mood_slope=-0.100 risk=51.68 trend=-0.046",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.53 mood_avg_3=3.57 sleep_slope=-0.203 mood_slope=-0.061 risk=80.80 trend=-0.010",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.91 mood_avg_3=4.07 sleep_slope=-0.024 mood_slope=0.028 risk=49.40 trend=-0.043",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.23 mood_avg_3=0.99 sleep_slope=0.157 mood_slope=-0.062 risk=48.87 trend=0.052",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.35 mood_avg_3=0.85 sleep_slope=0.094 mood_slope=-0.137 risk=72.51 trend=-0.058",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.63 mood_avg_3=4.24 sleep_slope=-0.221 mood_slope=0.107 risk=54.00 trend=-0.043",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.80 mood_avg_3=3.61 sleep_slope=-0.217 mood_slope=0.059 risk=76.55 trend=-0.025",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.06 mood_avg_3=3.82 sleep_slope=-0.112 mood_slope=-0.141 risk=45.77 trend=-0.123",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.37 mood_avg_3=2.27 sleep_slope=-0.189 mood_slope=0.049 risk=43.30 trend=0.035",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.73 mood_avg_3=2.71 sleep_slope=0.073 mood_slope=-0.322 risk=35.35 trend=0.213",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.27 mood_avg_3=3.77 sleep_slope=0.327 mood_slope=0.099 risk=54.57 trend=-0.232",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.20 mood_avg_3=3.31 sleep_slope=0.154 mood_slope=0.174 risk=35.58 trend=0.328",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.73 mood_avg_3=2.60 sleep_slope=-0.641 mood_slope=-0.184 risk=87.19 trend=-0.493",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=3.32 mood_avg_3=2.69 sleep_slope=-0.185 mood_slope=0.025 risk=73.13 trend=-0.023",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.66 mood_avg_3=3.25 sleep_slope=-0.214 mood_slope=0.062 risk=61.41 trend=0.050",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.49 mood_avg_3=3.12 sleep_slope=-0.030 mood_slope=-0.032 risk=41.19 trend=0.006",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.59 mood_avg_3=4.22 sleep_slope=-0.017 mood_slope=0.035 risk=59.12 trend=-0.035",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.05 mood_avg_3=2.92 sleep_slope=-0.153 mood_slope=-0.342 risk=82.43 trend=-0.526",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.53 mood_avg_3=1.64 sleep_slope=0.128 mood_slope=-0.165 risk=83.92 trend=-0.101",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.92 mood_avg_3=2.44 sleep_slope=-0.148 mood_slope=0.143 risk=57.64 trend=0.010",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.27 mood_avg_3=1.40 sleep_slope=0.000 mood_slope=0.044 risk=49.32 trend=0.023",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.63 mood_avg_3=2.17 sleep_slope=-0.407 mood_slope=-0.260 risk=92.07 trend=-0.366",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.85 mood_avg_3=3.89 sleep_slope=-0.117 mood_slope=0.320 risk=32.71 trend=0.306",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=7.07 mood_avg_3=3.55 sleep_slope=0.040 mood_slope=-0.009 risk=64.45 trend=-0.054",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.12 mood_avg_3=3.00 sleep_slope=-0.152 mood_slope=-0.583 risk=65.25 trend=-0.473",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=2.86 mood_avg_3=2.95 sleep_slope=0.002 mood_slope=0.133 risk=57.99 trend=-0.166",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.68 mood_avg_3=1.28 sleep_slope=-0.252 mood_slope=-0.594 risk=90.30 trend=-0.260",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.80 mood_avg_3=4.59 sleep_slope=0.436 mood_slope=0.242 risk=36.55 trend=0.367",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.72 mood_avg_3=2.50 sleep_slope=-0.091 mood_slope=-0.054 risk=79.57 trend=-0.007",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.25 mood_avg_3=3.80 sleep_slope=0.437 mood_slope=0.518 risk=49.28 trend=0.133",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.66 mood_avg_3=2.17 sleep_slope=-0.157 mood_slope=-0.187 risk=86.43 trend=-0.575",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.05 mood_avg_3=1.78 sleep_slope=-0.561 mood_slope=-0.105 risk=92.70 trend=-0.464",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.80 mood_avg_3=1.22 sleep_slope=-0.006 mood_slope=-0.046 risk=81.38 trend=-0.063",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.54 mood_avg_3=3.61 sleep_slope=0.290 mood_slope=0.137 risk=64.37 trend=-0.072",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=7.16 mood_avg_3=1.48 sleep_slope=0.091 mood_slope=-0.043 risk=57.63 trend=-0.246",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.53 mood_avg_3=4.61 sleep_slope=0.532 mood_slope=0.218 risk=49.21 trend=0.322",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.26 mood_avg_3=2.03 sleep_slope=-0.229 mood_slope=-0.111 risk=90.08 trend=-0.401",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.49 mood_avg_3=1.08 sleep_slope=-0.144 mood_slope=-0.101 risk=83.12 trend=-0.362",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.80 mood_avg_3=4.08 sleep_slope=0.240 mood_slope=0.119 risk=46.96 trend=0.316",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.43 mood_avg_3=3.21 sleep_slope=0.511 mood_slope=0.291 risk=52.83 trend=0.334",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.66 mood_avg_3=3.10 sleep_slope=-0.066 mood_slope=-0.141 risk=55.31 trend=-0.152",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.93 mood_avg_3=3.60 sleep_slope=-0.134 mood_slope=0.016 risk=52.87 trend=-0.023",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.08 mood_avg_3=2.08 sleep_slope=-0.633 mood_slope=-0.508 risk=69.49 trend=-0.318",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.21 mood_avg_3=2.72 sleep_slope=-0.613 mood_slope=-0.140 risk=60.72 trend=-0.511",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.13 mood_avg_3=2.49 sleep_slope=-0.330 mood_slope=-0.128 risk=61.35 trend=-0.407",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.52 mood_avg_3=1.62 sleep_slope=-0.381 mood_slope=-0.319 risk=85.30 trend=-0.611",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.88 mood_avg_3=1.87 sleep_slope=-0.134 mood_slope=-0.225 risk=50.13 trend=0.041",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.75 mood_avg_3=3.14 sleep_slope=0.387 mood_slope=0.276 risk=52.42 trend=0.334",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.71 mood_avg_3=4.14 sleep_slope=-0.059 mood_slope=0.027 risk=51.95 trend=-0.056",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.38 mood_avg_3=1.16 sleep_slope=-0.648 mood_slope=-0.504 risk=78.47 trend=-0.331",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.30 mood_avg_3=1.98 sleep_slope=0.027 mood_slope=-0.172 risk=49.91 trend=-0.067",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.80 mood_avg_3=1.31 sleep_slope=-0.595 mood_slope=-0.352 risk=62.77 trend=-0.512",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.26 mood_avg_3=3.20 sleep_slope=0.052 mood_slope=-0.001 risk=60.55 trend=0.010",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.73 mood_avg_3=4.02 sleep_slope=0.046 mood_slope=0.029 risk=45.24 trend=0.033",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.26 mood_avg_3=4.15 sleep_slope=-0.046 mood_slope=0.023 risk=50.71 trend=-0.166",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.67 mood_avg_3=3.02 sleep_slope=-0.138 mood_slope=-0.067 risk=51.22 trend=-0.067",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.01 mood_avg_3=2.59 sleep_slope=-0.006 mood_slope=0.096 risk=65.59 trend=-0.044",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.54 mood_avg_3=2.15 sleep_slope=-0.188 mood_slope=-0.568 risk=87.86 trend=-0.473",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.75 mood_avg_3=3.33 sleep_slope=-0.011 mood_slope=0.057 risk=50.44 trend=0.027",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.74 mood_avg_3=3.73 sleep_slope=-0.126 mood_slope=-0.128 risk=79.15 trend=-0.200",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.18 mood_avg_3=1.31 sleep_slope=-0.500 mood_slope=-0.127 risk=85.43 trend=-0.485",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.82 mood_avg_3=4.28 sleep_slope=0.023 mood_slope=0.068 risk=50.84 trend=0.063",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.36 mood_avg_3=4.52 sleep_slope=-0.042 mood_slope=-0.067 risk=35.33 trend=-0.052",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.88 mood_avg_3=0.64 sleep_slope=0.127 mood_slope=-0.109 risk=70.32 trend=-0.163",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.51 mood_avg_3=0.67 sleep_slope=0.029 mood_slope=-0.173 risk=55.83 trend=-0.136",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.85 mood_avg_3=3.96 sleep_slope=-0.081 mood_slope=-0.143 risk=63.64 trend=0.064",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.96 mood_avg_3=1.15 sleep_slope=-0.295 mood_slope=-0.454 risk=89.65 trend=-0.215",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.28 mood_avg_3=4.14 sleep_slope=0.163 mood_slope=0.548 risk=42.09 trend=0.210",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.69 mood_avg_3=1.79 sleep_slope=-0.011 mood_slope=0.009 risk=73.83 trend=-0.016",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.80 mood_avg_3=0.67 sleep_slope=-0.056 mood_slope=-0.091 risk=78.56 trend=-0.045",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.99 mood_avg_3=1.82 sleep_slope=-0.133 mood_slope=-0.416 risk=78.18 trend=-0.122",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.91 mood_avg_3=1.46 sleep_slope=0.068 mood_slope=0.050 risk=52.21 trend=-0.217",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.56 mood_avg_3=2.77 sleep_slope=0.553 mood_slope=0.385 risk=29.95 trend=0.520",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.86 mood_avg_3=3.26 sleep_slope=0.405 mood_slope=0.559 risk=38.16 trend=0.168",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.06 mood_avg_3=1.97 sleep_slope=0.144 mood_slope=-0.274 risk=70.14 trend=-0.144",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.05 mood_avg_3=3.20 sleep_slope=-0.203 mood_slope=0.035 risk=46.13 trend=0.004",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.53 mood_avg_3=1.78 sleep_slope=-0.331 mood_slope=-0.269 risk=81.24 trend=-0.566",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.53 mood_avg_3=4.33 sleep_slope=-0.058 mood_slope=0.053 risk=38.54 trend=-0.005",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.79 mood_avg_3=1.12 sleep_slope=-0.132 mood_slope=0.026 risk=78.41 trend=-0.052",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.14 mood_avg_3=2.53 sleep_slope=-0.159 mood_slope=0.035 risk=65.29 trend=-0.122",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.27 mood_avg_3=3.22 sleep_slope=0.038 mood_slope=0.140 risk=60.65 trend=0.055",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.75 mood_avg_3=4.18 sleep_slope=-0.113 mood_slope=0.101 risk=59.75 trend=-0.001",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.53 mood_avg_3=3.65 sleep_slope=-0.036 mood_slope=0.023 risk=42.92 trend=0.007",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.36 mood_avg_3=1.84 sleep_slope=0.139 mood_slope=-0.155 risk=60.25 trend=-0.140",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.17 mood_avg_3=4.52 sleep_slope=-0.037 mood_slope=-0.027 risk=58.23 trend=-0.049",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.00 mood_avg_3=1.49 sleep_slope=0.025 mood_slope=-0.256 risk=56.42 trend=-0.089",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.69 mood_avg_3=2.00 sleep_slope=-0.476 mood_slope=-0.573 risk=80.41 trend=-0.430",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.45 mood_avg_3=2.60 sleep_slope=-0.468 mood_slope=-0.588 risk=70.98 trend=-0.122",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.77 mood_avg_3=4.19 sleep_slope=-0.024 mood_slope=0.028 risk=39.48 trend=-0.035",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.96 mood_avg_3=3.61 sleep_slope=0.257 mood_slope=0.560 risk=50.16 trend=0.149",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.46 mood_avg_3=0.85 sleep_slope=-0.321 mood_slope=-0.248 risk=73.36 trend=-0.235",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.70 mood_avg_3=3.65 sleep_slope=-0.200 mood_slope=-0.157 risk=61.36 trend=-0.129",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.04 mood_avg_3=2.21 sleep_slope=-0.412 mood_slope=-0.153 risk=64.94 trend=-0.256",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.89 mood_avg_3=1.95 sleep_slope=-0.642 mood_slope=-0.431 risk=80.26 trend=-0.269",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.70 mood_avg_3=1.04 sleep_slope=-0.118 mood_slope=-0.137 risk=65.21 trend=-0.219",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.37 mood_avg_3=3.96 sleep_slope=0.590 mood_slope=0.251 risk=42.13 trend=0.398",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.97 mood_avg_3=2.79 sleep_slope=0.006 mood_slope=-0.061 risk=80.45 trend=-0.026",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.00 mood_avg_3=3.60 sleep_slope=0.457 mood_slope=0.525 risk=48.00 trend=0.388",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.27 mood_avg_3=1.93 sleep_slope=-0.130 mood_slope=-0.246 risk=62.45 trend=-0.141",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.29 mood_avg_3=3.61 sleep_slope=-0.014 mood_slope=-0.049 risk=54.07 trend=0.055",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.08 mood_avg_3=1.43 sleep_slope=-0.201 mood_slope=-0.227 risk=88.19 trend=-0.596",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.21 mood_avg_3=1.58 sleep_slope=-0.201 mood_slope=-0.595 risk=79.57 trend=-0.202",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.57 mood_avg_3=1.35 sleep_slope=-0.455 mood_slope=-0.214 risk=92.19 trend=-0.285",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.28 mood_avg_3=1.86 sleep_slope=-0.312 mood_slope=-0.132 risk=96.89 trend=-0.495",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.24 mood_avg_3=3.91 sleep_slope=0.529 mood_slope=0.524 risk=36.49 trend=0.316",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.65 mood_avg_3=3.95 sleep_slope=-0.026 mood_slope=-0.162 risk=68.34 trend=-0.120",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.82 mood_avg_3=2.96 sleep_slope=-0.124 mood_slope=-0.001 risk=80.75 trend=0.025",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.73 mood_avg_3=1.35 sleep_slope=-0.345 mood_slope=-0.391 risk=89.59 trend=-0.151",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.40 mood_avg_3=4.22 sleep_slope=-0.033 mood_slope=-0.077 risk=68.80 trend=-0.211",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.46 mood_avg_3=4.13 sleep_slope=-0.070 mood_slope=0.060 risk=48.85 trend=0.031",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.98 mood_avg_3=1.93 sleep_slope=-0.207 mood_slope=-0.143 risk=87.75 trend=-0.117",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.19 mood_avg_3=3.11 sleep_slope=0.021 mood_slope=-0.068 risk=44.70 trend=-0.001",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.00 mood_avg_3=1.50 sleep_slope=-0.563 mood_slope=-0.569 risk=84.52 trend=-0.176",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.60 mood_avg_3=0.66 sleep_slope=-0.099 mood_slope=-0.183 risk=63.42 trend=-0.114",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.89 mood_avg_3=3.26 sleep_slope=-0.207 mood_slope=0.001 risk=53.51 trend=-0.052",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.14 mood_avg_3=2.00 sleep_slope=0.076 mood_slope=-0.116 risk=75.54 trend=0.003",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.56 mood_avg_3=3.26 sleep_slope=0.312 mood_slope=0.164 risk=53.23 trend=0.240",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.51 mood_avg_3=4.47 sleep_slope=0.067 mood_slope=0.005 risk=61.74 trend=0.013",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.55 mood_avg_3=1.70 sleep_slope=-0.101 mood_slope=-0.361 risk=82.55 trend=-0.123",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.96 mood_avg_3=2.90 sleep_slope=-0.653 mood_slope=-0.377 risk=60.35 trend=-0.235",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.49 mood_avg_3=1.37 sleep_slope=-0.290 mood_slope=-0.351 risk=83.40 trend=-0.394",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.86 mood_avg_3=4.51 sleep_slope=-0.028 mood_slope=-0.015 risk=61.21 trend=0.047",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.60 mood_avg_3=1.03 sleep_slope=-0.133 mood_slope=0.031 risk=64.72 trend=0.049",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.22 mood_avg_3=3.05 sleep_slope=0.532 mood_slope=0.355 risk=41.35 trend=0.474",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.10 mood_avg_3=3.10 sleep_slope=-0.226 mood_slope=-0.023 risk=46.39 trend=-0.109",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.04 mood_avg_3=3.53 sleep_slope=-0.008 mood_slope=0.292 risk=56.94 trend=0.099",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=7.43 mood_avg_3=4.54 sleep_slope=0.033 mood_slope=0.022 risk=39.93 trend=0.023",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.33 mood_avg_3=2.83 sleep_slope=-0.388 mood_slope=-0.261 risk=65.23 trend=-0.360",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.12 mood_avg_3=3.35 sleep_slope=0.160 mood_slope=0.543 risk=26.64 trend=0.545",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.68 mood_avg_3=3.15 sleep_slope=-0.195 mood_slope=-0.248 risk=44.00 trend=0.304",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.95 mood_avg_3=2.37 sleep_slope=-0.329 mood_slope=-0.202 risk=92.31 trend=-0.262",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.35 mood_avg_3=3.07 sleep_slope=0.433 mood_slope=0.547 risk=23.67 trend=0.253",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.61 mood_avg_3=3.79 sleep_slope=-0.024 mood_slope=-0.002 risk=42.42 trend=-0.034",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.55 mood_avg_3=1.77 sleep_slope=0.010 mood_slope=-0.112 risk=69.91 trend=-0.076",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.87 mood_avg_3=3.28 sleep_slope=-0.160 mood_slope=0.077 risk=49.21 trend=-0.091",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.01 mood_avg_3=1.45 sleep_slope=-0.485 mood_slope=-0.508 risk=87.06 trend=-0.495",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.23 mood_avg_3=1.40 sleep_slope=0.019 mood_slope=-0.161 risk=70.63 trend=-0.180",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.93 mood_avg_3=2.95 sleep_slope=0.330 mood_slope=0.259 risk=41.39 trend=0.394",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.06 mood_avg_3=2.54 sleep_slope=-0.321 mood_slope=-0.264 risk=71.57 trend=-0.278",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.32 mood_avg_3=1.31 sleep_slope=-0.180 mood_slope=-0.274 risk=63.07 trend=-0.583",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=3.79 mood_avg_3=4.02 sleep_slope=-0.035 mood_slope=-0.071 risk=62.60 trend=-0.175",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.64 mood_avg_3=2.22 sleep_slope=-0.255 mood_slope=-0.617 risk=85.40 trend=-0.265",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=3.63 mood_avg_3=3.31 sleep_slope=-0.198 mood_slope=-0.074 risk=57.00 trend=0.062",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.14 mood_avg_3=2.74 sleep_slope=-0.694 mood_slope=-0.260 risk=81.18 trend=-0.342",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.85 mood_avg_3=4.47 sleep_slope=0.543 mood_slope=0.495 risk=34.54 trend=0.246",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.69 mood_avg_3=4.20 sleep_slope=0.560 mood_slope=0.401 risk=49.51 trend=0.383",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.81 mood_avg_3=3.71 sleep_slope=0.050 mood_slope=0.069 risk=40.69 trend=0.017",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.71 mood_avg_3=3.33 sleep_slope=-0.040 mood_slope=0.022 risk=35.50 trend=-0.046",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.08 mood_avg_3=3.93 sleep_slope=0.113 mood_slope=0.205 risk=44.25 trend=0.496",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.38 mood_avg_3=1.11 sleep_slope=-0.311 mood_slope=-0.591 risk=60.29 trend=-0.585",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.90 mood_avg_3=1.36 sleep_slope=-0.552 mood_slope=-0.331 risk=86.81 trend=-0.242",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.43 mood_avg_3=3.93 sleep_slope=-0.160 mood_slope=0.128 risk=50.45 trend=-0.089",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.29 mood_avg_3=3.59 sleep_slope=-0.076 mood_slope=-0.075 risk=53.16 trend=0.075",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.48 mood_avg_3=1.86 sleep_slope=-0.006 mood_slope=-0.269 risk=71.96 trend=0.011",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=2.82 mood_avg_3=3.00 sleep_slope=-0.180 mood_slope=-0.133 risk=54.45 trend=-0.122",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.46 mood_avg_3=2.00 sleep_slope=-0.398 mood_slope=-0.487 risk=87.66 trend=-0.397",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.46 mood_avg_3=0.86 sleep_slope=0.015 mood_slope=0.020 risk=48.83 trend=-0.012",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.04 mood_avg_3=3.66 sleep_slope=-0.084 mood_slope=0.024 risk=48.53 trend=-0.167",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.89 mood_avg_3=3.66 sleep_slope=-0.097 mood_slope=0.012 risk=66.44 trend=-0.016",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.68 mood_avg_3=1.02 sleep_slope=-0.472 mood_slope=-0.476 risk=79.30 trend=-0.498",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.38 mood_avg_3=4.26 sleep_slope=0.015 mood_slope=-0.025 risk=45.46 trend=0.025",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=2.97 mood_avg_3=4.13 sleep_slope=0.032 mood_slope=0.029 risk=63.76 trend=-0.081",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.21 mood_avg_3=1.93 sleep_slope=-0.270 mood_slope=-0.355 risk=85.43 trend=-0.329",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.22 mood_avg_3=4.35 sleep_slope=0.253 mood_slope=0.272 risk=26.80 trend=0.344",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.35 mood_avg_3=1.91 sleep_slope=0.076 mood_slope=-0.234 risk=50.53 trend=0.059",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.16 mood_avg_3=1.03 sleep_slope=-0.021 mood_slope=-0.015 risk=63.41 trend=-0.248",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.32 mood_avg_3=1.97 sleep_slope=-0.475 mood_slope=-0.301 risk=90.83 trend=-0.453",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.68 mood_avg_3=1.40 sleep_slope=-0.545 mood_slope=-0.515 risk=69.66 trend=-0.270",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.50 mood_avg_3=1.14 sleep_slope=-0.028 mood_slope=-0.038 risk=58.64 trend=-0.238",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.71 mood_avg_3=4.37 sleep_slope=0.290 mood_slope=0.464 risk=22.46 trend=0.347",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.35 mood_avg_3=3.28 sleep_slope=-0.105 mood_slope=-0.002 risk=50.87 trend=-0.108",
+    "target": "Low sleep remains the weakest signal and needs immediate support.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.64 mood_avg_3=3.86 sleep_slope=0.616 mood_slope=0.236 risk=54.27 trend=0.403",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.28 mood_avg_3=3.65 sleep_slope=0.027 mood_slope=-0.004 risk=31.14 trend=-0.030",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.27 mood_avg_3=2.82 sleep_slope=0.430 mood_slope=0.501 risk=36.64 trend=0.419",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.02 mood_avg_3=3.35 sleep_slope=0.028 mood_slope=0.037 risk=35.87 trend=0.015",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.90 mood_avg_3=2.66 sleep_slope=-0.221 mood_slope=-0.509 risk=80.44 trend=-0.409",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.66 mood_avg_3=3.11 sleep_slope=0.023 mood_slope=-0.024 risk=40.99 trend=0.049",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.41 mood_avg_3=3.29 sleep_slope=-0.068 mood_slope=0.005 risk=39.60 trend=0.066",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.00 mood_avg_3=1.59 sleep_slope=0.025 mood_slope=-0.198 risk=56.30 trend=-0.210",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.83 mood_avg_3=1.87 sleep_slope=-0.358 mood_slope=-0.281 risk=73.47 trend=-0.405",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.02 mood_avg_3=1.67 sleep_slope=-0.617 mood_slope=-0.153 risk=99.61 trend=-0.375",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.99 mood_avg_3=2.92 sleep_slope=0.568 mood_slope=0.101 risk=50.33 trend=0.167",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.41 mood_avg_3=3.12 sleep_slope=0.380 mood_slope=0.279 risk=34.24 trend=0.537",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.18 mood_avg_3=1.89 sleep_slope=-0.322 mood_slope=-0.206 risk=86.71 trend=-0.345",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.34 mood_avg_3=1.20 sleep_slope=-0.460 mood_slope=-0.462 risk=98.25 trend=-0.243",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.75 mood_avg_3=2.97 sleep_slope=-0.230 mood_slope=-0.187 risk=70.92 trend=-0.382",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.28 mood_avg_3=1.72 sleep_slope=-0.060 mood_slope=-0.271 risk=61.40 trend=-0.122",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.40 mood_avg_3=1.70 sleep_slope=-0.616 mood_slope=-0.326 risk=86.15 trend=-0.322",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.81 mood_avg_3=3.73 sleep_slope=0.156 mood_slope=0.183 risk=46.73 trend=-0.208",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "gold_seed",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.27 mood_avg_3=1.57 sleep_slope=-0.446 mood_slope=-0.485 risk=89.46 trend=-0.270",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.27 mood_avg_3=2.04 sleep_slope=-0.144 mood_slope=-0.164 risk=92.60 trend=-0.588",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.72 mood_avg_3=1.07 sleep_slope=-0.304 mood_slope=-0.290 risk=95.55 trend=-0.543",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.00 mood_avg_3=1.41 sleep_slope=-0.699 mood_slope=-0.425 risk=89.50 trend=-0.223",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=3.31 mood_avg_3=2.88 sleep_slope=0.069 mood_slope=0.087 risk=78.45 trend=-0.162",
+    "target": "Low sleep debt is building even though other indicators are only mildly affected.",
+    "source": "gold_seed",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.74 mood_avg_3=0.78 sleep_slope=-0.029 mood_slope=-0.103 risk=57.08 trend=-0.111",
+    "target": "Low mood is persisting despite moderate movement elsewhere.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.46 mood_avg_3=2.03 sleep_slope=-0.647 mood_slope=-0.325 risk=98.01 trend=-0.408",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.94 mood_avg_3=2.63 sleep_slope=0.312 mood_slope=0.203 risk=49.77 trend=0.152",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.41 mood_avg_3=2.63 sleep_slope=-0.299 mood_slope=-0.352 risk=91.09 trend=-0.418",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.40 mood_avg_3=3.26 sleep_slope=-0.026 mood_slope=0.011 risk=62.51 trend=0.011",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.55 mood_avg_3=1.55 sleep_slope=-0.634 mood_slope=-0.175 risk=66.37 trend=-0.315",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.14 mood_avg_3=4.06 sleep_slope=0.527 mood_slope=0.551 risk=38.35 trend=0.117",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "gold_seed",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.88 mood_avg_3=3.44 sleep_slope=-0.002 mood_slope=-0.016 risk=53.41 trend=0.042",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "gold_seed",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.71 mood_avg_3=1.05 sleep_slope=-0.116 mood_slope=-0.069 risk=56.57 trend=-0.067",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "gold_seed",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.76 mood_avg_3=1.51 sleep_slope=-0.280 mood_slope=-0.569 risk=70.92 trend=-0.428",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.34 mood_avg_3=1.55 sleep_slope=-0.332 mood_slope=-0.513 risk=62.50 trend=-0.151",
+    "target": "Your trend is declining with falling sleep and mood.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.96 mood_avg_3=2.77 sleep_slope=-0.497 mood_slope=-0.541 risk=86.35 trend=-0.262",
+    "target": "Sleep and mood are declining, so short term strain is rising.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.51 mood_avg_3=2.55 sleep_slope=-0.403 mood_slope=-0.231 risk=76.03 trend=-0.600",
+    "target": "Current signals are declining, so fatigue risk is increasing this week.",
+    "source": "gold_seed",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.94 mood_avg_3=1.54 sleep_slope=-0.562 mood_slope=-0.257 risk=97.85 trend=-0.158",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "gold_seed",
+    "bucket": "high_risk"
+  }
+]

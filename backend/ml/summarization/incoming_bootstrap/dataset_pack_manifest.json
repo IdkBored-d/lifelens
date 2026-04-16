@@ -1,0 +1,13 @@
+{
+  "total": 500,
+  "split": {
+    "gold_seed": 300,
+    "silver_synthetic": 150,
+    "edge_case": 50
+  },
+  "files": {
+    "gold_seed": "D:\\Users\\He846\\OneDrive\\Documents\\GitHub\\lifelens\\backend\\ml\\summarization\\incoming_bootstrap\\gold_seed_rows.json",
+    "silver_synthetic": "D:\\Users\\He846\\OneDrive\\Documents\\GitHub\\lifelens\\backend\\ml\\summarization\\incoming_bootstrap\\silver_synthetic_rows.json",
+    "edge_case": "D:\\Users\\He846\\OneDrive\\Documents\\GitHub\\lifelens\\backend\\ml\\summarization\\incoming_bootstrap\\edge_case_rows.json"
+  }
+}

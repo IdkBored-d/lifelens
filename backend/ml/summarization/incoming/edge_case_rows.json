@@ -1,0 +1,302 @@
+[
+  {
+    "input": "sleep_avg_3=7.76 mood_avg_3=0.70 sleep_slope=0.149 mood_slope=-0.043 risk=48.89 trend=-0.247",
+    "target": "Emotional wellbeing is trending low despite moderate movement elsewhere.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.26 mood_avg_3=1.63 sleep_slope=-0.226 mood_slope=-0.343 risk=86.24 trend=-0.367",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.97 mood_avg_3=1.70 sleep_slope=0.100 mood_slope=-0.199 risk=71.24 trend=0.036",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.89 mood_avg_3=1.69 sleep_slope=0.121 mood_slope=-0.010 risk=81.37 trend=-0.035",
+    "target": "Emotional wellbeing is trending low despite moderate movement elsewhere.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.16 mood_avg_3=2.36 sleep_slope=-0.347 mood_slope=-0.546 risk=86.10 trend=-0.172",
+    "target": "Sleep and mood are trending downward, so short term strain is rising.",
+    "source": "edge_case",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.60 mood_avg_3=3.90 sleep_slope=0.022 mood_slope=-0.006 risk=41.93 trend=0.046",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "edge_case",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.16 mood_avg_3=2.37 sleep_slope=-0.514 mood_slope=-0.358 risk=81.82 trend=-0.554",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "edge_case",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.42 mood_avg_3=1.97 sleep_slope=0.300 mood_slope=-0.276 risk=68.20 trend=-0.139",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "edge_case",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.40 mood_avg_3=1.70 sleep_slope=0.066 mood_slope=0.038 risk=46.21 trend=-0.022",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.50 mood_avg_3=1.35 sleep_slope=-0.518 mood_slope=-0.279 risk=97.72 trend=-0.493",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.65 mood_avg_3=3.50 sleep_slope=-0.146 mood_slope=0.071 risk=65.48 trend=-0.155",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.60 mood_avg_3=1.92 sleep_slope=-0.113 mood_slope=-0.212 risk=90.10 trend=-0.131",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.22 mood_avg_3=2.88 sleep_slope=-0.422 mood_slope=-0.385 risk=74.86 trend=-0.521",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "edge_case",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.74 mood_avg_3=0.78 sleep_slope=0.035 mood_slope=-0.211 risk=57.55 trend=-0.033",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.72 mood_avg_3=1.70 sleep_slope=-0.312 mood_slope=-0.281 risk=84.10 trend=-0.323",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "edge_case",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.14 mood_avg_3=3.71 sleep_slope=0.010 mood_slope=-0.058 risk=47.45 trend=-0.026",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "edge_case",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.81 mood_avg_3=3.58 sleep_slope=-0.084 mood_slope=0.148 risk=45.16 trend=0.001",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.21 mood_avg_3=1.37 sleep_slope=0.041 mood_slope=-0.028 risk=83.54 trend=-0.166",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.39 mood_avg_3=3.94 sleep_slope=0.198 mood_slope=0.528 risk=34.97 trend=0.310",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "edge_case",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.28 mood_avg_3=4.19 sleep_slope=-0.074 mood_slope=0.118 risk=60.63 trend=-0.216",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.35 mood_avg_3=0.74 sleep_slope=0.120 mood_slope=-0.041 risk=79.46 trend=-0.022",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.55 mood_avg_3=2.06 sleep_slope=-0.562 mood_slope=-0.328 risk=83.30 trend=-0.438",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.92 mood_avg_3=1.33 sleep_slope=-0.489 mood_slope=-0.125 risk=89.31 trend=-0.373",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.26 mood_avg_3=1.95 sleep_slope=-0.629 mood_slope=-0.563 risk=76.98 trend=-0.489",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.41 mood_avg_3=4.27 sleep_slope=0.215 mood_slope=0.257 risk=49.39 trend=0.544",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "edge_case",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.83 mood_avg_3=1.14 sleep_slope=-0.304 mood_slope=-0.493 risk=91.19 trend=-0.185",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.91 mood_avg_3=3.79 sleep_slope=-0.144 mood_slope=-0.141 risk=58.03 trend=-0.076",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.50 mood_avg_3=1.90 sleep_slope=0.039 mood_slope=-0.029 risk=69.64 trend=0.010",
+    "target": "Emotional wellbeing is trending low despite moderate movement elsewhere.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.65 mood_avg_3=3.37 sleep_slope=-0.082 mood_slope=0.133 risk=51.56 trend=-0.046",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.95 mood_avg_3=3.84 sleep_slope=-0.250 mood_slope=-0.221 risk=60.38 trend=-0.173",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "edge_case",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.58 mood_avg_3=3.42 sleep_slope=0.155 mood_slope=0.513 risk=38.25 trend=0.478",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "edge_case",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.07 mood_avg_3=3.72 sleep_slope=0.247 mood_slope=0.246 risk=74.89 trend=0.346",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "edge_case",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.33 mood_avg_3=4.02 sleep_slope=-0.083 mood_slope=0.225 risk=33.42 trend=-0.241",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "edge_case",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=7.09 mood_avg_3=1.83 sleep_slope=0.262 mood_slope=-0.251 risk=33.92 trend=0.051",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "edge_case",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.95 mood_avg_3=2.74 sleep_slope=0.208 mood_slope=0.032 risk=76.17 trend=-0.249",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "edge_case",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=3.03 mood_avg_3=3.72 sleep_slope=-0.050 mood_slope=-0.071 risk=77.61 trend=-0.094",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.52 mood_avg_3=3.53 sleep_slope=0.037 mood_slope=0.014 risk=55.08 trend=-0.019",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "edge_case",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.04 mood_avg_3=0.80 sleep_slope=-0.121 mood_slope=-0.025 risk=52.36 trend=-0.087",
+    "target": "Emotional wellbeing is trending low despite moderate movement elsewhere.",
+    "source": "edge_case",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=2.86 mood_avg_3=2.69 sleep_slope=-0.029 mood_slope=-0.112 risk=72.76 trend=-0.172",
+    "target": "Rest is the weakest signal at the moment and needs immediate support.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.48 mood_avg_3=1.72 sleep_slope=-0.453 mood_slope=-0.208 risk=80.90 trend=-0.506",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.54 mood_avg_3=1.11 sleep_slope=-0.367 mood_slope=-0.126 risk=76.69 trend=-0.123",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.04 mood_avg_3=2.84 sleep_slope=0.316 mood_slope=0.526 risk=49.64 trend=0.371",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "edge_case",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.34 mood_avg_3=3.03 sleep_slope=-0.014 mood_slope=-0.065 risk=49.22 trend=0.046",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "edge_case",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.40 mood_avg_3=4.33 sleep_slope=0.070 mood_slope=-0.026 risk=49.93 trend=-0.096",
+    "target": "Rest is the weakest signal at the moment and needs immediate support.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.00 mood_avg_3=4.07 sleep_slope=-0.137 mood_slope=0.174 risk=73.56 trend=-0.109",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "edge_case",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.21 mood_avg_3=0.99 sleep_slope=-0.647 mood_slope=-0.240 risk=73.77 trend=-0.232",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.17 mood_avg_3=2.98 sleep_slope=-0.136 mood_slope=0.049 risk=81.31 trend=-0.025",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "edge_case",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.84 mood_avg_3=1.73 sleep_slope=-0.547 mood_slope=-0.367 risk=76.72 trend=-0.418",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "edge_case",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.97 mood_avg_3=1.31 sleep_slope=-0.146 mood_slope=-0.128 risk=82.80 trend=-0.339",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.69 mood_avg_3=1.16 sleep_slope=-0.508 mood_slope=-0.406 risk=89.65 trend=-0.395",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "edge_case",
+    "bucket": "high_risk"
+  }
+]

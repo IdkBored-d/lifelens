@@ -35,6 +35,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run tracked summarization training experiment")
     parser.add_argument("--human-quality-score", type=float, default=None)
     parser.add_argument("--artifact-root", default=None)
+    parser.add_argument("--dataset", default="summarization_dataset.json")
     parser.add_argument("--allow-main", action="store_true", help="Allow training on git main branch")
     args = parser.parse_args()
 
@@ -48,17 +49,29 @@ def main():
     if branch in {"main", "master"} and not args.allow_main:
         raise SystemExit("Refusing to train on main/master. Use a feature branch or pass --allow-main.")
 
-    dataset_path = base / "summarization_dataset.json"
+    if Path(args.dataset).is_absolute():
+        dataset_path = Path(args.dataset)
+    elif (base / args.dataset).exists():
+        dataset_path = (base / args.dataset).resolve()
+    else:
+        dataset_path = Path(args.dataset).resolve()
+
+    if not dataset_path.exists():
+        raise SystemExit(f"Dataset file not found: {dataset_path}")
+
     reports_dir = paths["reports_dir"]
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    v_code, v_out, v_err = _run([python_cmd, "validate_dataset.py", "--dataset", "summarization_dataset.json"], base)
+    v_code, v_out, v_err = _run([python_cmd, "validate_dataset.py", "--dataset", str(dataset_path)], base)
     if v_code != 0:
         print(v_out)
         print(v_err)
         raise SystemExit("Dataset validation failed. Training aborted.")
 
-    t_code, t_out, t_err = _run([python_cmd, "train_model.py", "--artifact-root", str(paths["root"])], base)
+    t_code, t_out, t_err = _run(
+        [python_cmd, "train_model.py", "--dataset", str(dataset_path), "--artifact-root", str(paths["root"])],
+        base,
+    )
     if t_code != 0:
         print(t_out)
         print(t_err)

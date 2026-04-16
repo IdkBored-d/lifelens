@@ -146,6 +146,9 @@ class MiniMeChatRequest(BaseModel):
     summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=8)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
+    condition_labels: List[str] = Field(default_factory=list, max_items=8)
+    symptom_steps: Dict[str, str] = Field(default_factory=dict)
+    general_steps: List[str] = Field(default_factory=list, max_items=12)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
     user_id_hash: Optional[str] = Field(None, max_length=128)
     # Intelligence context (optional — passed through from client-side analysis)
@@ -180,6 +183,14 @@ class MiniMeChatRequest(BaseModel):
 
     @validator('active_symptoms', each_item=True)
     def validate_active_symptom_item(cls, v):
+        return v.strip()
+
+    @validator('condition_labels', each_item=True)
+    def validate_condition_label_item(cls, v):
+        return v.strip()
+
+    @validator('general_steps', each_item=True)
+    def validate_general_step_item(cls, v):
         return v.strip()
 
 
@@ -231,8 +242,20 @@ class MiniMeSuggestionsRequest(BaseModel):
     recent_moods: List[str] = Field(default_factory=list, max_items=10)
     recent_logs: List[str] = Field(default_factory=list, max_items=12)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
+    condition_labels: List[str] = Field(default_factory=list, max_items=8)
+    symptom_steps: Dict[str, str] = Field(default_factory=dict)
+    general_steps: List[str] = Field(default_factory=list, max_items=12)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
     user_id_hash: Optional[str] = Field(None, max_length=128)
+    intelligence_tier: Optional[str] = Field(None, max_length=20)
+    intelligence_phase: Optional[str] = Field(None, max_length=30)
+    intelligence_insights: List[str] = Field(default_factory=list, max_items=5)
+    intelligence_actions: List[str] = Field(default_factory=list, max_items=5)
+    intelligence_alert: Optional[str] = Field(None, max_length=500)
+    intelligence_risk_score: Optional[float] = Field(None, ge=0, le=100)
+    intelligence_confidence: Optional[float] = Field(None, ge=0, le=1)
+    intelligence_state: Optional[Dict[str, bool]] = Field(None)
+    previous_memory: Optional[Dict[str, Any]] = Field(None)
 
     @validator('recent_moods', each_item=True)
     def validate_suggestion_recent_mood_item(cls, v):
@@ -255,6 +278,14 @@ class MiniMeSuggestionsRequest(BaseModel):
 
     @validator('active_symptoms', each_item=True)
     def validate_suggestion_active_symptom_item(cls, v):
+        return v.strip()
+
+    @validator('condition_labels', each_item=True)
+    def validate_suggestion_condition_label_item(cls, v):
+        return v.strip()
+
+    @validator('general_steps', each_item=True)
+    def validate_suggestion_general_step_item(cls, v):
         return v.strip()
 
 
@@ -284,9 +315,21 @@ class MiniMeExerciseRecommendationRequest(BaseModel):
     recent_moods: List[str] = Field(default_factory=list, max_items=10)
     recent_logs: List[str] = Field(default_factory=list, max_items=12)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
+    condition_labels: List[str] = Field(default_factory=list, max_items=8)
+    symptom_steps: Dict[str, str] = Field(default_factory=dict)
+    general_steps: List[str] = Field(default_factory=list, max_items=12)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
     exercises: List[MiniMeExerciseCandidate] = Field(default_factory=list, min_items=1, max_items=100)
     user_id_hash: Optional[str] = Field(None, max_length=128)
+    intelligence_tier: Optional[str] = Field(None, max_length=20)
+    intelligence_phase: Optional[str] = Field(None, max_length=30)
+    intelligence_insights: List[str] = Field(default_factory=list, max_items=5)
+    intelligence_actions: List[str] = Field(default_factory=list, max_items=5)
+    intelligence_alert: Optional[str] = Field(None, max_length=500)
+    intelligence_risk_score: Optional[float] = Field(None, ge=0, le=100)
+    intelligence_confidence: Optional[float] = Field(None, ge=0, le=1)
+    intelligence_state: Optional[Dict[str, bool]] = Field(None)
+    previous_memory: Optional[Dict[str, Any]] = Field(None)
 
     @validator('recent_moods', each_item=True)
     def validate_exercise_recent_mood_item(cls, v):
@@ -309,6 +352,14 @@ class MiniMeExerciseRecommendationRequest(BaseModel):
 
     @validator('active_symptoms', each_item=True)
     def validate_exercise_active_symptom_item(cls, v):
+        return v.strip()
+
+    @validator('condition_labels', each_item=True)
+    def validate_exercise_condition_label_item(cls, v):
+        return v.strip()
+
+    @validator('general_steps', each_item=True)
+    def validate_exercise_general_step_item(cls, v):
         return v.strip()
 
 

@@ -1,0 +1,902 @@
+[
+  {
+    "input": "sleep_avg_3=5.95 mood_avg_3=2.91 sleep_slope=0.244 mood_slope=0.139 risk=40.26 trend=0.376",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.42 mood_avg_3=4.16 sleep_slope=0.465 mood_slope=0.175 risk=53.45 trend=0.341",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.82 mood_avg_3=3.67 sleep_slope=-0.200 mood_slope=-0.195 risk=42.36 trend=-0.205",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.05 mood_avg_3=0.64 sleep_slope=0.039 mood_slope=-0.290 risk=77.24 trend=-0.170",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.88 mood_avg_3=1.84 sleep_slope=0.018 mood_slope=-0.079 risk=76.89 trend=-0.006",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.90 mood_avg_3=4.20 sleep_slope=-0.191 mood_slope=0.093 risk=81.31 trend=0.066",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.46 mood_avg_3=4.49 sleep_slope=0.396 mood_slope=0.268 risk=44.54 trend=0.451",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.51 mood_avg_3=2.01 sleep_slope=-0.555 mood_slope=-0.108 risk=99.22 trend=-0.200",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.82 mood_avg_3=2.37 sleep_slope=-0.558 mood_slope=-0.157 risk=74.48 trend=-0.251",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.22 mood_avg_3=0.85 sleep_slope=0.101 mood_slope=0.004 risk=46.44 trend=-0.213",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.57 mood_avg_3=1.89 sleep_slope=-0.238 mood_slope=-0.376 risk=60.81 trend=-0.585",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.58 mood_avg_3=3.01 sleep_slope=-0.017 mood_slope=0.025 risk=52.96 trend=0.037",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.37 mood_avg_3=2.08 sleep_slope=-0.632 mood_slope=-0.590 risk=79.31 trend=-0.566",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.34 mood_avg_3=3.34 sleep_slope=-0.124 mood_slope=-0.129 risk=79.45 trend=0.037",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.80 mood_avg_3=1.40 sleep_slope=0.107 mood_slope=-0.162 risk=45.21 trend=-0.041",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.00 mood_avg_3=3.95 sleep_slope=-0.008 mood_slope=0.006 risk=74.45 trend=-0.175",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.67 mood_avg_3=1.67 sleep_slope=0.160 mood_slope=0.041 risk=48.11 trend=-0.050",
+    "target": "Emotional wellbeing is trending low despite moderate movement elsewhere.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.98 mood_avg_3=1.43 sleep_slope=-0.180 mood_slope=-0.583 risk=87.99 trend=-0.351",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.99 mood_avg_3=3.18 sleep_slope=-0.054 mood_slope=0.039 risk=58.81 trend=-0.019",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.75 mood_avg_3=3.99 sleep_slope=-0.065 mood_slope=-0.011 risk=55.76 trend=-0.088",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=2.87 mood_avg_3=3.21 sleep_slope=-0.101 mood_slope=0.074 risk=54.24 trend=-0.081",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.26 mood_avg_3=1.79 sleep_slope=0.118 mood_slope=0.036 risk=59.32 trend=0.041",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.25 mood_avg_3=1.77 sleep_slope=0.114 mood_slope=-0.238 risk=68.29 trend=-0.002",
+    "target": "Emotional wellbeing is trending low despite moderate movement elsewhere.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=4.94 mood_avg_3=2.84 sleep_slope=-0.049 mood_slope=-0.050 risk=53.96 trend=-0.347",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.89 mood_avg_3=2.59 sleep_slope=-0.413 mood_slope=-0.446 risk=61.32 trend=-0.253",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.41 mood_avg_3=1.89 sleep_slope=-0.171 mood_slope=-0.562 risk=89.98 trend=-0.532",
+    "target": "Current signals show decline, so fatigue risk is increasing this week.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.24 mood_avg_3=2.19 sleep_slope=-0.166 mood_slope=-0.161 risk=79.40 trend=-0.280",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.31 mood_avg_3=4.09 sleep_slope=0.106 mood_slope=-0.218 risk=55.80 trend=-0.182",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=3.98 mood_avg_3=4.33 sleep_slope=-0.181 mood_slope=-0.075 risk=54.81 trend=-0.184",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.44 mood_avg_3=1.67 sleep_slope=-0.548 mood_slope=-0.157 risk=82.34 trend=-0.388",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.02 mood_avg_3=4.11 sleep_slope=0.044 mood_slope=0.068 risk=44.78 trend=-0.051",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.41 mood_avg_3=1.73 sleep_slope=0.151 mood_slope=-0.110 risk=51.20 trend=-0.248",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.24 mood_avg_3=4.20 sleep_slope=-0.012 mood_slope=-0.062 risk=39.71 trend=0.022",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.26 mood_avg_3=2.79 sleep_slope=0.326 mood_slope=0.309 risk=42.09 trend=0.242",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.69 mood_avg_3=0.69 sleep_slope=0.094 mood_slope=-0.222 risk=52.12 trend=-0.132",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.33 mood_avg_3=1.47 sleep_slope=-0.355 mood_slope=-0.167 risk=85.30 trend=-0.162",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.69 mood_avg_3=3.73 sleep_slope=0.070 mood_slope=0.112 risk=63.31 trend=0.155",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=3.29 mood_avg_3=2.90 sleep_slope=0.052 mood_slope=-0.071 risk=75.56 trend=-0.049",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.97 mood_avg_3=0.95 sleep_slope=-0.434 mood_slope=-0.325 risk=85.75 trend=-0.592",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.80 mood_avg_3=3.70 sleep_slope=0.316 mood_slope=0.423 risk=24.72 trend=0.347",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.67 mood_avg_3=3.85 sleep_slope=-0.216 mood_slope=0.000 risk=53.81 trend=-0.072",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.38 mood_avg_3=2.06 sleep_slope=-0.305 mood_slope=0.342 risk=61.47 trend=0.253",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=3.30 mood_avg_3=1.24 sleep_slope=-0.571 mood_slope=-0.296 risk=91.42 trend=-0.600",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.07 mood_avg_3=4.00 sleep_slope=-0.068 mood_slope=-0.190 risk=65.45 trend=-0.258",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=7.32 mood_avg_3=3.73 sleep_slope=0.023 mood_slope=-0.020 risk=32.22 trend=0.005",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.25 mood_avg_3=1.87 sleep_slope=-0.058 mood_slope=-0.144 risk=50.09 trend=-0.063",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.40 mood_avg_3=3.38 sleep_slope=0.043 mood_slope=0.012 risk=42.27 trend=0.030",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.26 mood_avg_3=2.31 sleep_slope=-0.372 mood_slope=-0.314 risk=77.96 trend=-0.433",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.20 mood_avg_3=4.12 sleep_slope=0.541 mood_slope=0.403 risk=31.95 trend=0.338",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.96 mood_avg_3=0.91 sleep_slope=0.018 mood_slope=-0.300 risk=81.63 trend=-0.196",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=5.10 mood_avg_3=1.92 sleep_slope=-0.698 mood_slope=-0.513 risk=67.46 trend=-0.262",
+    "target": "Sleep and mood are trending downward, so short term strain is rising.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.05 mood_avg_3=3.90 sleep_slope=-0.209 mood_slope=-0.310 risk=33.52 trend=-0.315",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.93 mood_avg_3=3.88 sleep_slope=0.327 mood_slope=0.128 risk=53.81 trend=-0.257",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.68 mood_avg_3=4.28 sleep_slope=0.438 mood_slope=0.396 risk=32.24 trend=0.301",
+    "target": "Recent data suggests recovery momentum across key wellbeing indicators.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.77 mood_avg_3=3.75 sleep_slope=-0.212 mood_slope=0.072 risk=45.10 trend=0.038",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.10 mood_avg_3=3.94 sleep_slope=-0.214 mood_slope=-0.144 risk=61.63 trend=-0.126",
+    "target": "Low sleep is the main concern right now and should be prioritized first.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.66 mood_avg_3=1.87 sleep_slope=-0.599 mood_slope=-0.300 risk=72.69 trend=-0.586",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.85 mood_avg_3=3.28 sleep_slope=0.366 mood_slope=0.193 risk=48.67 trend=0.347",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.81 mood_avg_3=2.08 sleep_slope=-0.312 mood_slope=0.094 risk=58.69 trend=0.084",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=3.31 mood_avg_3=0.93 sleep_slope=-0.274 mood_slope=-0.499 risk=95.03 trend=-0.543",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.73 mood_avg_3=3.45 sleep_slope=-0.256 mood_slope=0.347 risk=54.55 trend=0.175",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.55 mood_avg_3=2.88 sleep_slope=0.506 mood_slope=0.224 risk=51.25 trend=0.455",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.07 mood_avg_3=3.27 sleep_slope=0.067 mood_slope=-0.029 risk=50.05 trend=0.063",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.36 mood_avg_3=1.22 sleep_slope=-0.513 mood_slope=-0.566 risk=79.19 trend=-0.564",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.93 mood_avg_3=2.10 sleep_slope=-0.442 mood_slope=-0.233 risk=80.25 trend=-0.528",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.30 mood_avg_3=3.22 sleep_slope=-0.041 mood_slope=-0.041 risk=32.08 trend=-0.021",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.34 mood_avg_3=0.73 sleep_slope=0.114 mood_slope=-0.017 risk=49.02 trend=0.042",
+    "target": "Low mood is the dominant concern in the current window.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.06 mood_avg_3=2.51 sleep_slope=-0.416 mood_slope=-0.344 risk=69.25 trend=-0.395",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=3.24 mood_avg_3=3.53 sleep_slope=-0.150 mood_slope=0.032 risk=62.17 trend=-0.042",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=4.28 mood_avg_3=1.04 sleep_slope=-0.327 mood_slope=-0.221 risk=98.31 trend=-0.139",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.23 mood_avg_3=2.40 sleep_slope=0.135 mood_slope=-0.109 risk=37.93 trend=-0.082",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.73 mood_avg_3=4.13 sleep_slope=0.005 mood_slope=-0.074 risk=48.20 trend=-0.083",
+    "target": "Rest is the weakest signal at the moment and needs immediate support.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=6.84 mood_avg_3=2.23 sleep_slope=-0.293 mood_slope=-0.117 risk=77.39 trend=-0.131",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=7.59 mood_avg_3=3.48 sleep_slope=0.052 mood_slope=0.053 risk=33.27 trend=-0.020",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.43 mood_avg_3=2.46 sleep_slope=0.226 mood_slope=0.004 risk=61.23 trend=-0.263",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=4.08 sleep_slope=0.274 mood_slope=0.180 risk=56.43 trend=-0.337",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.03 mood_avg_3=1.96 sleep_slope=-0.206 mood_slope=-0.556 risk=87.58 trend=-0.333",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.68 mood_avg_3=1.71 sleep_slope=0.081 mood_slope=-0.033 risk=82.86 trend=-0.076",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.37 mood_avg_3=3.71 sleep_slope=-0.039 mood_slope=-0.010 risk=55.76 trend=0.022",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.00 mood_avg_3=0.88 sleep_slope=-0.389 mood_slope=-0.466 risk=82.43 trend=-0.444",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.80 mood_avg_3=0.96 sleep_slope=0.104 mood_slope=-0.292 risk=46.64 trend=0.029",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=3.42 mood_avg_3=1.35 sleep_slope=-0.352 mood_slope=-0.115 risk=88.51 trend=-0.332",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.43 mood_avg_3=2.65 sleep_slope=-0.312 mood_slope=-0.471 risk=78.89 trend=-0.559",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=4.22 mood_avg_3=1.59 sleep_slope=-0.419 mood_slope=-0.361 risk=77.74 trend=-0.324",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.33 mood_avg_3=2.33 sleep_slope=-0.344 mood_slope=-0.137 risk=69.27 trend=-0.218",
+    "target": "Sleep and mood are trending downward, so short term strain is rising.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.02 mood_avg_3=3.78 sleep_slope=-0.022 mood_slope=0.026 risk=31.69 trend=-0.056",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.12 mood_avg_3=3.25 sleep_slope=0.128 mood_slope=0.513 risk=53.50 trend=0.328",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=2.85 mood_avg_3=3.48 sleep_slope=-0.040 mood_slope=0.056 risk=45.36 trend=-0.119",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.13 mood_avg_3=3.60 sleep_slope=-0.059 mood_slope=0.041 risk=56.91 trend=-0.014",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.86 mood_avg_3=2.36 sleep_slope=-0.390 mood_slope=-0.542 risk=93.98 trend=-0.375",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=3.00 mood_avg_3=2.90 sleep_slope=-0.133 mood_slope=-0.005 risk=70.06 trend=-0.142",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.18 mood_avg_3=2.34 sleep_slope=0.260 mood_slope=-0.056 risk=72.79 trend=-0.090",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.54 mood_avg_3=4.60 sleep_slope=-0.007 mood_slope=-0.021 risk=58.59 trend=-0.009",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=7.19 mood_avg_3=4.26 sleep_slope=0.169 mood_slope=0.557 risk=26.71 trend=0.344",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.16 mood_avg_3=1.82 sleep_slope=-0.173 mood_slope=0.214 risk=46.05 trend=0.327",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.89 mood_avg_3=1.08 sleep_slope=-0.117 mood_slope=-0.253 risk=98.01 trend=-0.211",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.15 mood_avg_3=2.75 sleep_slope=0.236 mood_slope=0.118 risk=24.00 trend=0.463",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=3.73 mood_avg_3=1.10 sleep_slope=-0.267 mood_slope=-0.239 risk=92.44 trend=-0.482",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.12 mood_avg_3=1.82 sleep_slope=0.350 mood_slope=0.327 risk=70.61 trend=0.043",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.67 mood_avg_3=4.45 sleep_slope=-0.047 mood_slope=-0.015 risk=40.69 trend=0.028",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=3.64 mood_avg_3=1.40 sleep_slope=-0.247 mood_slope=-0.326 risk=97.15 trend=-0.572",
+    "target": "Risk remains high as multiple core signals continue to deteriorate.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.31 mood_avg_3=1.27 sleep_slope=-0.286 mood_slope=-0.300 risk=77.59 trend=-0.607",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.01 mood_avg_3=2.15 sleep_slope=-0.178 mood_slope=-0.258 risk=99.23 trend=-0.501",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.45 mood_avg_3=4.14 sleep_slope=0.046 mood_slope=0.037 risk=53.67 trend=-0.001",
+    "target": "Recent patterns are balanced overall and do not show strong movement.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.94 mood_avg_3=2.68 sleep_slope=-0.158 mood_slope=-0.165 risk=53.56 trend=0.034",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=7.19 mood_avg_3=2.42 sleep_slope=-0.057 mood_slope=-0.078 risk=33.62 trend=0.146",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.03 mood_avg_3=1.49 sleep_slope=-0.291 mood_slope=-0.296 risk=84.16 trend=-0.592",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.31 mood_avg_3=2.03 sleep_slope=-0.623 mood_slope=-0.463 risk=73.33 trend=-0.574",
+    "target": "Current signals show decline, so fatigue risk is increasing this week.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.72 mood_avg_3=2.80 sleep_slope=0.519 mood_slope=0.147 risk=34.13 trend=0.238",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.10 mood_avg_3=2.02 sleep_slope=-0.593 mood_slope=-0.428 risk=77.09 trend=-0.287",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.73 mood_avg_3=1.51 sleep_slope=-0.196 mood_slope=-0.465 risk=83.67 trend=-0.284",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.67 mood_avg_3=2.32 sleep_slope=-0.435 mood_slope=-0.103 risk=99.03 trend=-0.603",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.61 mood_avg_3=2.46 sleep_slope=0.183 mood_slope=-0.232 risk=67.17 trend=-0.007",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.35 mood_avg_3=1.90 sleep_slope=-0.432 mood_slope=-0.351 risk=89.25 trend=-0.153",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.49 mood_avg_3=3.51 sleep_slope=0.130 mood_slope=0.097 risk=53.88 trend=0.308",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=5.03 mood_avg_3=3.95 sleep_slope=0.174 mood_slope=0.132 risk=45.11 trend=-0.079",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.78 mood_avg_3=1.62 sleep_slope=-0.404 mood_slope=-0.536 risk=73.55 trend=-0.244",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.81 mood_avg_3=1.07 sleep_slope=-0.043 mood_slope=0.042 risk=74.03 trend=-0.120",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.95 mood_avg_3=1.30 sleep_slope=0.125 mood_slope=-0.132 risk=47.60 trend=-0.137",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=7.28 mood_avg_3=1.10 sleep_slope=0.023 mood_slope=-0.130 risk=81.42 trend=-0.099",
+    "target": "Your recent pattern is mostly limited by low mood levels.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.77 mood_avg_3=3.15 sleep_slope=-0.057 mood_slope=-0.040 risk=32.73 trend=0.013",
+    "target": "The latest window appears stable with manageable short term risk.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.84 mood_avg_3=3.19 sleep_slope=0.025 mood_slope=-0.069 risk=61.75 trend=-0.150",
+    "target": "Sleep remains below target, so recovery habits should be your top focus.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.23 mood_avg_3=2.97 sleep_slope=-0.038 mood_slope=0.322 risk=53.83 trend=0.036",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=6.53 mood_avg_3=3.54 sleep_slope=0.041 mood_slope=0.289 risk=75.56 trend=0.280",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=7.59 mood_avg_3=0.64 sleep_slope=0.070 mood_slope=0.032 risk=67.11 trend=-0.080",
+    "target": "Mood remains below baseline and may need added support this week.",
+    "source": "silver_synthetic",
+    "bucket": "low_mood"
+  },
+  {
+    "input": "sleep_avg_3=6.33 mood_avg_3=3.39 sleep_slope=0.360 mood_slope=0.361 risk=34.13 trend=0.217",
+    "target": "Your trend is improving with gradual gains in sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=6.75 mood_avg_3=2.96 sleep_slope=0.283 mood_slope=0.198 risk=46.69 trend=0.523",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=4.95 mood_avg_3=1.98 sleep_slope=-0.326 mood_slope=-0.275 risk=63.13 trend=-0.121",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=6.00 mood_avg_3=3.54 sleep_slope=0.372 mood_slope=0.221 risk=54.18 trend=0.389",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=7.42 mood_avg_3=2.79 sleep_slope=0.152 mood_slope=0.446 risk=41.46 trend=0.277",
+    "target": "The latest window shows improvement and better short term resilience.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.94 mood_avg_3=2.18 sleep_slope=-0.132 mood_slope=0.005 risk=38.24 trend=0.246",
+    "target": "Signals are mixed, so progress is uneven and should be monitored closely.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.34 mood_avg_3=3.14 sleep_slope=0.072 mood_slope=-0.151 risk=48.54 trend=-0.180",
+    "target": "Sleep debt is building even though other indicators are only mildly affected.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=5.03 mood_avg_3=3.78 sleep_slope=-0.141 mood_slope=-0.146 risk=65.48 trend=0.067",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.62 mood_avg_3=0.96 sleep_slope=-0.386 mood_slope=-0.168 risk=90.23 trend=-0.263",
+    "target": "Combined indicators suggest a high risk profile that needs close follow up.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.55 mood_avg_3=2.27 sleep_slope=-0.643 mood_slope=-0.250 risk=88.45 trend=-0.214",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=4.34 mood_avg_3=1.22 sleep_slope=-0.190 mood_slope=-0.318 risk=76.23 trend=-0.258",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=7.74 mood_avg_3=4.32 sleep_slope=-0.001 mood_slope=-0.025 risk=39.93 trend=0.007",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.91 mood_avg_3=3.00 sleep_slope=0.257 mood_slope=-0.083 risk=45.72 trend=-0.312",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.84 mood_avg_3=1.67 sleep_slope=-0.254 mood_slope=-0.562 risk=86.87 trend=-0.289",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=7.25 mood_avg_3=4.40 sleep_slope=-0.006 mood_slope=-0.002 risk=50.37 trend=0.052",
+    "target": "Your signals are stable right now, with no major short term shift.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=4.96 mood_avg_3=2.28 sleep_slope=-0.064 mood_slope=0.049 risk=73.70 trend=-0.030",
+    "target": "Your recent window is inconsistent, with offsetting gains and losses.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=4.83 mood_avg_3=1.55 sleep_slope=-0.636 mood_slope=-0.433 risk=62.81 trend=-0.414",
+    "target": "Recent patterns are worsening with lower rest and mood over the latest window.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.92 mood_avg_3=3.83 sleep_slope=0.238 mood_slope=0.264 risk=40.33 trend=-0.282",
+    "target": "Some indicators improved while others declined, leading to a mixed pattern.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  },
+  {
+    "input": "sleep_avg_3=2.96 mood_avg_3=3.54 sleep_slope=-0.106 mood_slope=0.148 risk=53.76 trend=-0.142",
+    "target": "Rest is the weakest signal at the moment and needs immediate support.",
+    "source": "silver_synthetic",
+    "bucket": "low_sleep"
+  },
+  {
+    "input": "sleep_avg_3=3.33 mood_avg_3=1.50 sleep_slope=-0.419 mood_slope=-0.517 risk=83.59 trend=-0.161",
+    "target": "Current trends point to heightened risk and require careful monitoring.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=5.35 mood_avg_3=2.62 sleep_slope=-0.405 mood_slope=-0.437 risk=64.70 trend=-0.545",
+    "target": "Your trend is moving in the wrong direction with falling sleep and mood.",
+    "source": "silver_synthetic",
+    "bucket": "declining"
+  },
+  {
+    "input": "sleep_avg_3=5.59 mood_avg_3=2.35 sleep_slope=-0.529 mood_slope=-0.317 risk=98.23 trend=-0.547",
+    "target": "Overall short term risk is elevated due to reinforcing negative signals.",
+    "source": "silver_synthetic",
+    "bucket": "high_risk"
+  },
+  {
+    "input": "sleep_avg_3=6.03 mood_avg_3=4.49 sleep_slope=-0.048 mood_slope=-0.006 risk=64.71 trend=-0.010",
+    "target": "Sleep and mood look steady, so continue your current routine consistently.",
+    "source": "silver_synthetic",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=5.75 mood_avg_3=4.00 sleep_slope=0.137 mood_slope=0.509 risk=22.40 trend=0.266",
+    "target": "Sleep and mood are moving in a healthier direction this week.",
+    "source": "silver_synthetic",
+    "bucket": "improving"
+  },
+  {
+    "input": "sleep_avg_3=5.70 mood_avg_3=2.70 sleep_slope=-0.106 mood_slope=-0.174 risk=53.47 trend=0.124",
+    "target": "The trend is mixed overall and best treated as cautiously stable.",
+    "source": "silver_synthetic",
+    "bucket": "mixed"
+  }
+]

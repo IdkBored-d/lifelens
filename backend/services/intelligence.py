@@ -575,6 +575,24 @@ def _strip_recommended_action_clause(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _sanitize_summary_for_chat(text: str, max_words: int = 80) -> str:
+    sanitized = text.strip()
+    # Strip structured feature echoes before the summary is handed to chat context.
+    sanitized = re.sub(
+        r"\b(?:sleep_avg_3|mood_avg_3|sleep_slope|mood_slope|risk|trend)\s*=\s*-?\d+(?:\.\d+)?\b",
+        "",
+        sanitized,
+        flags=re.IGNORECASE,
+    )
+    sanitized = re.sub(r"\s+", " ", sanitized).strip(" .,")
+
+    words = [part for part in re.split(r"\s+", sanitized) if part]
+    if len(words) > max_words:
+        sanitized = " ".join(words[:max_words]).rstrip(" ,") + "."
+
+    return sanitized
+
+
 def _fallback_message(
     selected_actions: List[str],
     confidence_score: float,
@@ -620,6 +638,8 @@ def _is_summary_usable(summary: str) -> bool:
 
     word_count = len([part for part in re.split(r"\s+", normalized) if part])
     if word_count < 4:
+        return False
+    if word_count > 80:
         return False
 
     return True
@@ -1169,6 +1189,7 @@ def analyze_logs(
     try:
         summary_message = generate_summary(input_text)
         summary_message = _strip_recommended_action_clause(summary_message)
+        summary_message = _sanitize_summary_for_chat(summary_message, max_words=80)
         if not _is_summary_usable(summary_message):
             summary_message = _fallback_message(
                 selected_actions=selected_actions,
@@ -1178,6 +1199,7 @@ def analyze_logs(
                 trend_classification=trend_classification,
                 next_day=forecast.get("next_day", {}),
             )
+            summary_message = _sanitize_summary_for_chat(summary_message, max_words=80)
     except Exception as e:
         logger.warning(f"Summarization model generation failed, using deterministic fallback: {e}")
         summary_message = _fallback_message(
@@ -1188,6 +1210,7 @@ def analyze_logs(
             trend_classification=trend_classification,
             next_day=forecast.get("next_day", {}),
         )
+        summary_message = _sanitize_summary_for_chat(summary_message, max_words=80)
     logger.info(f"[Summarization Output] {summary_message}")
 
     return IntelligenceAnalyzeResponse(
