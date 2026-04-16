@@ -10,8 +10,9 @@ import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/chat_session_service.dart';
+import 'package:lifelens/services/daily_suggestions_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
-import 'package:lifelens/services/mini_me_suggestion_aggregator.dart';
+import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/chat_message.dart';
@@ -21,9 +22,10 @@ import 'avatar_customization_screen.dart';
 import 'sleep_store.dart';
 
 class MiniMeScreen extends StatefulWidget {
-  const MiniMeScreen({super.key, required this.userName});
+  const MiniMeScreen({super.key, required this.userName, this.isActive = true});
 
   final String userName;
+  final bool isActive;
 
   @override
   State<MiniMeScreen> createState() => _MiniMeScreenState();
@@ -35,6 +37,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   final FocusNode _chatFocusNode = FocusNode();
 
   bool _didLoadOpeningSuggestion = false;
+  bool _isSurfacingUnreadSuggestions = false;
   bool _isCoachExpanded = false;
   bool _isReplying = false;
   bool _isIntelligenceLoading = false;
@@ -62,6 +65,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         const Duration(seconds: 3),
         onTimeout: () {},
       );
+      if (!mounted) return;
       final moodStore = context.read<MoodLogStore>();
       final moodCtx = _buildMoodContext(moodStore);
       _sessionId = await _chatSessionService.startSession(
@@ -80,6 +84,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _scrollController.dispose();
     _chatFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant MiniMeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _syncUnreadSuggestions(forceRefresh: true);
+      });
+    }
   }
 
   // ignore: unused_element
@@ -200,12 +215,14 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         final online = await AppServices.isOnline();
         if (isGpu || !online) {
           try {
-            final greeting = await AppServices.gemma.generateMiniMeReply(
-              userMessage:
-                  'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.',
-              moodLabel: moodContext.label,
-              intelligenceSummary: _buildIntelligenceSummary(),
-            ).timeout(const Duration(seconds: 20));
+            final greeting = await AppServices.gemma
+                .generateMiniMeReply(
+                  userMessage:
+                      'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.',
+                  moodLabel: moodContext.label,
+                  intelligenceSummary: _buildIntelligenceSummary(),
+                )
+                .timeout(const Duration(seconds: 20));
             if (!mounted) return;
             setState(() {
               _messages.add(
@@ -443,11 +460,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
             );
         });
         _scrollToBottom();
+        await _syncUnreadSuggestions(forceRefresh: true);
         return;
       }
     }
 
     await _loadOpeningSuggestion();
+    await _syncUnreadSuggestions(forceRefresh: false);
   }
 
   Future<void> _sendMessage() async {
@@ -489,173 +508,144 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     await _refreshIntelligence();
   }
 
-  Future<void> _requestDailySuggestions() async {
-    if (_isReplying) return;
+  Future<void> _syncUnreadSuggestions({required bool forceRefresh}) async {
+    if (_isReplying || _isSurfacingUnreadSuggestions) return;
 
-    const userPrompt = 'Give me today\'s daily suggestions.';
+    final inbox = context.read<MiniMeSuggestionsInbox>();
+    final moodStore = context.read<MoodLogStore>();
+    final sleepStore = context.read<SleepStore>();
 
-    setState(() {
-      _isCoachExpanded = true;
-      _messages.add(
-        const _MiniMeChatMessage(role: _ChatRole.user, text: userPrompt),
-      );
-      _isReplying = true;
-    });
-    await _persistMessages();
-    _scrollToBottom();
+    if (forceRefresh || !inbox.isReady) {
+      await inbox.refresh(moodStore: moodStore, sleepStore: sleepStore);
+    }
 
+    final unreadSuggestions = inbox.unreadSuggestions;
+    if (!mounted || unreadSuggestions.isEmpty) return;
+
+    _isSurfacingUnreadSuggestions = true;
     try {
-      final suggestions =
-          await MiniMeSuggestionAggregator.generateDailySuggestions(days: 7);
+      setState(() {
+        _isCoachExpanded = true;
+        _isReplying = true;
+      });
+      _scrollToBottom();
 
-      final nonEmpty = suggestions
-          .where(
-            (item) =>
-                item.action.trim().isNotEmpty || item.reason.trim().isNotEmpty,
-          )
-          .toList(growable: false);
+      final replies = _buildUnreadSuggestionMessages(unreadSuggestions);
+      await _appendAssistantRepliesSequence(replies);
+      await inbox.markSuggestionsViewed(unreadSuggestions);
+      await _refreshIntelligence();
+    } finally {
+      _isSurfacingUnreadSuggestions = false;
+    }
+  }
 
-      if (nonEmpty.isEmpty) {
-        await _appendAssistantReplyInChunks(
-          'I could not build suggestions yet. Add one quick check-in and ask again.',
-        );
-        await _refreshIntelligence();
-        return;
+  List<String> _buildUnreadSuggestionMessages(
+    List<DailySuggestion> suggestions,
+  ) {
+    if (suggestions.isEmpty) {
+      return const <String>[
+        'I do not have a new suggestion yet, but I am still here if you want to check in.',
+      ];
+    }
+
+    final intro = suggestions.length == 1
+        ? 'I noticed 1 new suggestion from your recent check-ins.'
+        : 'I noticed ${suggestions.length} new suggestions from your recent check-ins.';
+
+    final replies = <String>[intro];
+    for (var i = 0; i < suggestions.length; i++) {
+      final item = suggestions[i];
+      final action = item.action.trim();
+      final reason = item.reason.trim();
+      if (action.isEmpty && reason.isEmpty) continue;
+
+      final buffer = StringBuffer('Suggestion ${i + 1}: ');
+      if (action.isNotEmpty) {
+        buffer.write(action);
       }
-
-      final buffer = StringBuffer(
-        'I reviewed your recent logs, symptoms, and chat history. Here are your daily suggestions.',
-      );
-
-      for (var i = 0; i < nonEmpty.length && i < 3; i++) {
-        final action = nonEmpty[i].action.trim();
-        final reason = nonEmpty[i].reason.trim();
-        buffer.write(' Suggestion ${i + 1}: ');
+      if (reason.isNotEmpty) {
         if (action.isNotEmpty) {
-          buffer.write('$action ');
+          buffer.write(' ');
         }
-        if (reason.isNotEmpty) {
-          buffer.write('($reason) ');
-        }
+        buffer.write(reason);
       }
-
-      await _appendAssistantReplyInChunks(buffer.toString().trim());
-    } catch (_) {
-      await _appendAssistantReplyInChunks(
-        'I could not fetch your daily suggestions right now, but I can still help if you tell me your focus for today.',
-      );
+      replies.add(buffer.toString().trim());
     }
 
-    await _refreshIntelligence();
+    return replies;
   }
 
-  List<String> _splitAssistantReply(String reply) {
-    final normalized = reply.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (normalized.isEmpty) {
-      return const <String>[];
-    }
-
-    final chunks = normalized
-        .split(RegExp(r'(?<=[.!?])\s+'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList(growable: false);
-
-    if (chunks.isEmpty) {
-      return <String>[normalized];
-    }
-
-    final result = <String>[];
-    for (final chunk in chunks) {
-      if (chunk.length <= 85) {
-        result.add(chunk);
-        continue;
-      }
-
-      final subParts = chunk
-          .split(RegExp(r'(?<=[,;:])\s+'))
-          .map((s) => s.trim())
-          .where((s) => s.isNotEmpty)
-          .toList(growable: false);
-      if (subParts.isEmpty || subParts.length == 1) {
-        result.add(chunk);
-      } else {
-        result.addAll(subParts);
-      }
-    }
-
-    final condensed = <String>[];
-    for (final part in result) {
-      if (part.length <= 72) {
-        condensed.add(part);
-        continue;
-      }
-
-      final words = part.split(RegExp(r'\s+'));
-      final buffer = StringBuffer();
-      for (final word in words) {
-        final candidate = buffer.isEmpty ? word : '${buffer.toString()} $word';
-        if (candidate.length > 72 && buffer.isNotEmpty) {
-          condensed.add(buffer.toString());
-          buffer
-            ..clear()
-            ..write(word);
-        } else {
-          if (buffer.isNotEmpty) {
-            buffer.write(' ');
-          }
-          buffer.write(word);
-        }
-      }
-      if (buffer.isNotEmpty) {
-        condensed.add(buffer.toString());
-      }
-    }
-
-    return condensed;
+  String _normalizeAssistantReply(String reply) {
+    return reply
+        .replaceAll(RegExp(r'[ \t]+'), ' ')
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .trim();
   }
 
-  int _assistantChunkDelayMs(String chunk, int index, int total) {
-    final base = 420 + (chunk.length * 9).clamp(0, 420);
-    final gap = index == 0 ? 280 : 0;
-    final tail = index == total - 1 ? 220 : 0;
-    return (base + gap + tail).clamp(520, 1700).toInt();
+  int _assistantRevealDelayMs(String reply) {
+    final sentences = RegExp(r'[.!?]+').allMatches(reply).length.clamp(1, 6);
+    final readingMs = reply.length * 18;
+    final pacingMs = sentences * 320;
+    return (900 + readingMs + pacingMs).clamp(1300, 5200).toInt();
   }
 
   Future<void> _appendAssistantReplyInChunks(String reply) async {
-    final chunks = _splitAssistantReply(reply);
-    final safeChunks = chunks.isEmpty ? <String>[reply.trim()] : chunks;
-
-    if (safeChunks.isEmpty ||
-        (safeChunks.length == 1 && safeChunks.first.isEmpty)) {
+    final normalizedReply = _normalizeAssistantReply(reply);
+    if (normalizedReply.isEmpty) {
       if (mounted) {
         setState(() => _isReplying = false);
       }
       return;
     }
 
-    await Future<void>.delayed(const Duration(milliseconds: 420));
+    await Future<void>.delayed(
+      Duration(milliseconds: _assistantRevealDelayMs(normalizedReply)),
+    );
 
-    for (var i = 0; i < safeChunks.length; i++) {
+    if (!mounted) return;
+    setState(() {
+      _messages.add(
+        _MiniMeChatMessage(role: _ChatRole.assistant, text: normalizedReply),
+      );
+    });
+    _scrollToBottom();
+    await _persistMessages();
+
+    if (mounted) {
+      setState(() => _isReplying = false);
+    }
+  }
+
+  Future<void> _appendAssistantRepliesSequence(List<String> replies) async {
+    final normalizedReplies = replies
+        .map(_normalizeAssistantReply)
+        .where((reply) => reply.isNotEmpty)
+        .toList(growable: false);
+
+    if (normalizedReplies.isEmpty) {
+      if (mounted) {
+        setState(() => _isReplying = false);
+      }
+      return;
+    }
+
+    for (var i = 0; i < normalizedReplies.length; i++) {
+      final reply = normalizedReplies[i];
+      await Future<void>.delayed(
+        Duration(milliseconds: _assistantRevealDelayMs(reply)),
+      );
+
       if (!mounted) return;
       setState(() {
         _messages.add(
-          _MiniMeChatMessage(role: _ChatRole.assistant, text: safeChunks[i]),
+          _MiniMeChatMessage(role: _ChatRole.assistant, text: reply),
         );
       });
       _scrollToBottom();
       await _persistMessages();
 
-      if (i < safeChunks.length - 1) {
-        await Future<void>.delayed(
-          Duration(
-            milliseconds: _assistantChunkDelayMs(
-              safeChunks[i],
-              i,
-              safeChunks.length,
-            ),
-          ),
-        );
+      if (i < normalizedReplies.length - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 420));
       }
     }
 
@@ -725,11 +715,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       final online = await _isOnline();
       if (isGpu || !online) {
         try {
-          return await AppServices.gemma.generateMiniMeReply(
-            userMessage: userText,
-            moodLabel: moodContext.label,
-            intelligenceSummary: _buildIntelligenceSummary(),
-          ).timeout(const Duration(seconds: 20));
+          return await AppServices.gemma
+              .generateMiniMeReply(
+                userMessage: userText,
+                moodLabel: moodContext.label,
+                intelligenceSummary: _buildIntelligenceSummary(),
+              )
+              .timeout(const Duration(seconds: 20));
         } catch (_) {
           // fall through to direct Gemini
         }
@@ -770,7 +762,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (i.lowMood) parts.add('low mood');
     if (i.inactive) parts.add('inactive');
     if (i.insights.isNotEmpty) parts.add(i.insights.first);
-    final actions = i.selectedActions.map((a) => a.replaceAll('_', ' ')).join(', ');
+    final actions = i.selectedActions
+        .map((a) => a.replaceAll('_', ' '))
+        .join(', ');
     if (actions.isNotEmpty) parts.add('focus: $actions');
     if (parts.isEmpty) return null;
     return 'User is ${i.userPhase}. ${parts.join("; ")}.';
@@ -847,10 +841,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   _MiniMeMoodContext _buildMoodContext(MoodLogStore moodStore) {
     final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
-    final recent = moodStore.items
-        .take(5)
-        .map((e) => e.moodLabel)
-        .toList();
+    final recent = moodStore.items.take(5).map((e) => e.moodLabel).toList();
 
     return _MiniMeMoodContext(
       label: latest?.moodLabel ?? 'Neutral',
@@ -864,11 +855,14 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     try {
       final moodSummary = await AppServices.quickTrack.buildMoodContext();
       final symptomSummary = await AppServices.quickTrack.buildSymptomContext();
-      final conversationSummary = await AppServices.quickTrack.buildConversationContext();
+      final conversationSummary = await AppServices.quickTrack
+          .buildConversationContext();
       final parts = <String>[
         if (moodSummary.trim().isNotEmpty) 'Mood summary:\n$moodSummary',
-        if (symptomSummary.trim().isNotEmpty) 'Symptom summary:\n$symptomSummary',
-        if (conversationSummary.trim().isNotEmpty) 'Conversation summary:\n$conversationSummary',
+        if (symptomSummary.trim().isNotEmpty)
+          'Symptom summary:\n$symptomSummary',
+        if (conversationSummary.trim().isNotEmpty)
+          'Conversation summary:\n$conversationSummary',
       ];
       return parts.join('\n\n');
     } catch (_) {
@@ -1327,7 +1321,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       },
                       onExpandCoach: _expandCoachAndFocus,
                       onOpenFullChat: _openFullChatSheet,
-                      onRequestDailySuggestions: _requestDailySuggestions,
                       onSend: _sendMessage,
                     ),
                   ),
@@ -1366,7 +1359,6 @@ class _AvatarPanel extends StatelessWidget {
     required this.onToggleCoachExpanded,
     required this.onExpandCoach,
     required this.onOpenFullChat,
-    required this.onRequestDailySuggestions,
     required this.onSend,
   });
 
@@ -1393,7 +1385,6 @@ class _AvatarPanel extends StatelessWidget {
   final VoidCallback onToggleCoachExpanded;
   final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
-  final VoidCallback onRequestDailySuggestions;
   final VoidCallback onSend;
 
   @override
@@ -1416,7 +1407,7 @@ class _AvatarPanel extends StatelessWidget {
             ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
             : (latestAssistantText ??
                   'What do you want to work on today, ${_displayFirstName(userName)}?');
-        final suggestionBubbleReserve = showPromptBubble ? 72.0 : 16.0;
+        const suggestionBubbleReserve = 96.0;
         final availableAvatarHeight =
             constraints.maxHeight -
             chatDockHeight -
@@ -1436,7 +1427,10 @@ class _AvatarPanel extends StatelessWidget {
                     top: 10,
                     left: 18,
                     right: 18,
-                    child: _AvatarSuggestionBubble(text: promptBubbleText),
+                    child: _AvatarSuggestionBubble(
+                      text: promptBubbleText,
+                      maxHeight: math.min(constraints.maxHeight * 0.28, 190),
+                    ),
                   ),
                 Positioned.fill(
                   child: Padding(
@@ -1480,7 +1474,6 @@ class _AvatarPanel extends StatelessWidget {
                 isReplying: isReplying,
                 onExpandCoach: onExpandCoach,
                 onOpenFullChat: onOpenFullChat,
-                onRequestDailySuggestions: onRequestDailySuggestions,
                 onSend: onSend,
               ),
             ),
@@ -1542,9 +1535,10 @@ class _MainTypingBubble extends StatelessWidget {
 }
 
 class _AvatarSuggestionBubble extends StatelessWidget {
-  const _AvatarSuggestionBubble({required this.text});
+  const _AvatarSuggestionBubble({required this.text, required this.maxHeight});
 
   final String text;
+  final double maxHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -1555,7 +1549,7 @@ class _AvatarSuggestionBubble extends StatelessWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 330),
+        constraints: const BoxConstraints(maxWidth: 380),
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.96, end: 1),
           duration: const Duration(milliseconds: 280),
@@ -1581,15 +1575,19 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Text(
-                  text,
-                  textAlign: TextAlign.center,
-                  maxLines: 4,
-                  overflow: TextOverflow.fade,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: cs.onSurface,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxHeight),
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Text(
+                      text,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w800,
+                        height: 1.28,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1991,7 +1989,6 @@ class _CoachComposerCard extends StatelessWidget {
     required this.isReplying,
     required this.onExpandCoach,
     required this.onOpenFullChat,
-    required this.onRequestDailySuggestions,
     required this.onSend,
   });
 
@@ -2001,7 +1998,6 @@ class _CoachComposerCard extends StatelessWidget {
   final bool isReplying;
   final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
-  final VoidCallback onRequestDailySuggestions;
   final VoidCallback onSend;
 
   @override
@@ -2034,12 +2030,6 @@ class _CoachComposerCard extends StatelessWidget {
                 onPressed: onOpenFullChat,
                 tooltip: 'Open full chat',
                 icon: const Icon(Icons.open_in_full_rounded),
-              ),
-              const SizedBox(width: 6),
-              IconButton.filledTonal(
-                onPressed: isReplying ? null : onRequestDailySuggestions,
-                tooltip: 'Daily suggestions',
-                icon: const Icon(Icons.tips_and_updates_rounded),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -2177,6 +2167,12 @@ class _ChatBubbleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final suggestionParts = !isUser
+        ? _parseSuggestionSections(message.text)
+        : const <_SuggestionSection>[];
+    final introText = suggestionParts.isNotEmpty
+        ? _extractSuggestionIntro(message.text, suggestionParts)
+        : null;
     final bubbleColor = isUser
         ? cs.primaryContainer.withValues(alpha: 0.96)
         : cs.surface.withValues(alpha: 0.92);
@@ -2244,22 +2240,101 @@ class _ChatBubbleCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
-                message.text,
-                maxLines: maxBodyLines,
-                overflow: maxBodyLines == null
-                    ? TextOverflow.visible
-                    : TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: isUser ? cs.onPrimaryContainer : cs.onSurface,
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w500,
-                  height: 1.42,
+              if (suggestionParts.length > 1) ...[
+                if (introText != null && introText.isNotEmpty) ...[
+                  Text(
+                    introText,
+                    maxLines: maxBodyLines,
+                    overflow: maxBodyLines == null
+                        ? TextOverflow.visible
+                        : TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurface,
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w500,
+                      height: 1.42,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                ...suggestionParts.map(
+                  (part) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _SuggestionDetailCard(section: part),
+                  ),
+                ),
+              ] else
+                Text(
+                  message.text,
+                  maxLines: maxBodyLines,
+                  overflow: maxBodyLines == null
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: isUser ? cs.onPrimaryContainer : cs.onSurface,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.42,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SuggestionDetailCard extends StatelessWidget {
+  const _SuggestionDetailCard({required this.section});
+
+  final _SuggestionSection section;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: cs.secondaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Suggestion ${section.index}',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 10),
+          Text(
+            section.body,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurface,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              height: 1.45,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2436,6 +2511,49 @@ class _MiniMeFullChatSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _extractSuggestionIntro(
+  String message,
+  List<_SuggestionSection> sections,
+) {
+  if (sections.isEmpty) return null;
+
+  final firstMarker = 'Suggestion ${sections.first.index}:';
+  final markerIndex = message.indexOf(firstMarker);
+  if (markerIndex <= 0) return null;
+
+  final intro = message.substring(0, markerIndex).trim();
+  return intro.isEmpty ? null : intro;
+}
+
+List<_SuggestionSection> _parseSuggestionSections(String message) {
+  final matches = RegExp(
+    r'Suggestion\s+(\d+):\s*(.*?)(?=Suggestion\s+\d+:|$)',
+    dotAll: true,
+  ).allMatches(message);
+
+  if (matches.length <= 1) {
+    return const <_SuggestionSection>[];
+  }
+
+  return matches
+      .map((match) {
+        final index = int.tryParse(match.group(1) ?? '') ?? 0;
+        final body = (match.group(2) ?? '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        return _SuggestionSection(index: index, body: body);
+      })
+      .where((section) => section.index > 0 && section.body.isNotEmpty)
+      .toList(growable: false);
+}
+
+class _SuggestionSection {
+  const _SuggestionSection({required this.index, required this.body});
+
+  final int index;
+  final String body;
 }
 
 class _MiniMeStreakSection extends StatefulWidget {

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:lifelens/exercises/exercise_screen.dart';
 import 'package:lifelens/models/mood.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
-import 'package:lifelens/screens/suggestions_screen.dart';
 import 'package:lifelens/models/quick_action.dart';
 import 'package:lifelens/models/summary_item.dart';
 import 'package:lifelens/moodlog_screen.dart';
@@ -72,7 +71,7 @@ class HomeDashboard extends StatelessWidget {
           QuickActionsGrid(
             actions: [
               Quickaction(
-               icon: Icons.emoji_emotions_outlined,
+                icon: Icons.emoji_emotions_outlined,
                 label: "Mood Log",
                 onTap: () {
                   Navigator.of(context).push(
@@ -96,7 +95,7 @@ class HomeDashboard extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ExerciseScreen()),
                   );
-                }
+                },
               ),
               Quickaction(
                 icon: Icons.healing_outlined,
@@ -105,16 +104,12 @@ class HomeDashboard extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const SymptomsScreen()),
                   );
-                }
+                },
               ),
               Quickaction(
-                icon: Icons.tips_and_updates_outlined,
-                label: "Suggestions",
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SuggestionsScreen()),
-                  );
-                },
+                icon: Icons.smart_toy_outlined,
+                label: "Mini-Me",
+                onTap: onOpenMiniMe,
               ),
             ],
           ),
@@ -160,7 +155,7 @@ class HomeDashboard extends StatelessWidget {
           ),
 
           const SizedBox(height: 8),
-          Divider(color: cs.outlineVariant.withValues(alpha:0.7)),
+          Divider(color: cs.outlineVariant.withValues(alpha: 0.7)),
           const SizedBox(height: 10),
 
           // Small "continue" card

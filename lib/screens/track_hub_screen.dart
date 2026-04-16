@@ -4,14 +4,15 @@ import 'package:lifelens/models/quick_action.dart';
 import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
-import 'package:lifelens/screens/suggestions_screen.dart';
 import 'package:lifelens/screens/symptoms_screen.dart';
 import 'package:lifelens/shared_widgets/section_title.dart';
 import 'package:lifelens/widgets/quick_actions_grid.dart';
 import 'package:provider/provider.dart';
 
 class TrackHubScreen extends StatelessWidget {
-  const TrackHubScreen({super.key});
+  const TrackHubScreen({super.key, this.onOpenMiniMe});
+
+  final VoidCallback? onOpenMiniMe;
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +50,8 @@ class TrackHubScreen extends StatelessWidget {
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => const MoodLogScreen(
-                            source: LogSource.tab,
-                          ),
+                          builder: (_) =>
+                              const MoodLogScreen(source: LogSource.tab),
                         ),
                       );
                     },
@@ -88,14 +88,10 @@ class TrackHubScreen extends StatelessWidget {
                     },
                   ),
                   Quickaction(
-                    icon: Icons.tips_and_updates_outlined,
-                    label: 'Suggestions',
+                    icon: Icons.smart_toy_outlined,
+                    label: 'Mini-Me',
                     onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const SuggestionsScreen(),
-                        ),
-                      );
+                      onOpenMiniMe?.call();
                     },
                   ),
                 ],
@@ -112,7 +108,7 @@ class TrackHubScreen extends StatelessWidget {
                         color: cs.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: cs.outlineVariant.withValues(alpha:0.55),
+                          color: cs.outlineVariant.withValues(alpha: 0.55),
                         ),
                       ),
                       child: Text(
@@ -138,7 +134,7 @@ class TrackHubScreen extends StatelessWidget {
                               color: cs.surfaceContainerHighest,
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: cs.outlineVariant.withValues(alpha:0.5),
+                                color: cs.outlineVariant.withValues(alpha: 0.5),
                               ),
                             ),
                             child: Row(

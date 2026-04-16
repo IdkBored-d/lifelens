@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 import '../models/exercise_model.dart';
 
 class ExerciseStore {
@@ -132,6 +133,7 @@ class ExerciseStore {
       history.map(_encodeHistoryRecord).toList(growable: false),
     );
     await _enqueuePendingSync(record);
+    await TrackingReminderService.instance.handleLogRecorded();
 
     final uid = _auth.currentUser?.uid;
     if (uid == null) {

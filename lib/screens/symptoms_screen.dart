@@ -7,6 +7,7 @@ import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_summary_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 import 'package:share_plus/share_plus.dart';
 
 class SymptomsScreen extends StatefulWidget {
@@ -79,6 +80,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         symptoms: symptomsForPipeline,
         timestamp: savedAt,
       );
+      await TrackingReminderService.instance.handleLogRecorded();
 
       try {
         await _syncSymptomsToCloud(

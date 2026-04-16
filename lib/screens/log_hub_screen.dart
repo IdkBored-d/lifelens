@@ -7,16 +7,16 @@ import 'package:lifelens/moodlog_screen.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/screens/history_calendar_screen.dart';
 import 'package:lifelens/screens/sleep_screen.dart';
-import 'package:lifelens/screens/suggestions_screen.dart';
 import 'package:lifelens/screens/symptoms_screen.dart';
 import 'package:lifelens/services/exercise_store.dart';
 import 'package:lifelens/sleep_store.dart';
 import 'package:provider/provider.dart';
 
 class LogHubScreen extends StatefulWidget {
-  const LogHubScreen({super.key, required this.userName});
+  const LogHubScreen({super.key, required this.userName, this.onOpenMiniMe});
 
   final String userName;
+  final VoidCallback? onOpenMiniMe;
 
   @override
   State<LogHubScreen> createState() => _LogHubScreenState();
@@ -30,9 +30,7 @@ class _LogHubScreenState extends State<LogHubScreen> {
   Future<void> _openTracker(Widget screen) async {
     final moodStore = context.read<MoodLogStore>();
     final sleepStore = context.read<SleepStore>();
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => screen),
-    );
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
     if (!mounted) return;
     await moodStore.refreshFromPersistence();
     await sleepStore.refresh();
@@ -43,10 +41,7 @@ class _LogHubScreenState extends State<LogHubScreen> {
   Future<void> _openSelectedDayLogs(DateTime date) async {
     _selectedHistoryDate = date;
     await _openTracker(
-      HistoryCalendarScreen(
-        initialDate: date,
-        showCalendar: false,
-      ),
+      HistoryCalendarScreen(initialDate: date, showCalendar: false),
     );
   }
 
@@ -126,12 +121,6 @@ class _LogHubScreenState extends State<LogHubScreen> {
                     subtitle: 'Track symptom changes and summaries',
                     onTap: () => _openTracker(const SymptomsScreen()),
                   ),
-                  _TrackerRow(
-                    icon: Icons.tips_and_updates_outlined,
-                    title: 'Suggestions',
-                    subtitle: 'See guidance based on your real recent data',
-                    onTap: () => _openTracker(const SuggestionsScreen()),
-                  ),
                 ],
               ),
               _DashboardVisibilityGate(
@@ -174,10 +163,13 @@ class _DashboardVisibilityGate extends StatelessWidget {
                       _isSameDay(item.date, now) ||
                       _isSameDay(item.wakeTime, now),
                 );
-                final hasSymptomLogs = (symptomSnapshot.data ?? const <SymptomEntry>[])
-                    .any((entry) => _isSameDay(entry.timestamp, now));
+                final hasSymptomLogs =
+                    (symptomSnapshot.data ?? const <SymptomEntry>[]).any(
+                      (entry) => _isSameDay(entry.timestamp, now),
+                    );
                 final hasExerciseLogs = exerciseSnapshot.data ?? false;
-                final hasAnyLogsToday = hasMoodLogs ||
+                final hasAnyLogsToday =
+                    hasMoodLogs ||
                     hasSleepLogs ||
                     hasSymptomLogs ||
                     hasExerciseLogs;
@@ -188,10 +180,7 @@ class _DashboardVisibilityGate extends StatelessWidget {
 
                 return Padding(
                   padding: const EdgeInsets.only(top: 18),
-                  child: _TodayDashboard(
-                    key: refreshKey,
-                    refreshTick: 0,
-                  ),
+                  child: _TodayDashboard(key: refreshKey, refreshTick: 0),
                 );
               },
             );
@@ -261,13 +250,18 @@ class _TodayDashboardState extends State<_TodayDashboard> {
     return Consumer2<MoodLogStore, SleepStore>(
       builder: (context, moodStore, sleepStore, _) {
         final now = DateTime.now();
-        final latestMood = moodStore.items.isEmpty ? null : moodStore.items.first;
-        final latestSleep = sleepStore.items.isEmpty ? null : sleepStore.items.first;
+        final latestMood = moodStore.items.isEmpty
+            ? null
+            : moodStore.items.first;
+        final latestSleep = sleepStore.items.isEmpty
+            ? null
+            : sleepStore.items.first;
 
         return StreamBuilder<List<SymptomEntry>>(
           stream: AppServices.isar.watchRecentSymptomEntries(limit: 60),
           builder: (context, symptomSnapshot) {
-            final symptomEntries = symptomSnapshot.data ?? const <SymptomEntry>[];
+            final symptomEntries =
+                symptomSnapshot.data ?? const <SymptomEntry>[];
             final todaySymptoms = symptomEntries
                 .where((entry) => _isSameDay(entry.timestamp, now))
                 .length;
@@ -328,7 +322,8 @@ class _TodayDashboardState extends State<_TodayDashboard> {
                           _TodayMetricTile(
                             icon: Icons.emoji_emotions_outlined,
                             label: 'Mood',
-                            value: latestMood != null &&
+                            value:
+                                latestMood != null &&
                                     _isSameDay(latestMood.createdAt, now)
                                 ? latestMood.moodLabel
                                 : 'Not logged',
@@ -336,12 +331,14 @@ class _TodayDashboardState extends State<_TodayDashboard> {
                           _TodayMetricTile(
                             icon: Icons.nightlight_round,
                             label: 'Sleep',
-                            value: latestSleep != null &&
+                            value:
+                                latestSleep != null &&
                                     (_isSameDay(latestSleep.date, now) ||
                                         _isSameDay(latestSleep.wakeTime, now))
                                 ? latestSleep.durationFormatted
                                 : 'Not logged',
-                            detail: latestSleep != null &&
+                            detail:
+                                latestSleep != null &&
                                     (_isSameDay(latestSleep.date, now) ||
                                         _isSameDay(latestSleep.wakeTime, now))
                                 ? latestSleep.quality.label

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 
 import 'models/sleep.dart';
 
@@ -31,6 +32,7 @@ class SleepStore extends ChangeNotifier {
   Future<String?> add(Sleep sleep) async {
     _items.insert(0, sleep);
     notifyListeners();
+    await TrackingReminderService.instance.handleLogRecorded();
 
     final uid = _auth.currentUser?.uid;
     if (uid == null) {

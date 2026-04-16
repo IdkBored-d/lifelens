@@ -9,6 +9,7 @@ import 'package:lifelens/models/mood_result.dart'; // ← ADD (kMobileBertLabels
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 
 /// ─────────────────────────────────────────────────────────────────────────────
 /// DEV TEST SCREEN
@@ -417,6 +418,42 @@ class _DevTestScreenState extends State<DevTestScreen> {
     return '✓ Gemma inference succeeded\nReply: $reply';
   }
 
+  Future<String> _testReminderStatus() async {
+    final status = await TrackingReminderService.instance.debugStatus();
+    return '✓ Reminder status\n$status';
+  }
+
+  Future<String> _testReminderPermissionStatus() async {
+    final status = await TrackingReminderService.instance.debugPermissionStatus();
+    return '✓ Reminder permission status\n$status';
+  }
+
+  Future<String> _testReminderRequestPermissions() async {
+    await TrackingReminderService.instance.requestPermissionsIfEnabled();
+    final status = await TrackingReminderService.instance.debugPermissionStatus();
+    return '✓ Reminder permission request finished\n$status';
+  }
+
+  Future<String> _testReminderCheckNow() async {
+    await TrackingReminderService.instance.evaluateAndNotifyIfNeeded();
+    final status = await TrackingReminderService.instance.debugStatus();
+    return '✓ Reminder check finished\n$status';
+  }
+
+  Future<String> _testReminderForceLargeGap() async {
+    await TrackingReminderService.instance.requestPermissionsIfEnabled();
+    await TrackingReminderService.instance.debugForceNotification();
+    return '✓ Forced a large-gap reminder notification';
+  }
+
+  Future<String> _testReminderForceInconsistency() async {
+    await TrackingReminderService.instance.requestPermissionsIfEnabled();
+    await TrackingReminderService.instance.debugForceNotification(
+      trigger: TrackingReminderTrigger.inconsistency,
+    );
+    return '✓ Forced an inconsistency reminder notification';
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────────
 
   @override
@@ -476,6 +513,17 @@ class _DevTestScreenState extends State<DevTestScreen> {
 
                   _sectionHeader('PIPELINES'),
                   _testBtn('EOD Pipeline (offline)', _testEodPipeline),
+
+                  _sectionHeader('REMINDERS'),
+                  _testBtn('Reminder Permission Status', _testReminderPermissionStatus),
+                  _testBtn('Request Reminder Permissions', _testReminderRequestPermissions),
+                  _testBtn('Reminder Status', _testReminderStatus),
+                  _testBtn('Reminder Check Now', _testReminderCheckNow),
+                  _testBtn('Force Large Gap Notification', _testReminderForceLargeGap),
+                  _testBtn(
+                    'Force Inconsistency Notification',
+                    _testReminderForceInconsistency,
+                  ),
 
                   _sectionHeader('GEMMA'),
                   _testBtn('Gemma Status', _testGemmaStatus),

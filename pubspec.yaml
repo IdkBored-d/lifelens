@@ -38,6 +38,7 @@ dependencies:
 
   # ── Background task scheduling (EOD pipeline) ──────────────────────────────
   background_fetch: ^1.2.3
+  flutter_local_notifications: ^17.2.2
 
   # ── Connectivity (real isOnline checks in pipelines) ────────────────────────
   connectivity_plus: ^6.0.5

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
+import 'package:provider/provider.dart';
 
 class BottomNav extends StatelessWidget {
   const BottomNav({
@@ -22,8 +24,8 @@ class BottomNav extends StatelessWidget {
       indicatorColor: cs.primaryContainer.withValues(alpha: 0.7),
       destinations: [
         NavigationDestination(
-          icon: Icon(Icons.person_outline_rounded),
-          selectedIcon: Icon(Icons.person_rounded),
+          icon: const _MiniMeNavIcon(selected: false),
+          selectedIcon: const _MiniMeNavIcon(selected: true),
           label: 'Mini-Me',
         ),
 
@@ -45,6 +47,66 @@ class BottomNav extends StatelessWidget {
           label: 'Profile',
         ),
       ],
+    );
+  }
+}
+
+class _MiniMeNavIcon extends StatelessWidget {
+  const _MiniMeNavIcon({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Consumer<MiniMeSuggestionsInbox>(
+      builder: (context, inbox, _) {
+        final unreadCount = inbox.unreadCount;
+        final badgeLabel = unreadCount > 99 ? '99+' : '$unreadCount';
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            MiniMeProfileIcon(
+              size: selected ? 30 : 28,
+              padding: 2,
+              backgroundColor: selected
+                  ? cs.primaryContainer
+                  : cs.surfaceContainerHighest,
+              borderColor: selected
+                  ? cs.primary.withValues(alpha: 0.24)
+                  : cs.outlineVariant.withValues(alpha: 0.45),
+            ),
+            if (unreadCount > 0)
+              Positioned(
+                right: -8,
+                top: -6,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cs.error,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: cs.surface, width: 1.4),
+                  ),
+                  child: Text(
+                    badgeLabel,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: cs.onError,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

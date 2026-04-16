@@ -9,6 +9,7 @@ import 'screens/gemma_setup_screen.dart';
 import 'dev_test_screen.dart';
 import 'app_services.dart';
 import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -37,8 +38,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .get();
 
       if (doc.exists && mounted) {
+        final enabled = doc.data()?['notificationsEnabled'] ?? true;
+        await TrackingReminderService.instance.setNotificationsEnabled(enabled);
         setState(() {
-          _notificationsEnabled = doc.data()?['notificationsEnabled'] ?? true;
+          _notificationsEnabled = enabled;
         });
       }
     } catch (e) {
@@ -53,6 +56,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _notificationsEnabled = value;
     });
+
+    await TrackingReminderService.instance.setNotificationsEnabled(value);
 
     try {
       await FirebaseFirestore.instance.collection('users').doc(userId).update({

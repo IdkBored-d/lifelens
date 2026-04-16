@@ -9,6 +9,7 @@ import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
@@ -391,6 +392,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                   ),
                                 );
                               }
+                              await TrackingReminderService.instance
+                                  .handleLogRecorded();
                               try {
                                 await _syncMoodToCloud(
                                   entry: moodEntry,

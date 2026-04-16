@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:background_fetch/background_fetch.dart';
 import 'package:lifelens/app_services.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 
 /// Schedules and handles the once-per-day background EOD pipeline.
 ///
@@ -51,6 +52,8 @@ class BackgroundEodService {
     debugPrint('[BackgroundEodService] fetch fired taskId=$taskId');
     try {
       await _runEodIfNeeded();
+      await TrackingReminderService.instance.init();
+      await TrackingReminderService.instance.evaluateAndNotifyIfNeeded();
     } catch (e) {
       debugPrint('[BackgroundEodService] error: $e');
     } finally {
@@ -100,6 +103,8 @@ void backgroundFetchHeadlessTask(HeadlessTask task) async {
     // no shared memory with the foreground isolate.
     await AppServices.init(gemmaPath: '');
     await BackgroundEodService._runEodIfNeeded();
+    await TrackingReminderService.instance.init();
+    await TrackingReminderService.instance.evaluateAndNotifyIfNeeded();
   } catch (e) {
     debugPrint('[BackgroundEodService] headless error: $e');
   } finally {

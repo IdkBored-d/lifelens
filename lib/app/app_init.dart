@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/services/background_eod_service.dart';
 import 'package:lifelens/services/gemma_model_manager.dart';
+import 'package:lifelens/services/tracking_reminder_service.dart';
 
 Future<void> initializeApp() async {
   // Read a previously saved on-device model path so Gemma loads immediately
@@ -19,6 +20,14 @@ Future<void> initializeApp() async {
     ).timeout(const Duration(seconds: 8));
   } catch (_) {
     // Non-fatal at startup; services may still finish shortly after.
+  }
+
+  try {
+    await TrackingReminderService.instance.init();
+    await TrackingReminderService.instance.requestPermissionsIfEnabled();
+    await TrackingReminderService.instance.refreshReminderState();
+  } catch (_) {
+    // Non-fatal; reminder setup should never block startup.
   }
 
   // Register scheduled background tasks only outside debug to avoid
