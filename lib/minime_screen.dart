@@ -49,6 +49,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   // Chat session persistence (ISAR-backed, replaces flat-file MiniMeChatStorageService)
   String? _sessionId;
   int _messageSequence = 0;
+  int _avatarWaveToken = 1;
   late final ChatSessionService _chatSessionService;
 
   @override
@@ -90,6 +91,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void didUpdateWidget(covariant MiniMeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!oldWidget.isActive && widget.isActive) {
+      setState(() => _avatarWaveToken += 1);
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await _syncUnreadSuggestions(forceRefresh: true);
@@ -384,7 +386,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final baselineDelta = latestBmi - baselineBmi;
     final combinedDelta = trendDelta * 0.6 + baselineDelta * 0.4;
 
-    return (1.0 + (combinedDelta * 0.012)).clamp(0.9, 1.1).toDouble();
+    return (1.0 + (combinedDelta * 0.026)).clamp(0.82, 1.22).toDouble();
   }
 
   int _estimatedSleepHoursFromMood(String moodLabel) {
@@ -1113,6 +1115,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     required List<MoodCheckIn> moodItems,
     required List<Sleep> sleepItems,
   }) {
+    final streak = _trackingStreakDays(
+      now: now,
+      moodItems: moodItems,
+      sleepItems: sleepItems,
+    );
+    return (streak / 7).clamp(0.0, 1.0);
+  }
+
+  int _trackingStreakDays({
+    required DateTime now,
+    required List<MoodCheckIn> moodItems,
+    required List<Sleep> sleepItems,
+  }) {
     final trackedDays = <String>{};
     for (final mood in moodItems) {
       trackedDays.add(_dayKey(mood.createdAt));
@@ -1134,7 +1149,40 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         break;
       }
     }
-    return (streak / 7).clamp(0.0, 1.0);
+    return streak;
+  }
+
+  bool _hasPositiveTrendForCelebration() {
+    final intelligence = _intelligence;
+    if (intelligence == null) {
+      return false;
+    }
+
+    final animationState =
+        (intelligence.miniMeLinkage['animation_state'] as String? ?? '')
+            .trim()
+            .toLowerCase();
+    if (animationState == 'recover_rise') {
+      return true;
+    }
+
+    final positivePhases = {'improving', 'recovering', 'stable-positive'};
+    if (positivePhases.contains(intelligence.userPhase.trim().toLowerCase())) {
+      return true;
+    }
+
+    for (final value in intelligence.trendClassification.values) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized.contains('improv') ||
+          normalized.contains('positive') ||
+          normalized.contains('upward') ||
+          normalized.contains('better') ||
+          normalized.contains('rising')) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   String _dayKey(DateTime date) => '${date.year}-${date.month}-${date.day}';
@@ -1281,6 +1329,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
             sleepStore: sleepStore,
             effectiveMoodLabel: avatarMoodLabel,
           );
+          final trackedStreakDays = _trackingStreakDays(
+            now: DateTime.now(),
+            moodItems: moodStore.items,
+            sleepItems: sleepStore.items,
+          );
+          final celebrateOnOpen =
+              trackedStreakDays >= 3 || _hasPositiveTrendForCelebration();
 
           return Container(
             width: double.infinity,
@@ -1290,7 +1345,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                     child: _MiniMeStreakSection(moodLogs: moodStore.items),
                   ),
                   Expanded(
@@ -1304,6 +1359,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       avatarAnimationState: avatarAnimationState,
                       suggestionText: latestSuggestion,
                       visualState: visualState,
+                      avatarWaveToken: _avatarWaveToken,
+                      celebrateOnOpen: celebrateOnOpen,
                       intelligenceState: _intelligence?.state,
                       intelligenceInsights:
                           _intelligence?.insights ?? const <String>[],
@@ -1345,6 +1402,8 @@ class _AvatarPanel extends StatelessWidget {
     required this.avatarAnimationState,
     required this.suggestionText,
     required this.visualState,
+    required this.avatarWaveToken,
+    required this.celebrateOnOpen,
     required this.intelligenceState,
     required this.intelligenceInsights,
     required this.intelligenceAlert,
@@ -1371,6 +1430,8 @@ class _AvatarPanel extends StatelessWidget {
   final String? avatarAnimationState;
   final String suggestionText;
   final MiniMeVisualState visualState;
+  final int avatarWaveToken;
+  final bool celebrateOnOpen;
   final Map<String, dynamic>? intelligenceState;
   final List<String> intelligenceInsights;
   final String? intelligenceAlert;
@@ -1391,7 +1452,7 @@ class _AvatarPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        const chatDockHeight = 132.0;
+        const chatDockHeight = 112.0;
         const collapsedBottomInset = 16.0;
         String? latestAssistantText;
         for (final message in messages.reversed) {
@@ -1405,22 +1466,31 @@ class _AvatarPanel extends StatelessWidget {
             messages.isEmpty || (latestAssistantText?.isNotEmpty ?? false);
         final promptBubbleText = messages.isEmpty
             ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
-            : (latestAssistantText ??
-                  'What do you want to work on today, ${_displayFirstName(userName)}?');
-        const suggestionBubbleReserve = 96.0;
+            : _bubblePreviewText(
+                latestAssistantText ??
+                    'What do you want to work on today, ${_displayFirstName(userName)}?',
+              );
+        final headTiltBias = isReplying ? -0.12 : 0.0;
+        final bubbleMaxHeight = math.min(constraints.maxHeight * 0.18, 118.0);
+        const suggestionBubbleReserve = 108.0;
         final availableAvatarHeight =
             constraints.maxHeight -
             chatDockHeight -
             collapsedBottomInset -
             suggestionBubbleReserve;
-        final avatarSize = math.min(
-          constraints.biggest.shortestSide * 1.14,
-          availableAvatarHeight.clamp(360.0, 880.0),
+        final avatarSize = math.max(
+          320.0,
+          math.min(
+            constraints.biggest.shortestSide * 1.3,
+            availableAvatarHeight * 1.02,
+          ),
         );
 
         return Stack(
+          clipBehavior: Clip.none,
           children: [
             Stack(
+              clipBehavior: Clip.none,
               children: [
                 if (showPromptBubble)
                   Positioned(
@@ -1429,7 +1499,7 @@ class _AvatarPanel extends StatelessWidget {
                     right: 18,
                     child: _AvatarSuggestionBubble(
                       text: promptBubbleText,
-                      maxHeight: math.min(constraints.maxHeight * 0.28, 190),
+                      maxHeight: bubbleMaxHeight,
                     ),
                   ),
                 Positioned.fill(
@@ -1441,22 +1511,29 @@ class _AvatarPanel extends StatelessWidget {
                       chatDockHeight + collapsedBottomInset - 18,
                     ),
                     child: Align(
-                      alignment: const Alignment(0, -0.03),
-                      child: MiniMeAvatar(
-                        bodyModel: avatarStore.bodyModel,
-                        hairModel: avatarStore.hairModel,
-                        shirtModel: avatarStore.shirtModel,
-                        bodyWidthScale: avatarStore.effectiveBodyWidthScale,
-                        companionId: avatarStore.companionId,
-                        moodLabel: moodLabel,
-                        moodEmoji: moodEmoji,
-                        animationState: avatarAnimationState,
-                        glow: glow,
-                        size: avatarSize,
-                        degradationLevel: visualState.wearLevel,
-                        isHatched: avatarStore.isMiniMeHatched,
-                        visualState: visualState,
-                        onHatchComplete: avatarStore.hatchMiniMe,
+                      alignment: const Alignment(0, -0.2),
+                      child: Transform.translate(
+                        offset: const Offset(0, -62),
+                        child: MiniMeAvatar(
+                          bodyModel: avatarStore.bodyModel,
+                          hairModel: avatarStore.hairModel,
+                          shirtModel: avatarStore.shirtModel,
+                          bodyWidthScale: avatarStore.effectiveBodyWidthScale,
+                          companionId: avatarStore.companionId,
+                          moodLabel: moodLabel,
+                          moodEmoji: moodEmoji,
+                          animationState: avatarAnimationState,
+                          glow: glow,
+                          size: avatarSize,
+                          degradationLevel: visualState.wearLevel,
+                          isHatched: avatarStore.isMiniMeHatched,
+                          visualState: visualState,
+                          onHatchComplete: avatarStore.hatchMiniMe,
+                          autoWaveToken: avatarWaveToken,
+                          lockScreenPosition: true,
+                          headTiltBias: headTiltBias,
+                          celebrateOnOpen: celebrateOnOpen,
+                        ),
                       ),
                     ),
                   ),
@@ -1482,6 +1559,26 @@ class _AvatarPanel extends StatelessWidget {
       },
     );
   }
+}
+
+String _bubblePreviewText(String text) {
+  final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (normalized.isEmpty) {
+    return '';
+  }
+
+  final firstSentence = normalized
+      .split(RegExp(r'(?<=[.!?])\s+'))
+      .map((part) => part.trim())
+      .firstWhere((part) => part.isNotEmpty, orElse: () => normalized);
+
+  final candidate = firstSentence.length >= 36 ? firstSentence : normalized;
+  if (candidate.length <= 120) {
+    return candidate;
+  }
+
+  final truncated = candidate.substring(0, 117).trimRight();
+  return '$truncated...';
 }
 
 class _MainTypingBubble extends StatelessWidget {
@@ -1549,7 +1646,7 @@ class _AvatarSuggestionBubble extends StatelessWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 380),
+        constraints: const BoxConstraints(maxWidth: 400),
         child: TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.96, end: 1),
           duration: const Duration(milliseconds: 280),
@@ -1577,15 +1674,19 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                 ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: maxHeight),
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Text(
-                      text,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.w800,
-                        height: 1.28,
+                  child: Scrollbar(
+                    thumbVisibility: false,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Text(
+                        text,
+                        textAlign: TextAlign.center,
+                        softWrap: true,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: cs.onSurface,
+                          fontWeight: FontWeight.w800,
+                          height: 1.28,
+                        ),
                       ),
                     ),
                   ),
@@ -2006,7 +2107,7 @@ class _CoachComposerCard extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
         color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(24),
@@ -2765,7 +2866,7 @@ class _StreakShell extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(18),
@@ -2787,7 +2888,7 @@ class _StreakShell extends StatelessWidget {
               if (headerTrailing != null) headerTrailing!,
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           child,
         ],
       ),

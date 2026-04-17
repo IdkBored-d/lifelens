@@ -33,7 +33,7 @@ class AvatarStore extends ChangeNotifier {
   String get shirtModel => _shirtModel;
   double get bodyWidthScale => _bodyWidthScale;
   double get effectiveBodyWidthScale =>
-      (_bodyWidthScale * _autoBodyWidthScale).clamp(0.75, 1.35).toDouble();
+      (_bodyWidthScale * _autoBodyWidthScale).clamp(0.7, 1.48).toDouble();
   String get miniMeName => _miniMeName;
   String get companionId => _companionId;
   bool get isMiniMeHatched => _isMiniMeHatched;
@@ -72,7 +72,7 @@ class AvatarStore extends ChangeNotifier {
   }
 
   void setBodyWidthScale(double scale) {
-    _bodyWidthScale = scale.clamp(0.75, 1.35).toDouble();
+    _bodyWidthScale = scale.clamp(0.72, 1.4).toDouble();
     _saveToPrefs(markCustomized: true);
     notifyListeners();
   }
@@ -115,7 +115,7 @@ class AvatarStore extends ChangeNotifier {
   }
 
   void setAutoBodyWidthScale(double value) {
-    _autoBodyWidthScale = value.clamp(0.9, 1.1).toDouble();
+    _autoBodyWidthScale = value.clamp(0.82, 1.22).toDouble();
     _saveToPrefs();
     notifyListeners();
   }

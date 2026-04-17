@@ -107,6 +107,10 @@ class MiniMeAvatar extends StatefulWidget {
     this.isHatched = true,
     this.visualState = const MiniMeVisualState(),
     this.onHatchComplete,
+    this.autoWaveToken = 0,
+    this.lockScreenPosition = false,
+    this.headTiltBias = 0,
+    this.celebrateOnOpen = false,
   });
 
   final String bodyModel;
@@ -127,6 +131,10 @@ class MiniMeAvatar extends StatefulWidget {
   final bool isHatched;
   final MiniMeVisualState visualState;
   final VoidCallback? onHatchComplete;
+  final int autoWaveToken;
+  final bool lockScreenPosition;
+  final double headTiltBias;
+  final bool celebrateOnOpen;
 
   @override
   State<MiniMeAvatar> createState() => _MiniMeAvatarState();
@@ -166,7 +174,7 @@ class MiniMePortraitAvatar extends StatelessWidget {
     );
     final expression = _resolveExpression(moodLabel, null);
     final headSize = size * 0.66;
-    final shouldersWidth = size * 0.76 * bodyWidthScale.clamp(0.9, 1.12);
+    final shouldersWidth = size * 0.76 * bodyWidthScale.clamp(0.82, 1.24);
     final shouldersHeight = size * 0.34;
 
     return SizedBox(
@@ -242,6 +250,15 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
 
   _MiniMeReaction _reaction = _MiniMeReaction.none;
   bool _didNotifyHatchComplete = false;
+  bool _didAutoWave = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleAutoGreetingIfNeeded();
+    });
+  }
 
   @override
   void dispose() {
@@ -293,18 +310,45 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
   @override
   void didUpdateWidget(covariant MiniMeAvatar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.autoWaveToken != oldWidget.autoWaveToken) {
+      _didAutoWave = false;
+      _scheduleAutoGreetingIfNeeded(delay: const Duration(milliseconds: 220));
+    }
     if (widget.isHatched && !oldWidget.isHatched) {
       _hatchController.value = 1;
       _didNotifyHatchComplete = true;
+      _scheduleAutoGreetingIfNeeded(delay: const Duration(milliseconds: 260));
     } else if (!widget.isHatched && oldWidget.isHatched) {
       _hatchController.value = 0;
       _didNotifyHatchComplete = false;
+      _didAutoWave = false;
     }
+  }
+
+  void _scheduleAutoGreetingIfNeeded({
+    Duration delay = const Duration(milliseconds: 420),
+  }) {
+    if (_didAutoWave || !widget.isHatched || !mounted) {
+      return;
+    }
+
+    _didAutoWave = true;
+    Future<void>.delayed(delay, () {
+      if (!mounted) return;
+      if (_reaction != _MiniMeReaction.none) return;
+      _triggerReaction(
+        widget.celebrateOnOpen
+            ? _MiniMeReaction.celebrate
+            : _MiniMeReaction.wave,
+      );
+    });
   }
 
   void _triggerReaction(_MiniMeReaction reaction) {
     final duration = switch (reaction) {
       _MiniMeReaction.doubleBicep => const Duration(milliseconds: 2000),
+      _MiniMeReaction.wave => const Duration(milliseconds: 2050),
+      _MiniMeReaction.celebrate => const Duration(milliseconds: 1600),
       _ => const Duration(milliseconds: 420),
     };
     setState(() => _reaction = reaction);
@@ -361,7 +405,11 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                 _reaction,
                 _reactionController.value,
               );
-              final bob = idleMotion.bob * energyScale + reactionMotion.bob;
+              final bob =
+                  (widget.lockScreenPosition
+                      ? 0.0
+                      : idleMotion.bob * energyScale) +
+                  reactionMotion.bob;
               final sway =
                   idleMotion.sway *
                       (0.76 + widget.visualState.energyLevel * 0.38) +
@@ -371,6 +419,10 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                   widget.visualState.postureSlump * 4.5 -
                   widget.visualState.recoveryLevel * 1.2 +
                   reactionMotion.headDip;
+              final conversationalHeadTilt = widget.headTiltBias == 0
+                  ? 0.0
+                  : widget.headTiltBias +
+                        math.sin(_idleController.value * math.pi * 2) * 0.018;
               final shadowScale =
                   idleMotion.shadowScale +
                   widget.visualState.postureSlump * 0.04 -
@@ -443,7 +495,12 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                     ),
                   ),
                   Transform.translate(
-                    offset: Offset(idleMotion.offsetX + hatchShake, bob),
+                    offset: Offset(
+                      widget.lockScreenPosition
+                          ? hatchShake
+                          : idleMotion.offsetX + hatchShake,
+                      bob,
+                    ),
                     child: Transform(
                       alignment: Alignment.center,
                       transform: Matrix4.identity()
@@ -475,6 +532,7 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                                         headDip -
                                         (1 - mascotOpacity) * 10 -
                                         muscleTone * 3.5,
+                                    headTilt: conversationalHeadTilt,
                                     degradationLevel: visualWearLevel,
                                     visualState: widget.visualState,
                                     powerPulse: powerPulse,
@@ -536,6 +594,7 @@ class _MascotBody extends StatelessWidget {
     required this.armLiftRight,
     required this.flexPoseLevel,
     required this.headDip,
+    required this.headTilt,
     required this.degradationLevel,
     required this.visualState,
     required this.powerPulse,
@@ -552,6 +611,7 @@ class _MascotBody extends StatelessWidget {
   final double armLiftRight;
   final double flexPoseLevel;
   final double headDip;
+  final double headTilt;
   final double degradationLevel;
   final MiniMeVisualState visualState;
   final double powerPulse;
@@ -566,11 +626,12 @@ class _MascotBody extends StatelessWidget {
     final bodyWidth =
         size *
         0.44 *
-        (bodyWidthScale.clamp(0.86, 1.16) + displayedMuscleTone * 0.08);
+        (bodyWidthScale.clamp(0.78, 1.28) + displayedMuscleTone * 0.08);
     final bodyHeight = size * (0.46 + displayedMuscleTone * 0.03);
     final slumpOffset = visualState.postureSlump * size * 0.035;
     final confidenceLift = displayedMuscleTone * size * 0.022;
     final headTop = size * 0.13 + headDip * 0.2 + slumpOffset - confidenceLift;
+    final headOffsetX = headTilt * headSize * 0.12;
     final bodyTop = size * 0.38 + slumpOffset * 0.5 - confidenceLift * 0.4;
     final torsoTilt =
         visualState.postureSlump * -0.06 +
@@ -589,6 +650,7 @@ class _MascotBody extends StatelessWidget {
         size * 0.04 +
         shoulderDrop -
         (armLiftLeft + flexPose * 0.04) * size * 0.11;
+    final legTop = bodyTop + bodyHeight * 0.75;
     final torsoTurn = 0.0;
     final leftArmAngle =
         -0.22 -
@@ -611,12 +673,16 @@ class _MascotBody extends StatelessWidget {
         children: [
           Positioned(
             top: headTop - headSize * 0.08,
-            child: _Crest(
-              crest: crest,
-              palette: palette,
-              size: headSize * 0.34,
-              messyHairLevel: visualState.messyHairLevel,
-              recoveryLevel: visualState.recoveryLevel,
+            left: size / 2 - headSize * 0.17 + headOffsetX,
+            child: Transform.rotate(
+              angle: headTilt * 0.85,
+              child: _Crest(
+                crest: crest,
+                palette: palette,
+                size: headSize * 0.34,
+                messyHairLevel: visualState.messyHairLevel,
+                recoveryLevel: visualState.recoveryLevel,
+              ),
             ),
           ),
           Positioned(
@@ -682,11 +748,13 @@ class _MascotBody extends StatelessWidget {
           ),
           Positioned(
             top: headTop,
+            left: size / 2 - headSize / 2 + headOffsetX,
             child: Transform(
               alignment: Alignment.center,
               transform: Matrix4.identity()
                 ..setEntry(3, 2, 0.001)
                 ..rotateY(torsoTurn * 0.65)
+                ..rotateZ(headTilt)
                 ..scaleByDouble(
                   1 - displayedMuscleTone * 0.02,
                   1 - displayedMuscleTone * 0.02,
@@ -708,15 +776,19 @@ class _MascotBody extends StatelessWidget {
           ),
           Positioned(
             top: headTop + headSize * 0.16,
-            child: CartoonFace(
-              expression: expression,
-              palette: palette,
-              size: headSize * 0.72,
-              blink: blink,
-              degradationLevel: degradationLevel,
-              headDip: headDip,
-              wateryEyes: visualState.wateryEyes,
-              puffiness: visualState.sleepDebtLevel,
+            left: size / 2 - headSize * 0.36 + headOffsetX,
+            child: Transform.rotate(
+              angle: headTilt,
+              child: CartoonFace(
+                expression: expression,
+                palette: palette,
+                size: headSize * 0.72,
+                blink: blink,
+                degradationLevel: degradationLevel,
+                headDip: headDip,
+                wateryEyes: visualState.wateryEyes,
+                puffiness: visualState.sleepDebtLevel,
+              ),
             ),
           ),
           Positioned(
@@ -731,19 +803,19 @@ class _MascotBody extends StatelessWidget {
           ),
           Positioned(
             left: size / 2 - bodyWidth * 0.24,
-            bottom: size * 0.11,
+            top: legTop,
             child: _Leg(
               width: size * 0.11,
-              height: size * 0.17,
+              height: size * 0.205,
               color: palette.belly,
             ),
           ),
           Positioned(
             right: size / 2 - bodyWidth * 0.24,
-            bottom: size * 0.11,
+            top: legTop,
             child: _Leg(
               width: size * 0.11,
-              height: size * 0.17,
+              height: size * 0.205,
               color: palette.belly,
             ),
           ),
@@ -2060,6 +2132,46 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
         flexPoseLevel: enter,
         shadowDelta: -0.06 * enter,
       );
+    case _MiniMeReaction.wave:
+      final pose = _timedPoseValue(t, enterEnd: 0.16, holdEnd: 0.84);
+      final waveWindow = ((t - 0.14) / 0.60).clamp(0.0, 1.0);
+      final waveEnvelope = math.sin(waveWindow * math.pi).clamp(0.0, 1.0);
+      final waveCycle = math.sin(waveWindow * math.pi * 6.5) * waveEnvelope;
+      final settle = Curves.easeOutCubic.transform(
+        ((t - 0.76) / 0.24).clamp(0.0, 1.0),
+      );
+      final raisedRightArm =
+          0.08 +
+          pose * 0.22 +
+          waveEnvelope * 0.03 +
+          math.max(0, waveCycle) * 0.12;
+      return _ReactionMotion(
+        bob: -pose * 0.45 + math.max(0, waveCycle) * 0.12,
+        sway: waveCycle * 0.007,
+        headDip: -pose * 0.35 + math.max(0, waveCycle) * 0.08,
+        leftArmLift: 0.0,
+        rightArmLift: raisedRightArm - settle * 0.08,
+        shadowDelta: -0.01 * pose,
+      );
+    case _MiniMeReaction.celebrate:
+      final launch = Curves.easeOutCubic.transform((t / 0.22).clamp(0.0, 1.0));
+      final airborne = ((t - 0.14) / 0.46).clamp(0.0, 1.0);
+      final jumpArc = math.sin(airborne * math.pi).clamp(0.0, 1.0);
+      final airborneTwist = math.sin(airborne * math.pi * 1.2) * jumpArc;
+      final landing = ((t - 0.58) / 0.20).clamp(0.0, 1.0);
+      final landingBounce = math.sin(landing * math.pi) * (1 - landing) * 0.42;
+      final settle = Curves.easeOutCubic.transform(
+        ((t - 0.78) / 0.22).clamp(0.0, 1.0),
+      );
+      final armLift = 0.18 + launch * 0.24 + jumpArc * 0.3 - settle * 0.04;
+      return _ReactionMotion(
+        bob: -jumpArc * 22 - launch * 2.5 + landingBounce * 5.5,
+        sway: airborneTwist * 0.012,
+        headDip: -jumpArc * 2.6 + landingBounce * 0.8,
+        leftArmLift: armLift,
+        rightArmLift: armLift,
+        shadowDelta: -0.1 * jumpArc + landingBounce * 0.03,
+      );
     case _MiniMeReaction.bounce:
       final eased = Curves.easeOut.transform(t);
       return _ReactionMotion(
@@ -2115,7 +2227,7 @@ class _ReactionMotion {
   final double shadowDelta;
 }
 
-enum _MiniMeReaction { none, flinch, doubleBicep, bounce }
+enum _MiniMeReaction { none, flinch, doubleBicep, wave, celebrate, bounce }
 
 double _timedPoseValue(
   double t, {

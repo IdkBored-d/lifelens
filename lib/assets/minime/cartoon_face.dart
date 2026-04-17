@@ -196,6 +196,10 @@ class _CartoonFacePainter extends CustomPainter {
     final eyePaint = Paint()
       ..color = palette.eye
       ..style = PaintingStyle.fill;
+    final eyeOutlinePaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.32)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.01;
     final eyeHighlightPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.92)
       ..style = PaintingStyle.fill;
@@ -219,6 +223,8 @@ class _CartoonFacePainter extends CustomPainter {
 
     canvas.drawRRect(leftEyeRect, eyePaint);
     canvas.drawRRect(rightEyeRect, eyePaint);
+    canvas.drawRRect(leftEyeRect, eyeOutlinePaint);
+    canvas.drawRRect(rightEyeRect, eyeOutlinePaint);
 
     if (blink < 0.5) {
       canvas.drawCircle(
