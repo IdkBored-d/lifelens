@@ -29,14 +29,13 @@ class Sleep {
 }
 
 enum SleepQuality {
-  poor('😴', 'Poor', 1),
-  fair('😊', 'Fair', 2), 
-  good('😌', 'Good', 3),
-  excellent('🌟', 'Excellent', 4);
+  poor('Poor', 1),
+  fair('Fair', 2),
+  good('Good', 3),
+  excellent('Excellent', 4);
 
-  const SleepQuality(this.emoji, this.label, this.value);
+  const SleepQuality(this.label, this.value);
 
-  final String emoji;
   final String label;
   final int value;
 }

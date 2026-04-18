@@ -2,12 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'restart.dart';
-import 'preferences_screen.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
-import 'screens/gemma_setup_screen.dart';
 import 'dev_test_screen.dart';
-import 'app_services.dart';
 import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 
@@ -77,6 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     final theme = Theme.of(context);
     final themeController = context.watch<ThemeController>();
+    final username = _headerUsernameFor(user);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile'), centerTitle: true),
@@ -101,10 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     const SizedBox(height: 13),
-                    Text(
-                      user?.email ?? 'No email',
-                      style: theme.textTheme.titleMedium,
-                    ),
+                    Text(username, style: theme.textTheme.titleMedium),
                   ],
                 ),
               ),
@@ -134,17 +129,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _ProfileSection(
                 title: 'Preferences',
                 children: [
-                  _ProfileTile(
-                    icon: Icons.spa_outlined,
-                    label: 'Calm mode',
-                    value: themeController.isCalmMode ? 'Enabled' : 'Off',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const PreferencesScreen(),
-                        ),
-                      );
+                  _ProfileSwitchTile(
+                    icon: Icons.dark_mode_outlined,
+                    label: 'Dark mode',
+                    value: themeController.isDarkMode,
+                    onChanged: (value) {
+                      context.read<ThemeController>().setDarkMode(value);
                     },
                   ),
 
@@ -167,24 +157,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _ProfileSection(
                 title: 'Developer',
                 children: [
-                  _ProfileTile(
-                    icon: Icons.memory_outlined,
-                    label: 'Gemma AI Model',
-                    value: AppServices.isGemmaLoaded ? 'Loaded' : 'Not loaded',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GemmaSetupScreen(
-                            onComplete: () {
-                              setState(() {});
-                              Navigator.pop(context);
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  ),
                   _ProfileTile(
                     icon: Icons.science_outlined,
                     label: 'Pipeline Tests',
@@ -248,10 +220,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  String _headerUsernameFor(User? user) {
+    final displayName = user?.displayName?.trim() ?? '';
+    if (displayName.isNotEmpty) {
+      return displayName;
+    }
+
+    final email = user?.email?.trim() ?? '';
+    if (email.isNotEmpty && email.contains('@')) {
+      return email.split('@').first;
+    }
+
+    return 'User';
+  }
+
   void _showChangePasswordDialog(BuildContext context) {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
+    final screenContext = this.context;
 
     showDialog(
       context: context,
@@ -336,7 +323,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }
 
               Navigator.pop(context);
-              await _changePassword(currentPassword, newPassword);
+              await _changePassword(
+                screenContext,
+                currentPassword,
+                newPassword,
+              );
             },
             child: const Text('Change Password'),
           ),
@@ -346,22 +337,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _changePassword(
+    BuildContext context,
     String currentPassword,
     String newPassword,
   ) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.email == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    var loadingShown = false;
 
     try {
-      // Show loading
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) =>
-              const Center(child: CircularProgressIndicator()),
-        );
-      }
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      loadingShown = true;
 
       // Re-authenticate user
       final credential = EmailAuthProvider.credential(
@@ -373,35 +367,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Change password
       await user.updatePassword(newPassword);
 
-      if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (context.mounted) {
+        if (loadingShown && navigator.canPop()) {
+          navigator.pop();
+          loadingShown = false;
+        }
+        messenger.showSnackBar(
           const SnackBar(content: Text('Password changed successfully')),
         );
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
+      String message = 'Error changing password';
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        message = 'Current password is incorrect';
+      } else if (e.code == 'weak-password') {
+        message = 'New password is too weak';
+      } else if (e.code == 'requires-recent-login') {
+        message = 'Please log out and log back in before changing password';
+      } else if (e.code == 'too-many-requests') {
+        message = 'Too many attempts. Please wait a moment and try again.';
+      }
 
-        String message = 'Error changing password';
-        if (e.code == 'wrong-password') {
-          message = 'Current password is incorrect';
-        } else if (e.code == 'weak-password') {
-          message = 'New password is too weak';
-        } else if (e.code == 'requires-recent-login') {
-          message = 'Please log out and log back in before changing password';
-        }
-
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+      if (context.mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(message)));
       }
     } catch (e) {
-      if (mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (context.mounted) {
+        messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (loadingShown && navigator.canPop()) {
+        navigator.pop();
       }
     }
   }
@@ -456,6 +452,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showDeleteAccountConfirmation(BuildContext context) {
     final theme = Theme.of(context);
     final passwordController = TextEditingController();
+    final screenContext = this.context;
 
     showDialog(
       context: context,
@@ -514,7 +511,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               }
 
               Navigator.pop(context);
-              await _deleteAccount(context, password);
+              await _deleteAccount(screenContext, password);
             },
             style: FilledButton.styleFrom(
               backgroundColor: theme.colorScheme.error,
@@ -528,18 +525,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _deleteAccount(BuildContext context, String password) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null || user.email == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    var loadingShown = false;
 
     try {
-      // Show loading
-      if (context.mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) =>
-              const Center(child: CircularProgressIndicator()),
-        );
-      }
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      loadingShown = true;
 
       // Re-authenticate user
       final credential = EmailAuthProvider.credential(
@@ -575,31 +574,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Navigate to login
       if (context.mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
+        if (loadingShown && navigator.canPop()) {
+          navigator.pop();
+          loadingShown = false;
+        }
         RestartWidget.restartApp(context);
       }
     } on FirebaseAuthException catch (e) {
+      String message = 'Error deleting account';
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        message = 'Incorrect password';
+      } else if (e.code == 'requires-recent-login') {
+        message = 'Please log out and log back in before deleting your account';
+      } else if (e.code == 'too-many-requests') {
+        message = 'Too many attempts. Please wait a moment and try again.';
+      }
+
       if (context.mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-
-        String message = 'Error deleting account';
-        if (e.code == 'wrong-password') {
-          message = 'Incorrect password';
-        } else if (e.code == 'requires-recent-login') {
-          message =
-              'Please log out and log back in before deleting your account';
-        }
-
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        messenger.showSnackBar(SnackBar(content: Text(message)));
       }
     } catch (e) {
       if (context.mounted) {
-        Navigator.of(context).pop(); // Close loading dialog
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (loadingShown && navigator.canPop()) {
+        navigator.pop();
       }
     }
   }
@@ -609,7 +609,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (userId == null) return;
 
     try {
-      context.read<ThemeController>().setCalmMode(false);
+      context.read<ThemeController>().setDarkMode(true);
       await FirebaseFirestore.instance.collection('users').doc(userId).set({
         'notificationsEnabled': true,
       }, SetOptions(merge: true));

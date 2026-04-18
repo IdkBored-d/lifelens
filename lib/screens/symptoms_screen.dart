@@ -5,10 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
-import 'package:lifelens/services/symptom_summary_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
-import 'package:share_plus/share_plus.dart';
 
 class SymptomsScreen extends StatefulWidget {
   const SymptomsScreen({super.key});
@@ -19,21 +17,13 @@ class SymptomsScreen extends StatefulWidget {
 
 class _SymptomsScreenState extends State<SymptomsScreen> {
   final TextEditingController _symptomsController = TextEditingController();
-  final TextEditingController _symptomFocusController = TextEditingController();
-  final SymptomSummaryService _summaryService = SymptomSummaryService();
 
   LogButtonVisualState _saveButtonState = LogButtonVisualState.idle;
-  bool _isGeneratingSummary = false;
-  SymptomSummaryRange _selectedSummaryRange = SymptomSummaryRange.last30;
-  DateTime? _customSummaryStartDate;
-  DateTime? _customSummaryEndDate;
-  bool _compareWithPreviousPeriod = true;
-  SymptomDoctorSummary? _latestSummary;
+  bool _showPreviousLogs = false;
 
   @override
   void dispose() {
     _symptomsController.dispose();
-    _symptomFocusController.dispose();
     super.dispose();
   }
 
@@ -174,22 +164,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     return AppServices.isar.watchRecentSymptomEntries();
   }
 
-  String _burdenLabel(SymptomDoctorSummary summary) {
-    final activeDays = summary.activeDays;
-    final totalDays = summary.windowDays;
-
-    if (activeDays == 0) {
-      return 'No clear symptom activity in this period.';
-    }
-    if (activeDays <= (totalDays / 4).round()) {
-      return 'Symptoms showed up occasionally.';
-    }
-    if (activeDays <= (totalDays / 2).round()) {
-      return 'Symptoms showed up regularly.';
-    }
-    return 'Symptoms showed up frequently.';
-  }
-
   String _formatDate(DateTime date) {
     const months = [
       'Jan',
@@ -213,300 +187,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     final minute = date.minute.toString().padLeft(2, '0');
     final meridiem = date.hour >= 12 ? 'PM' : 'AM';
     return '${_formatDate(date)} at $hour:$minute $meridiem';
-  }
-
-  Future<void> _pickCustomSummaryDate({required bool isStart}) async {
-    final initial = isStart
-        ? (_customSummaryStartDate ??
-              DateTime.now().subtract(const Duration(days: 14)))
-        : (_customSummaryEndDate ?? DateTime.now());
-
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-
-    if (picked == null || !mounted) {
-      return;
-    }
-
-    setState(() {
-      if (isStart) {
-        _customSummaryStartDate = picked;
-      } else {
-        _customSummaryEndDate = picked;
-      }
-    });
-  }
-
-  Future<void> _generateDoctorSummary() async {
-    if (_isGeneratingSummary) {
-      return;
-    }
-
-    setState(() => _isGeneratingSummary = true);
-
-    try {
-      late final DateTime startDate;
-      late final DateTime endDate;
-      late final String windowLabel;
-
-      if (_selectedSummaryRange == SymptomSummaryRange.custom) {
-        if (_customSummaryStartDate == null || _customSummaryEndDate == null) {
-          if (!mounted) {
-            return;
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please choose both a start and end date.'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          return;
-        }
-
-        if (_customSummaryEndDate!.isBefore(_customSummaryStartDate!)) {
-          if (!mounted) {
-            return;
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('End date must be after the start date.'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          return;
-        }
-
-        startDate = _customSummaryStartDate!;
-        endDate = _customSummaryEndDate!;
-        windowLabel = 'Custom range';
-      } else {
-        final now = DateTime.now();
-        startDate = now.subtract(
-          Duration(days: _selectedSummaryRange.days - 1),
-        );
-        endDate = now;
-        windowLabel = _selectedSummaryRange.label;
-      }
-
-      final summary = await _summaryService.generateSummaryForWindow(
-        startDate: startDate,
-        endDate: endDate,
-        windowLabel: windowLabel,
-        compareWithPrevious: _compareWithPreviousPeriod,
-        symptomFocus: _symptomFocusController.text,
-      );
-      if (!mounted) {
-        return;
-      }
-
-      setState(() => _latestSummary = summary);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Summary generated.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not generate summary right now.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isGeneratingSummary = false);
-      }
-    }
-  }
-
-  Future<void> _shareDoctorSummary() async {
-    final summary = _latestSummary;
-    if (summary == null) {
-      return;
-    }
-
-    try {
-      await SharePlus.instance.share(
-        ShareParams(text: summary.text, subject: 'Symptom Summary'),
-      );
-    } on MissingPluginException {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Share is not ready yet. Please fully restart the app and try again.',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not open sharing right now.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  Future<void> _copyDoctorSummary() async {
-    final summary = _latestSummary;
-    if (summary == null) {
-      return;
-    }
-
-    await Clipboard.setData(ClipboardData(text: summary.text));
-    if (!mounted) {
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Summary copied to clipboard.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _showFullSummarySheet() async {
-    final summary = _latestSummary;
-    if (summary == null) {
-      return;
-    }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) {
-        final theme = Theme.of(context);
-        final cs = theme.colorScheme;
-
-        final topSymptoms = summary.topSymptoms
-            .map((e) => _titleCase(e.key))
-            .toList();
-        final worseningSymptoms = summary.worseningSymptoms
-            .map((e) => _titleCase(e.key))
-            .toList();
-        final improvingSymptoms = summary.improvingSymptoms
-            .map((e) => _titleCase(e.key))
-            .toList();
-
-        return SafeArea(
-          child: FractionallySizedBox(
-            heightFactor: 0.9,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: cs.primaryContainer.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your Symptom Summary',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: cs.onPrimaryContainer,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${summary.windowLabel} • ${_formatDate(summary.fromDate)} to ${_formatDate(summary.toDate)}',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onPrimaryContainer.withValues(alpha: 0.9),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _burdenLabel(summary),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: cs.onPrimaryContainer.withValues(
-                              alpha: 0.95,
-                            ),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _copyDoctorSummary,
-                        icon: const Icon(Icons.copy_outlined),
-                        label: const Text('Copy'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _shareDoctorSummary,
-                        icon: const Icon(Icons.ios_share_outlined),
-                        label: const Text('Share'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          _ReportSectionCard(
-                            title: 'Most common symptoms',
-                            body: topSymptoms.isEmpty
-                                ? 'No main symptom stood out in this time.'
-                                : topSymptoms.join(', '),
-                          ),
-                          if (summary.compareWithPrevious &&
-                              (worseningSymptoms.isNotEmpty ||
-                                  improvingSymptoms.isNotEmpty)) ...[
-                            const SizedBox(height: 10),
-                            _ReportSectionCard(
-                              title: 'Simple changes',
-                              body:
-                                  '${worseningSymptoms.isEmpty ? 'No clear increases.' : 'More: ${worseningSymptoms.take(2).join(', ')}'}\n\n'
-                                  '${improvingSymptoms.isEmpty ? 'No clear decreases.' : 'Less: ${improvingSymptoms.take(2).join(', ')}'}',
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          _ReportSectionCard(
-                            title: 'Plain-language summary',
-                            body: summary.text,
-                            selectable: true,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -576,311 +256,89 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _SectionHeader(title: 'Previously Logged Symptoms'),
-                      const SizedBox(height: 8),
-                      StreamBuilder<List<SymptomEntry>>(
-                        stream: _trendStream(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: LinearProgressIndicator(minHeight: 3),
-                            );
-                          }
+                _HistoryDisclosureCard(
+                  expanded: _showPreviousLogs,
+                  onTap: () {
+                    setState(() => _showPreviousLogs = !_showPreviousLogs);
+                  },
+                  child: StreamBuilder<List<SymptomEntry>>(
+                    stream: _trendStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: LinearProgressIndicator(minHeight: 3),
+                        );
+                      }
 
-                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                            return Text(
-                              'No symptom entries yet. Save one above and it will show up here.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: cs.onSurfaceVariant,
-                              ),
-                            );
-                          }
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return Text(
+                          'No symptom entries yet. Save one above and it will show up here.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        );
+                      }
 
-                          final entries = snapshot.data!
-                              .toList(growable: false)
-                            ..sort(
-                              (a, b) => b.timestamp.compareTo(a.timestamp),
-                            );
+                      final entries = snapshot.data!.toList(growable: false)
+                        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Recent entries',
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              ...entries.take(10).map((entry) {
-                                final symptoms = entry.symptomList.isNotEmpty
-                                    ? entry.symptomList
-                                    : entry.rawSymptoms
-                                          .split(',')
-                                          .map((item) => item.trim())
-                                          .where((item) => item.isNotEmpty)
-                                          .toList(growable: false);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: entries
+                            .take(10)
+                            .map((entry) {
+                              final symptoms = entry.symptomList.isNotEmpty
+                                  ? entry.symptomList
+                                  : entry.rawSymptoms
+                                        .split(',')
+                                        .map((item) => item.trim())
+                                        .where((item) => item.isNotEmpty)
+                                        .toList(growable: false);
 
-                                return Container(
-                                  width: double.infinity,
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: cs.surface,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color: cs.outlineVariant.withValues(
-                                        alpha: 0.4,
-                                      ),
+                              return Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: cs.surface,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: cs.outlineVariant.withValues(
+                                      alpha: 0.4,
                                     ),
                                   ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        symptoms.isEmpty
-                                            ? 'Symptom entry'
-                                            : symptoms
-                                                  .map(_titleCase)
-                                                  .join(', '),
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _formatDateTime(entry.timestamp),
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: cs.onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      symptoms.isEmpty
+                                          ? 'Symptom entry'
+                                          : symptoms.map(_titleCase).join(', '),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _formatDateTime(entry.timestamp),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: cs.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            })
+                            .toList(growable: false),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 14),
-                _SectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: cs.primaryContainer.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              Icons.description_outlined,
-                              size: 18,
-                              color: cs.onPrimaryContainer,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const _SectionHeader(
-                                  title: 'Doctor Visit Summary',
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Clinical report for appointments and care discussions.',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: SymptomSummaryRange.values.map((range) {
-                          return FilterChip(
-                            label: Text(range.label),
-                            selected: _selectedSummaryRange == range,
-                            showCheckmark: false,
-                            onSelected: (selected) {
-                              if (!selected) {
-                                return;
-                              }
-                              setState(() => _selectedSummaryRange = range);
-                            },
-                          );
-                        }).toList(),
-                      ),
-                      if (_selectedSummaryRange ==
-                          SymptomSummaryRange.custom) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickCustomSummaryDate(isStart: true),
-                              icon: const Icon(Icons.event_outlined),
-                              label: Text(
-                                _customSummaryStartDate == null
-                                    ? 'Start date'
-                                    : 'Start: ${_formatDate(_customSummaryStartDate!)}',
-                              ),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: () =>
-                                  _pickCustomSummaryDate(isStart: false),
-                              icon: const Icon(Icons.event_available_outlined),
-                              label: Text(
-                                _customSummaryEndDate == null
-                                    ? 'End date'
-                                    : 'End: ${_formatDate(_customSummaryEndDate!)}',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      SwitchListTile.adaptive(
-                        value: _compareWithPreviousPeriod,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Compare with previous period'),
-                        subtitle: const Text(
-                          'Adds a short note about what seems more or less common.',
-                        ),
-                        onChanged: (value) {
-                          setState(() => _compareWithPreviousPeriod = value);
-                        },
-                      ),
-                      const SizedBox(height: 4),
-                      TextField(
-                        controller: _symptomFocusController,
-                        decoration: const InputDecoration(
-                          labelText: 'Focus symptom (optional)',
-                          hintText: 'e.g. headache',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          FilledButton.icon(
-                            onPressed: _isGeneratingSummary
-                                ? null
-                                : _generateDoctorSummary,
-                            icon: _isGeneratingSummary
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.summarize_outlined),
-                            label: Text(
-                              _isGeneratingSummary
-                                  ? 'Generating...'
-                                  : 'Generate summary',
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: _latestSummary == null
-                                ? null
-                                : _shareDoctorSummary,
-                            icon: const Icon(Icons.ios_share_outlined),
-                            label: const Text('Share'),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: _latestSummary == null
-                                ? null
-                                : _copyDoctorSummary,
-                            icon: const Icon(Icons.copy_outlined),
-                            label: const Text('Copy'),
-                          ),
-                        ],
-                      ),
-                      if (_latestSummary != null) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: cs.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: cs.outlineVariant.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Clinical Snapshot • ${_latestSummary!.windowLabel}',
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _burdenLabel(_latestSummary!),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: cs.onSurfaceVariant,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                _latestSummary!.text,
-                                maxLines: 8,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  TextButton.icon(
-                                    onPressed: _showFullSummarySheet,
-                                    icon: const Icon(Icons.open_in_full),
-                                    label: const Text('Open full report'),
-                                  ),
-                                  TextButton.icon(
-                                    onPressed: _shareDoctorSummary,
-                                    icon: const Icon(Icons.send_outlined),
-                                    label: const Text('Share report'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
@@ -938,43 +396,52 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _ReportSectionCard extends StatelessWidget {
-  const _ReportSectionCard({
-    required this.title,
-    required this.body,
-    this.selectable = false,
+class _HistoryDisclosureCard extends StatelessWidget {
+  const _HistoryDisclosureCard({
+    required this.expanded,
+    required this.onTap,
+    required this.child,
   });
 
-  final String title;
-  final String body;
-  final bool selectable;
+  final bool expanded;
+  final VoidCallback onTap;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
-      ),
+    return _SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w800,
+          InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      expanded ? 'Hide previous logs' : 'View previous logs',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          selectable
-              ? SelectableText(body, style: theme.textTheme.bodySmall)
-              : Text(body, style: theme.textTheme.bodySmall),
+          if (expanded) ...[const SizedBox(height: 10), child],
         ],
       ),
     );

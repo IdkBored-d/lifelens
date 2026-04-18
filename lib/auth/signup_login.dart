@@ -18,9 +18,6 @@ class _SignupLoginState extends State<SignupLogin> {
   static const _rememberMeKey = 'signup_login_remember_me';
 
   bool isLogin = true;
-  bool rememberMe = false;
-  bool _hidePassword = true;
-  bool _hideConfirm = true;
   bool _isSubmitting = false;
 
   final _formKey = GlobalKey<FormState>();
@@ -29,6 +26,9 @@ class _SignupLoginState extends State<SignupLogin> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final ValueNotifier<bool> _rememberMe = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> _hidePassword = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _hideConfirm = ValueNotifier<bool>(true);
 
   @override
   void initState() {
@@ -43,6 +43,9 @@ class _SignupLoginState extends State<SignupLogin> {
     _usernameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _rememberMe.dispose();
+    _hidePassword.dispose();
+    _hideConfirm.dispose();
     super.dispose();
   }
 
@@ -52,13 +55,17 @@ class _SignupLoginState extends State<SignupLogin> {
 
     final savedRememberMe = prefs.getBool(_rememberMeKey) ?? false;
     final savedEmail = prefs.getString(_rememberEmailKey) ?? '';
+    final nextEmail = savedRememberMe && savedEmail.isNotEmpty
+        ? savedEmail
+        : '';
 
-    setState(() {
-      rememberMe = savedRememberMe;
-      if (savedRememberMe && savedEmail.isNotEmpty) {
-        _usernameController.text = savedEmail;
-      }
-    });
+    if (_rememberMe.value == savedRememberMe &&
+        _usernameController.text == nextEmail) {
+      return;
+    }
+
+    _rememberMe.value = savedRememberMe;
+    _usernameController.text = nextEmail;
   }
 
   Future<void> _submit() async {
@@ -99,7 +106,7 @@ class _SignupLoginState extends State<SignupLogin> {
             });
       }
 
-      if (isLogin && rememberMe) {
+      if (isLogin && _rememberMe.value) {
         await prefs.setString(_rememberEmailKey, email);
         await prefs.setBool(_rememberMeKey, true);
       } else {
@@ -156,8 +163,8 @@ class _SignupLoginState extends State<SignupLogin> {
   void _toggleMode() {
     setState(() {
       isLogin = !isLogin;
-      _hidePassword = true;
-      _hideConfirm = true;
+      _hidePassword.value = true;
+      _hideConfirm.value = true;
       _firstNameController.clear();
       _lastNameController.clear();
       _usernameController.clear();
@@ -231,22 +238,14 @@ class _SignupLoginState extends State<SignupLogin> {
                                 passwordController: _passwordController,
                                 confirmPasswordController:
                                     _confirmPasswordController,
-                                hidePassword: _hidePassword,
-                                hideConfirm: _hideConfirm,
-                                onTogglePassword: () => setState(
-                                  () => _hidePassword = !_hidePassword,
-                                ),
-                                onToggleConfirm: () => setState(
-                                  () => _hideConfirm = !_hideConfirm,
-                                ),
+                                hidePasswordListenable: _hidePassword,
+                                hideConfirmListenable: _hideConfirm,
                                 onSubmitFromKeyboard: _submit,
                               ),
                               const SizedBox(height: 14),
                               if (isLogin)
                                 _UtilityRow(
-                                  rememberMe: rememberMe,
-                                  onRememberChanged: (value) =>
-                                      setState(() => rememberMe = value),
+                                  rememberMeListenable: _rememberMe,
                                   onForgotPassword: _forgotPassword,
                                 ),
                               if (isLogin) const SizedBox(height: 10),
@@ -330,11 +329,11 @@ class _AuthBackdrop extends StatelessWidget {
               colors: [
                 colorScheme.surface,
                 Color.alphaBlend(
-                  colorScheme.primary.withValues(alpha:0.09),
+                  colorScheme.primary.withValues(alpha: 0.09),
                   colorScheme.surface,
                 ),
                 Color.alphaBlend(
-                  colorScheme.secondary.withValues(alpha:0.08),
+                  colorScheme.secondary.withValues(alpha: 0.08),
                   colorScheme.surface,
                 ),
               ],
@@ -346,7 +345,7 @@ class _AuthBackdrop extends StatelessWidget {
           right: -40,
           child: _BackdropOrb(
             diameter: 210,
-            color: colorScheme.primary.withValues(alpha:0.22),
+            color: colorScheme.primary.withValues(alpha: 0.22),
           ),
         ),
         Positioned(
@@ -354,7 +353,7 @@ class _AuthBackdrop extends StatelessWidget {
           left: -60,
           child: _BackdropOrb(
             diameter: 170,
-            color: colorScheme.secondary.withValues(alpha:0.18),
+            color: colorScheme.secondary.withValues(alpha: 0.18),
           ),
         ),
         Positioned(
@@ -362,7 +361,7 @@ class _AuthBackdrop extends StatelessWidget {
           right: 20,
           child: _BackdropOrb(
             diameter: 230,
-            color: colorScheme.primaryContainer.withValues(alpha:0.32),
+            color: colorScheme.primaryContainer.withValues(alpha: 0.32),
           ),
         ),
       ],
@@ -412,9 +411,12 @@ class _HeaderRibbon extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color.alphaBlend(cs.primary.withValues(alpha:0.60), cs.primaryContainer),
             Color.alphaBlend(
-              cs.secondary.withValues(alpha:0.42),
+              cs.primary.withValues(alpha: 0.60),
+              cs.primaryContainer,
+            ),
+            Color.alphaBlend(
+              cs.secondary.withValues(alpha: 0.42),
               cs.primaryContainer,
             ),
           ],
@@ -449,7 +451,7 @@ class _HeaderRibbon extends StatelessWidget {
           Text(
             subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onPrimaryContainer.withValues(alpha:0.86),
+              color: cs.onPrimaryContainer.withValues(alpha: 0.86),
               fontWeight: FontWeight.w600,
               height: 1.3,
             ),
@@ -470,10 +472,10 @@ class _BrandBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha:0.22),
+        color: colorScheme.surface.withValues(alpha: 0.22),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: colorScheme.onPrimaryContainer.withValues(alpha:0.20),
+          color: colorScheme.onPrimaryContainer.withValues(alpha: 0.20),
         ),
       ),
       child: Row(
@@ -513,7 +515,7 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: cs.surface.withValues(alpha:0.24),
+        color: cs.surface.withValues(alpha: 0.24),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -561,7 +563,7 @@ class _ModeSwitchPanel extends StatelessWidget {
               if (states.contains(WidgetState.selected)) {
                 return cs.primaryContainer;
               }
-              return cs.surfaceContainerHighest.withValues(alpha:0.6);
+              return cs.surfaceContainerHighest.withValues(alpha: 0.6);
             }),
             foregroundColor: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
@@ -571,9 +573,11 @@ class _ModeSwitchPanel extends StatelessWidget {
             }),
             side: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
-                return BorderSide(color: cs.primary.withValues(alpha:0.45));
+                return BorderSide(color: cs.primary.withValues(alpha: 0.45));
               }
-              return BorderSide(color: cs.outlineVariant.withValues(alpha:0.45));
+              return BorderSide(
+                color: cs.outlineVariant.withValues(alpha: 0.45),
+              );
             }),
             shape: WidgetStateProperty.all(
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -681,10 +685,8 @@ class _CredentialsCard extends StatelessWidget {
     required this.usernameController,
     required this.passwordController,
     required this.confirmPasswordController,
-    required this.hidePassword,
-    required this.hideConfirm,
-    required this.onTogglePassword,
-    required this.onToggleConfirm,
+    required this.hidePasswordListenable,
+    required this.hideConfirmListenable,
     required this.onSubmitFromKeyboard,
   });
 
@@ -692,10 +694,8 @@ class _CredentialsCard extends StatelessWidget {
   final TextEditingController usernameController;
   final TextEditingController passwordController;
   final TextEditingController confirmPasswordController;
-  final bool hidePassword;
-  final bool hideConfirm;
-  final VoidCallback onTogglePassword;
-  final VoidCallback onToggleConfirm;
+  final ValueNotifier<bool> hidePasswordListenable;
+  final ValueNotifier<bool> hideConfirmListenable;
   final VoidCallback onSubmitFromKeyboard;
 
   @override
@@ -738,39 +738,46 @@ class _CredentialsCard extends StatelessWidget {
               },
             ),
             const SizedBox(height: 12),
-            _AuthField(
-              controller: passwordController,
-              label: 'Password',
-              hint: isLogin ? 'Your password' : 'At least 6 characters',
-              icon: Icons.lock_outline_rounded,
-              textInputAction: isLogin
-                  ? TextInputAction.done
-                  : TextInputAction.next,
-              autofillHints: isLogin
-                  ? const [AutofillHints.password]
-                  : const [AutofillHints.newPassword],
-              obscureText: hidePassword,
-              suffixIcon: IconButton(
-                onPressed: onTogglePassword,
-                icon: Icon(
-                  hidePassword
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined,
-                ),
-              ),
-              onFieldSubmitted: (_) {
-                if (isLogin) {
-                  onSubmitFromKeyboard();
-                }
-              },
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Enter your password';
-                }
-                if (value.length < 6) {
-                  return 'Password must be at least 6 characters';
-                }
-                return null;
+            ValueListenableBuilder<bool>(
+              valueListenable: hidePasswordListenable,
+              builder: (context, hidePassword, _) {
+                return _AuthField(
+                  controller: passwordController,
+                  label: 'Password',
+                  hint: isLogin ? 'Your password' : 'At least 6 characters',
+                  icon: Icons.lock_outline_rounded,
+                  textInputAction: isLogin
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  autofillHints: isLogin
+                      ? const [AutofillHints.password]
+                      : const [AutofillHints.newPassword],
+                  obscureText: hidePassword,
+                  suffixIcon: IconButton(
+                    onPressed: () {
+                      hidePasswordListenable.value = !hidePassword;
+                    },
+                    icon: Icon(
+                      hidePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                  ),
+                  onFieldSubmitted: (_) {
+                    if (isLogin) {
+                      onSubmitFromKeyboard();
+                    }
+                  },
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Enter your password';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
+                    return null;
+                  },
+                );
               },
             ),
             AnimatedCrossFade(
@@ -779,36 +786,48 @@ class _CredentialsCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 12),
                 child: Column(
                   children: [
-                    _AuthField(
-                      controller: confirmPasswordController,
-                      label: 'Confirm password',
-                      hint: 'Re-enter password',
-                      icon: Icons.verified_user_outlined,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.newPassword],
-                      obscureText: hideConfirm,
-                      suffixIcon: IconButton(
-                        onPressed: onToggleConfirm,
-                        icon: Icon(
-                          hideConfirm
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                        ),
-                      ),
-                      validator: (value) {
-                        if (!isLogin &&
-                            (value == null || value.trim().isEmpty)) {
-                          return 'Confirm your password';
-                        }
-                        if (!isLogin && value != passwordController.text) {
-                          return 'Passwords do not match';
-                        }
-                        return null;
+                    ValueListenableBuilder<bool>(
+                      valueListenable: hideConfirmListenable,
+                      builder: (context, hideConfirm, _) {
+                        return _AuthField(
+                          controller: confirmPasswordController,
+                          label: 'Confirm password',
+                          hint: 'Re-enter password',
+                          icon: Icons.verified_user_outlined,
+                          textInputAction: TextInputAction.done,
+                          autofillHints: const [AutofillHints.newPassword],
+                          obscureText: hideConfirm,
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              hideConfirmListenable.value = !hideConfirm;
+                            },
+                            icon: Icon(
+                              hideConfirm
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
+                          ),
+                          validator: (value) {
+                            if (!isLogin &&
+                                (value == null || value.trim().isEmpty)) {
+                              return 'Confirm your password';
+                            }
+                            if (!isLogin && value != passwordController.text) {
+                              return 'Passwords do not match';
+                            }
+                            return null;
+                          },
+                        );
                       },
                     ),
                     if (!isLogin) ...[
                       const SizedBox(height: 10),
-                      _PasswordMeter(password: passwordController.text),
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: passwordController,
+                        builder: (context, value, _) {
+                          return _PasswordMeter(password: value.text);
+                        },
+                      ),
                     ],
                   ],
                 ),
@@ -888,13 +907,11 @@ class _PasswordMeter extends StatelessWidget {
 
 class _UtilityRow extends StatelessWidget {
   const _UtilityRow({
-    required this.rememberMe,
-    required this.onRememberChanged,
+    required this.rememberMeListenable,
     required this.onForgotPassword,
   });
 
-  final bool rememberMe;
-  final ValueChanged<bool> onRememberChanged;
+  final ValueNotifier<bool> rememberMeListenable;
   final VoidCallback onForgotPassword;
 
   @override
@@ -905,28 +922,35 @@ class _UtilityRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => onRememberChanged(!rememberMe),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  Checkbox.adaptive(
-                    value: rememberMe,
-                    onChanged: (value) => onRememberChanged(value ?? false),
-                    visualDensity: VisualDensity.compact,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: rememberMeListenable,
+            builder: (context, rememberMe, _) {
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => rememberMeListenable.value = !rememberMe,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Checkbox.adaptive(
+                        value: rememberMe,
+                        onChanged: (value) {
+                          rememberMeListenable.value = value ?? false;
+                        },
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      Text(
+                        'Remember me',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    'Remember me',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ),
         TextButton(
@@ -951,9 +975,9 @@ class _InfoPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha:0.65),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.55)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
       ),
       child: Row(
         children: [

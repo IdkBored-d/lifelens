@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:lifelens/community/community_prompt_service.dart';
 import 'package:lifelens/shared_widgets/mini_me_avatar_badge.dart';
 import 'package:provider/provider.dart';
 
@@ -22,7 +21,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
   final ScrollController _scrollController = ScrollController();
 
   String? _userNickname;
-  String _userRole = 'member';
   bool _isBootstrapping = true;
 
   DocumentReference<Map<String, dynamic>> get _sphereRef =>
@@ -45,7 +43,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
   Future<void> _bootstrapSphere() async {
     await _loadUserNickname();
     await _syncMemberMiniMe();
-    await _refreshDailyPromptIfNeeded();
     await _ensureSphereStarterContent();
     await _markSphereSeen();
     if (!mounted) return;
@@ -61,30 +58,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
 
     setState(() {
       _userNickname = memberDoc.data()?['nickname'] as String?;
-      _userRole = (memberDoc.data()?['role'] as String?) ?? 'member';
     });
-  }
-
-  Future<void> _refreshDailyPromptIfNeeded() async {
-    final snapshot = await _sphereRef.get();
-    final data = snapshot.data();
-    final nextPrompt = CommunityPromptService.promptForSphere(
-      widget.sphere.name,
-    );
-    final nextDateKey = CommunityPromptService.dateKeyFor(DateTime.now());
-
-    if (CommunityPromptService.isCurrentPrompt(
-      storedPrompt: data?['dailyPrompt'] as String?,
-      sphereName: widget.sphere.name,
-      storedDateKey: data?['dailyPromptDateKey'] as String?,
-    )) {
-      return;
-    }
-
-    await _sphereRef.set({
-      'dailyPrompt': nextPrompt,
-      'dailyPromptDateKey': nextDateKey,
-    }, SetOptions(merge: true));
   }
 
   Future<void> _ensureSphereStarterContent() async {
@@ -196,8 +170,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     await _sphereRef.set({
       'lastActivityText': text,
       'lastActivityAt': FieldValue.serverTimestamp(),
-      'dailyPrompt': CommunityPromptService.promptForSphere(widget.sphere.name),
-      'dailyPromptDateKey': CommunityPromptService.dateKeyFor(DateTime.now()),
     }, SetOptions(merge: true));
 
     await _touchMemberActivity();
@@ -205,50 +177,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Post shared with the sphere')),
     );
-  }
-
-  Future<void> _addReply({required String postId, required String text}) async {
-    final userId = _userId;
-    final nickname = _userNickname;
-    final avatarStore = context.read<AvatarStore>();
-    if (userId == null || nickname == null) return;
-
-    final moderationResult = ContentModerationService.checkMessage(text);
-    if (moderationResult.isViolation) {
-      await _handleContentViolation(
-        userId,
-        text,
-        moderationResult.detectedWords,
-      );
-      return;
-    }
-
-    final postRef = _postsRef.doc(postId);
-    await postRef.collection('replies').add({
-      'text': text,
-      'userId': userId,
-      'nickname': nickname,
-      'miniMe': avatarStore.toCommunityAvatarMap(),
-      'miniMeName': avatarStore.miniMeName,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    await postRef.update({
-      'replyCount': FieldValue.increment(1),
-      'latestActivityAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-
-    await _sphereRef.set({
-      'lastActivityText': text,
-      'lastActivityAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    await _touchMemberActivity();
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Reply added')));
   }
 
   Future<void> _reportPost({
@@ -273,48 +201,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Report submitted')));
-  }
-
-  Future<void> _toggleLike(String postId) async {
-    final userId = _userId;
-    if (userId == null) return;
-
-    final reactionRef = _postsRef
-        .doc(postId)
-        .collection('reactions')
-        .doc(userId);
-    final snapshot = await reactionRef.get();
-
-    if (!snapshot.exists) {
-      await reactionRef.set({
-        'type': 'like',
-        'userId': userId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      await _postsRef.doc(postId).set({
-        'reactionCounts.like': FieldValue.increment(1),
-      }, SetOptions(merge: true));
-    } else {
-      final currentReaction = snapshot.data()?['type'] as String?;
-      if (currentReaction == 'like') {
-        await reactionRef.delete();
-        await _postsRef.doc(postId).set({
-          'reactionCounts.like': FieldValue.increment(-1),
-        }, SetOptions(merge: true));
-      } else {
-        await reactionRef.set({'type': 'like'}, SetOptions(merge: true));
-        if (currentReaction != null && currentReaction.isNotEmpty) {
-          await _postsRef.doc(postId).set({
-            'reactionCounts.$currentReaction': FieldValue.increment(-1),
-            'reactionCounts.like': FieldValue.increment(1),
-          }, SetOptions(merge: true));
-        } else {
-          await _postsRef.doc(postId).set({
-            'reactionCounts.like': FieldValue.increment(1),
-          }, SetOptions(merge: true));
-        }
-      }
-    }
   }
 
   Future<void> _deletePost(String postId) async {
@@ -347,34 +233,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Post deleted')));
-  }
-
-  Future<void> _pinPost(String postId, String text) async {
-    final preview = text.trim();
-    final existingPinnedId =
-        (await _sphereRef.get()).data()?['pinnedPostId'] as String?;
-
-    await _sphereRef.set({
-      'pinnedTitle': 'Community focus',
-      'pinnedBody': preview.length > 220
-          ? '${preview.substring(0, 220)}...'
-          : preview,
-      'pinnedPostId': postId,
-    }, SetOptions(merge: true));
-
-    if (existingPinnedId != null && existingPinnedId != postId) {
-      await _postsRef.doc(existingPinnedId).set({
-        'isPinned': false,
-      }, SetOptions(merge: true));
-    }
-    await _postsRef.doc(postId).set({
-      'isPinned': true,
-    }, SetOptions(merge: true));
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Pinned to sphere header')));
   }
 
   Future<void> _handleContentViolation(
@@ -546,204 +404,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
               ),
             );
           },
-        );
-      },
-    );
-  }
-
-  void _showRepliesSheet({
-    required String postId,
-    required String postText,
-    required String nickname,
-  }) {
-    final controller = TextEditingController();
-    final cs = Theme.of(context).colorScheme;
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: Container(
-            height: MediaQuery.of(context).size.height * 0.72,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cs.surface,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Replies',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        nickname,
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: cs.primary,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(postText),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _postsRef
-                        .doc(postId)
-                        .collection('replies')
-                        .orderBy('createdAt')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      final replies = snapshot.data!.docs;
-                      if (replies.isEmpty) {
-                        return Center(
-                          child: Text(
-                            'No replies yet. Start the support thread.',
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: cs.onSurfaceVariant),
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        itemCount: replies.length,
-                        itemBuilder: (context, index) {
-                          final reply = replies[index].data();
-                          final miniMe = Map<String, dynamic>.from(
-                            reply['miniMe'] as Map? ?? {},
-                          );
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest.withValues(
-                                alpha: 0.32,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                MiniMeAvatarBadge(
-                                  size: 48,
-                                  padding: 4,
-                                  backgroundColor: cs.primaryContainer,
-                                  borderColor: cs.outlineVariant.withValues(
-                                    alpha: 0.35,
-                                  ),
-                                  bodyModel: miniMe['bodyModel'] as String?,
-                                  hairModel: miniMe['hairModel'] as String?,
-                                  shirtModel: miniMe['shirtModel'] as String?,
-                                  bodyWidthScale:
-                                      (miniMe['bodyWidthScale'] as num?)
-                                          ?.toDouble(),
-                                  companionId: miniMe['companionId'] as String?,
-                                  isHatched:
-                                      miniMe['isHatched'] as bool? ?? true,
-                                  degradationLevel:
-                                      (miniMe['degradationLevel'] as num?)
-                                          ?.toDouble() ??
-                                      0,
-                                  fallbackLabel: reply['nickname'] as String?,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        reply['nickname'] ?? 'Anonymous',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelLarge
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(reply['text'] ?? ''),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        _timeLabel(
-                                          (reply['createdAt'] as Timestamp?)
-                                              ?.toDate(),
-                                        ),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color: cs.onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: controller,
-                        maxLines: 3,
-                        minLines: 1,
-                        decoration: const InputDecoration(
-                          hintText: 'Add a practical or supportive reply...',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton(
-                      onPressed: () async {
-                        final text = controller.text.trim();
-                        if (text.isEmpty) return;
-                        controller.clear();
-                        await _addReply(postId: postId, text: text);
-                      },
-                      child: const Icon(Icons.reply_rounded),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
         );
       },
     );
@@ -1052,87 +712,48 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
           : Column(
               children: [
                 Expanded(
-                  child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                    stream: _sphereRef.snapshots(),
-                    builder: (context, sphereSnapshot) {
-                      final sphereData = sphereSnapshot.data?.data() ?? {};
-                      return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: _postsRef
-                            .orderBy('latestActivityAt', descending: true)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text('Error: ${snapshot.error}'),
-                            );
-                          }
+                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _postsRef
+                        .orderBy('createdAt', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(child: Text('Error: ${snapshot.error}'));
+                      }
 
-                          if (!snapshot.hasData) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                          final posts = snapshot.data!.docs;
-                          return ListView(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
-                            children: [
-                              _PromptCard(
-                                prompt:
-                                    CommunityPromptService.isCurrentPrompt(
-                                      storedPrompt:
-                                          sphereData['dailyPrompt'] as String?,
-                                      sphereName: widget.sphere.name,
-                                      storedDateKey:
-                                          sphereData['dailyPromptDateKey']
-                                              as String?,
-                                    )
-                                    ? ((sphereData['dailyPrompt'] as String?) ??
-                                          widget.sphere.dailyPrompt ??
-                                          CommunityPromptService.promptForSphere(
-                                            widget.sphere.name,
-                                          ))
-                                    : CommunityPromptService.promptForSphere(
-                                        widget.sphere.name,
-                                      ),
-                                onPost: _showCreatePostSheet,
+                      final posts = snapshot.data!.docs;
+                      if (posts.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
+                          child: _EmptyCommunityState(
+                            sphereName: widget.sphere.name,
+                            onCreatePost: _showCreatePostSheet,
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        controller: _scrollController,
+                        reverse: true,
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
+                        itemCount: posts.length,
+                        itemBuilder: (context, index) {
+                          final postDoc = posts[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _ChatMessageTile(
+                              postDoc: postDoc,
+                              currentUserId: _userId,
+                              onReport: () => _showReportDialog(
+                                postId: postDoc.id,
+                                text: postDoc.data()['text'] ?? '',
                               ),
-                              const SizedBox(height: 12),
-                              if (posts.isEmpty)
-                                _EmptyCommunityState(
-                                  sphereName: widget.sphere.name,
-                                  onCreatePost: _showCreatePostSheet,
-                                )
-                              else
-                                ...posts.map(
-                                  (postDoc) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: _PostCard(
-                                      postDoc: postDoc,
-                                      currentUserId: _userId,
-                                      canPin: _userRole == 'owner',
-                                      onReply: () => _showRepliesSheet(
-                                        postId: postDoc.id,
-                                        postText: postDoc.data()['text'] ?? '',
-                                        nickname:
-                                            postDoc.data()['nickname'] ??
-                                            'Anonymous',
-                                      ),
-                                      onReport: () => _showReportDialog(
-                                        postId: postDoc.id,
-                                        text: postDoc.data()['text'] ?? '',
-                                      ),
-                                      onLike: () => _toggleLike(postDoc.id),
-                                      onDelete: () => _deletePost(postDoc.id),
-                                      onPin: () => _pinPost(
-                                        postDoc.id,
-                                        postDoc.data()['text'] ?? '',
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
+                              onDelete: () => _deletePost(postDoc.id),
+                            ),
                           );
                         },
                       );
@@ -1152,61 +773,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
-  }
-}
-
-class _PromptCard extends StatelessWidget {
-  const _PromptCard({required this.prompt, required this.onPost});
-
-  final String prompt;
-  final VoidCallback onPost;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.42),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.wb_sunny_outlined, color: cs.primary, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                'Today\'s prompt',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: cs.primary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            prompt,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: onPost,
-              child: const Text('Write a post'),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -1241,7 +807,7 @@ class _EmptyCommunityState extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Start with a simple check-in or question.',
+            'Start the conversation with a simple message.',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -1250,8 +816,8 @@ class _EmptyCommunityState extends StatelessWidget {
           const SizedBox(height: 14),
           FilledButton.icon(
             onPressed: onCreatePost,
-            icon: const Icon(Icons.add_comment_outlined),
-            label: const Text('Create First Post'),
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+            label: const Text('Send First Message'),
           ),
         ],
       ),
@@ -1304,7 +870,7 @@ class _ComposerDock extends StatelessWidget {
                       child: Text(
                         userNickname == null
                             ? 'Join with a nickname to post'
-                            : 'Write a post...',
+                            : 'Write a message...',
                         style: TextStyle(color: cs.onSurfaceVariant),
                       ),
                     ),
@@ -1319,168 +885,155 @@ class _ComposerDock extends StatelessWidget {
   }
 }
 
-class _PostCard extends StatelessWidget {
-  const _PostCard({
+class _ChatMessageTile extends StatelessWidget {
+  const _ChatMessageTile({
     required this.postDoc,
     required this.currentUserId,
-    required this.canPin,
-    required this.onReply,
-    required this.onLike,
     required this.onReport,
     required this.onDelete,
-    required this.onPin,
   });
 
   final QueryDocumentSnapshot<Map<String, dynamic>> postDoc;
   final String? currentUserId;
-  final bool canPin;
-  final VoidCallback onReply;
-  final VoidCallback onLike;
   final VoidCallback onReport;
   final VoidCallback onDelete;
-  final VoidCallback onPin;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
+    final maxBubbleWidth = MediaQuery.of(context).size.width * 0.68;
     final data = postDoc.data();
     final isMine = data['userId'] == currentUserId;
-    final type = (data['type'] as String?) ?? 'check_in';
-    final reactionCounts = Map<String, dynamic>.from(
-      data['reactionCounts'] as Map? ?? {},
-    );
     final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
-    final String displayName = (data['nickname'] ?? data['miniMeName']) ?? 'Anonymous';
+    final displayName = (data['nickname'] ?? data['miniMeName'] ?? 'Anonymous')
+        .toString();
+    final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
+    final text = (data['text'] ?? '').toString();
 
-    return Container(
-      padding: const EdgeInsets.all(14),
+    final bubble = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.28),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        color: isMine
+            ? cs.primaryContainer
+            : cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(20),
+          topRight: const Radius.circular(20),
+          bottomLeft: Radius.circular(isMine ? 20 : 8),
+          bottomRight: Radius.circular(isMine ? 8 : 20),
+        ),
+        border: Border.all(
+          color: isMine
+              ? cs.primary.withValues(alpha: 0.16)
+              : cs.outlineVariant.withValues(alpha: 0.35),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Text(
+        text,
+        style: theme.textTheme.bodyLarge?.copyWith(
+          height: 1.3,
+          color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+        ),
+      ),
+    );
+
+    final metaRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _timeLabel(createdAt),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 2),
+        PopupMenuButton<String>(
+          padding: EdgeInsets.zero,
+          icon: Icon(
+            Icons.more_horiz_rounded,
+            size: 18,
+            color: cs.onSurfaceVariant,
+          ),
+          onSelected: (value) {
+            if (value == 'report') {
+              onReport();
+            } else if (value == 'delete') {
+              onDelete();
+            }
+          },
+          itemBuilder: (context) => [
+            if (!isMine)
+              const PopupMenuItem(value: 'report', child: Text('Report')),
+            if (isMine)
+              const PopupMenuItem(value: 'delete', child: Text('Delete')),
+          ],
+        ),
+      ],
+    );
+
+    if (isMine) {
+      return SizedBox(
+        width: double.infinity,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Spacer(),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [bubble, const SizedBox(height: 4), metaRow],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              MiniMeAvatarBadge(
-                size: 52,
-                padding: 4,
-                backgroundColor: cs.primaryContainer,
-                borderColor: cs.outlineVariant.withValues(alpha: 0.35),
-                bodyModel: miniMe['bodyModel'] as String?,
-                hairModel: miniMe['hairModel'] as String?,
-                shirtModel: miniMe['shirtModel'] as String?,
-                bodyWidthScale: (miniMe['bodyWidthScale'] as num?)?.toDouble(),
-                companionId: miniMe['companionId'] as String?,
-                isHatched: miniMe['isHatched'] as bool? ?? true,
-                degradationLevel:
-                    (miniMe['degradationLevel'] as num?)?.toDouble() ?? 0,
-                fallbackLabel: displayName,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _timeLabel((data['createdAt'] as Timestamp?)?.toDate()),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'reply') {
-                    onReply();
-                  } else if (value == 'report') {
-                    onReport();
-                  } else if (value == 'delete') {
-                    onDelete();
-                  } else if (value == 'pin') {
-                    onPin();
-                  }
-                },
-                itemBuilder: (context) => [
-                  if (type != 'system_join')
-                    const PopupMenuItem(value: 'reply', child: Text('Reply')),
-                  if (!isMine && type != 'system_join')
-                    const PopupMenuItem(value: 'report', child: Text('Report')),
-                  if (isMine && type != 'system_join')
-                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  if (canPin && type != 'system_join')
-                    const PopupMenuItem(
-                      value: 'pin',
-                      child: Text('Pin to header'),
-                    ),
-                ],
-              ),
-            ],
+          MiniMeAvatarBadge(
+            size: 64,
+            padding: 4,
+            backgroundColor: cs.primaryContainer,
+            borderColor: cs.outlineVariant.withValues(alpha: 0.35),
+            bodyModel: miniMe['bodyModel'] as String?,
+            hairModel: miniMe['hairModel'] as String?,
+            shirtModel: miniMe['shirtModel'] as String?,
+            bodyWidthScale: (miniMe['bodyWidthScale'] as num?)?.toDouble(),
+            companionId: miniMe['companionId'] as String?,
+            isHatched: miniMe['isHatched'] as bool? ?? true,
+            degradationLevel:
+                (miniMe['degradationLevel'] as num?)?.toDouble() ?? 0,
+            fallbackLabel: displayName,
           ),
-          const SizedBox(height: 10),
-          Text(
-            data['text'] ?? '',
-            style: theme.textTheme.bodyLarge?.copyWith(height: 1.35),
-          ),
-          if (type != 'system_join') ...[
-            const SizedBox(height: 10),
-            Row(
+          const SizedBox(width: 14),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: onReply,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Ink(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cs.surface.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.reply_rounded,
-                            color: cs.primary,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${data['replyCount'] ?? 0} replies',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 4),
+                  child: Text(
+                    displayName,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                _LikeButton(
-                  postRef: postDoc.reference,
-                  currentUserId: currentUserId,
-                  count: (reactionCounts['like'] ?? 0) as int,
-                  onTap: onLike,
-                ),
+                bubble,
+                const SizedBox(height: 4),
+                metaRow,
               ],
             ),
-          ],
+          ),
+          const Spacer(),
         ],
       ),
     );
@@ -1526,85 +1079,3 @@ final Map<String, _PostTypeMeta> _postTypes = {
     hint: 'Tell the sphere what support you need.',
   ),
 };
-
-class _LikeButton extends StatelessWidget {
-  const _LikeButton({
-    required this.postRef,
-    required this.currentUserId,
-    required this.count,
-    required this.onTap,
-  });
-
-  final DocumentReference<Map<String, dynamic>> postRef;
-  final String? currentUserId;
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    if (currentUserId == null) {
-      return InkWell(
-        onTap: null,
-        borderRadius: BorderRadius.circular(14),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          decoration: BoxDecoration(
-            color: cs.surface.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.favorite_border_rounded, color: cs.primary, size: 18),
-              if (count > 0) ...[const SizedBox(width: 6), Text('$count')],
-            ],
-          ),
-        ),
-      );
-    }
-
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: postRef.collection('reactions').doc(currentUserId).snapshots(),
-      builder: (context, snapshot) {
-        final liked = snapshot.data?.data()?['type'] == 'like';
-        return InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              color: liked
-                  ? cs.primaryContainer.withValues(alpha: 0.8)
-                  : cs.surface.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  liked
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  color: liked ? cs.primary : cs.onSurfaceVariant,
-                  size: 18,
-                ),
-                if (count > 0) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    '$count',
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: liked ? cs.primary : cs.onSurface,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}

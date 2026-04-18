@@ -1,8 +1,12 @@
 import 'dart:async' show unawaited;
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lifelens/assets/minime/minime_avatar.dart';
+import 'package:lifelens/avatar_store.dart';
 import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
@@ -24,10 +28,12 @@ class MoodLogScreen extends StatefulWidget {
 
 class _MoodLogScreenState extends State<MoodLogScreen> {
   int selectedMood = -1;
+  int intensity = 3;
   LogButtonVisualState _buttonState = LogButtonVisualState.idle;
   final notesCtrl = TextEditingController();
   final Set<String> tags = {};
   bool _restoringDraft = true;
+  bool _showPreviousLogs = false;
 
   final moods = const [
     _MoodOption("Neutral", "😐"),
@@ -71,6 +77,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     if (draft != null && draft.hasContent) {
       setState(() {
         selectedMood = draft.selectedMood;
+        intensity = draft.intensity;
         notesCtrl.text = draft.notes;
         tags
           ..clear()
@@ -91,6 +98,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     return MoodLogDraftStorageService.instance.save(
       MoodLogDraft(
         selectedMood: selectedMood,
+        intensity: intensity,
         notes: notesCtrl.text.trim(),
         tags: tags.toList(growable: false),
       ),
@@ -101,32 +109,13 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     await MoodLogDraftStorageService.instance.clear();
   }
 
-  String moodHint(String label) {
-    switch (label) {
-      case "Neutral":
-        return "A steady check-in still helps spot patterns over time.";
-      case "Angry":
-        return "Naming anger can help uncover what pushed you there.";
-      case "Scared":
-        return "Logging fear can make triggers and patterns easier to notice.";
-      case "Happy":
-        return "Capture what's going well right now.";
-      case "Affectionate":
-        return "This is a good moment to note who or what feels meaningful.";
-      case "Sad":
-        return "Thank you for checking in - this matters.";
-      case "Surprised":
-        return "A quick note can help explain what caught you off guard.";
-      default:
-        return "A quick check-in helps over time.";
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final canPop = Navigator.canPop(context);
+    final avatarStore = context.watch<AvatarStore>();
+    final moodStore = context.watch<MoodLogStore>();
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -139,6 +128,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
             onPressed: () async {
               setState(() {
                 selectedMood = -1;
+                intensity = 3;
                 notesCtrl.clear();
                 tags.clear();
               });
@@ -170,18 +160,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                     color: cs.onSurfaceVariant,
                   ),
                 ),
-                if (!_restoringDraft &&
-                    (selectedMood != -1 ||
-                        notesCtrl.text.trim().isNotEmpty ||
-                        tags.isNotEmpty)) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    "Draft saved automatically",
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
                 const SizedBox(height: 16),
 
                 _SectionCard(
@@ -196,50 +174,143 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: moods.length,
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 4,
-                              mainAxisSpacing: 10,
-                              crossAxisSpacing: 10,
-                            ),
-                        itemBuilder: (context, i) {
-                          final m = moods[i];
-                          final isSelected = i == selectedMood;
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final width = constraints.maxWidth;
+                          final faceSize = width >= 420 ? 82.0 : 74.0;
 
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () {
-                              Feedback.forTap(context);
-                              setState(() => selectedMood = i);
-                              _persistDraft();
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 160),
-                              curve: Curves.easeOut,
-                              transform: isSelected
-                                  ? (Matrix4.identity()..scale(1.05))
-                                  : Matrix4.identity(),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? cs.primaryContainer
-                                    : cs.surface,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? cs.primary.withOpacity(0.40)
-                                      : cs.outlineVariant.withOpacity(0.55),
+                          if (width < 360) {
+                            return Column(
+                              children: [
+                                for (
+                                  var rowStart = 0;
+                                  rowStart < moods.length;
+                                  rowStart += 2
+                                )
+                                  Padding(
+                                    padding: EdgeInsets.only(
+                                      bottom: rowStart + 2 < moods.length
+                                          ? 18
+                                          : 0,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        for (
+                                          var column = 0;
+                                          column < 2;
+                                          column++
+                                        )
+                                          Expanded(
+                                            child:
+                                                column + rowStart < moods.length
+                                                ? Padding(
+                                                    padding: EdgeInsets.only(
+                                                      right: column == 0
+                                                          ? 10
+                                                          : 0,
+                                                      left: column == 1
+                                                          ? 10
+                                                          : 0,
+                                                    ),
+                                                    child: _MoodTile(
+                                                      option:
+                                                          moods[rowStart +
+                                                              column],
+                                                      isSelected:
+                                                          rowStart + column ==
+                                                          selectedMood,
+                                                      faceSize: faceSize,
+                                                      avatarStore: avatarStore,
+                                                      onTap: () {
+                                                        Feedback.forTap(
+                                                          context,
+                                                        );
+                                                        setState(
+                                                          () => selectedMood =
+                                                              rowStart + column,
+                                                        );
+                                                        _persistDraft();
+                                                      },
+                                                    ),
+                                                  )
+                                                : const SizedBox.shrink(),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            );
+                          }
+
+                          final topRow = moods.take(4).toList(growable: false);
+                          final bottomRow = moods
+                              .skip(4)
+                              .toList(growable: false);
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    for (var i = 0; i < topRow.length; i++)
+                                      Expanded(
+                                        child: Padding(
+                                          padding: EdgeInsets.only(
+                                            right: i < topRow.length - 1
+                                                ? 16
+                                                : 0,
+                                          ),
+                                          child: _MoodTile(
+                                            option: topRow[i],
+                                            isSelected: i == selectedMood,
+                                            faceSize: faceSize,
+                                            avatarStore: avatarStore,
+                                            onTap: () {
+                                              Feedback.forTap(context);
+                                              setState(() => selectedMood = i);
+                                              _persistDraft();
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  m.emoji,
-                                  style: const TextStyle(fontSize: 24),
+                                const SizedBox(height: 18),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    for (
+                                      var i = 0;
+                                      i < bottomRow.length;
+                                      i++
+                                    ) ...[
+                                      Flexible(
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 110,
+                                          ),
+                                          child: _MoodTile(
+                                            option: bottomRow[i],
+                                            isSelected: i + 4 == selectedMood,
+                                            faceSize: faceSize,
+                                            avatarStore: avatarStore,
+                                            onTap: () {
+                                              Feedback.forTap(context);
+                                              setState(
+                                                () => selectedMood = i + 4,
+                                              );
+                                              _persistDraft();
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                      if (i < bottomRow.length - 1)
+                                        const SizedBox(width: 20),
+                                    ],
+                                  ],
                                 ),
-                              ),
+                              ],
                             ),
                           );
                         },
@@ -249,38 +320,55 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                 ),
                 const SizedBox(height: 14),
 
-                if (selectedMood != -1) ...[
-                  const SizedBox(height: 10),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: cs.outlineVariant.withOpacity(0.45),
+                _SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SectionHeader(
+                        title: "Intensity",
+                        trailing: '$intensity/5',
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.auto_awesome_rounded, size: 18),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            moodHint(moods[selectedMood].label),
-                            style: theme.textTheme.bodyMedium?.copyWith(
+                      const SizedBox(height: 10),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          showValueIndicator: ShowValueIndicator.onDrag,
+                        ),
+                        child: Slider(
+                          value: intensity.toDouble(),
+                          min: 1,
+                          max: 5,
+                          divisions: 4,
+                          label: '$intensity/5',
+                          onChanged: (value) {
+                            HapticFeedback.selectionClick();
+                            setState(() => intensity = value.round());
+                            _persistDraft();
+                          },
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Text(
+                            'Low',
+                            style: theme.textTheme.labelMedium?.copyWith(
                               color: cs.onSurfaceVariant,
-                              height: 1.25,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                          const Spacer(),
+                          Text(
+                            'High',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
+                ),
+                const SizedBox(height: 14),
 
                 _SectionCard(
                   child: Column(
@@ -334,6 +422,63 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
+                _SectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          setState(
+                            () => _showPreviousLogs = !_showPreviousLogs,
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _showPreviousLogs
+                                    ? 'Hide previous logs'
+                                    : 'View previous logs',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              _showPreviousLogs
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_showPreviousLogs) ...[
+                        const SizedBox(height: 12),
+                        if (moodStore.isLoading)
+                          const LinearProgressIndicator(minHeight: 3)
+                        else if (moodStore.items.isEmpty)
+                          Text(
+                            'No mood logs yet. Save one above and it will show up here.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          )
+                        else
+                          ...moodStore.items
+                              .take(10)
+                              .map(
+                                (item) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _PreviousMoodLogCard(item: item),
+                                ),
+                              ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
 
                 SizedBox(
                   width: double.infinity,
@@ -362,8 +507,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             try {
                               final now = DateTime.now();
                               final persistedSummary = notes.isEmpty
-                                  ? m.label
-                                  : notes;
+                                  ? '${m.label} ($intensity/5)'
+                                  : '$notes ($intensity/5)';
                               final moodEntry = MoodEntry()
                                 ..date = now.toIso8601String().substring(0, 10)
                                 ..rawLog = userLog
@@ -385,7 +530,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                   MoodCheckIn(
                                     moodLabel: m.label,
                                     emoji: m.emoji,
-                                    intensity: 3,
+                                    intensity: intensity,
                                     tags: tags.toList(growable: false),
                                     notes: notes,
                                     createdAt: now,
@@ -448,6 +593,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             } else {
                               setState(() {
                                 selectedMood = -1;
+                                intensity = 3;
                                 notesCtrl.clear();
                                 tags.clear();
                                 _restoringDraft = false;
@@ -509,6 +655,226 @@ class _MoodOption {
   final String emoji;
 }
 
+class _MoodTile extends StatelessWidget {
+  const _MoodTile({
+    required this.option,
+    required this.isSelected,
+    required this.faceSize,
+    required this.avatarStore,
+    required this.onTap,
+  });
+
+  final _MoodOption option;
+  final bool isSelected;
+  final double faceSize;
+  final AvatarStore avatarStore;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        transform: isSelected
+            ? (Matrix4.identity()..scaleByDouble(1.03, 1.03, 1.0, 1.0))
+            : Matrix4.identity(),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? cs.primaryContainer
+              : cs.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? cs.primary.withValues(alpha: 0.40)
+                : cs.outlineVariant.withValues(alpha: 0.55),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                height: faceSize + 10,
+                child: Center(
+                  child: _AnimatedMoodMiniMeFace(
+                    bodyModel: avatarStore.bodyModel,
+                    hairModel: avatarStore.hairModel,
+                    shirtModel: avatarStore.shirtModel,
+                    bodyWidthScale: avatarStore.effectiveBodyWidthScale,
+                    companionId: avatarStore.companionId,
+                    moodLabel: option.label,
+                    degradationLevel: avatarStore.degradationLevel,
+                    isSelected: isSelected,
+                    size: faceSize,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                option.label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviousMoodLogCard extends StatelessWidget {
+  const _PreviousMoodLogCard({required this.item});
+
+  final MoodCheckIn item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(item.emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${item.moodLabel} • ${item.intensity}/5',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (item.notes.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              item.notes,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AnimatedMoodMiniMeFace extends StatefulWidget {
+  const _AnimatedMoodMiniMeFace({
+    required this.bodyModel,
+    required this.hairModel,
+    required this.shirtModel,
+    required this.bodyWidthScale,
+    required this.companionId,
+    required this.moodLabel,
+    required this.degradationLevel,
+    required this.isSelected,
+    required this.size,
+  });
+
+  final String bodyModel;
+  final String hairModel;
+  final String shirtModel;
+  final double bodyWidthScale;
+  final String companionId;
+  final String moodLabel;
+  final double degradationLevel;
+  final bool isSelected;
+  final double size;
+
+  @override
+  State<_AnimatedMoodMiniMeFace> createState() =>
+      _AnimatedMoodMiniMeFaceState();
+}
+
+class _AnimatedMoodMiniMeFaceState extends State<_AnimatedMoodMiniMeFace>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 4200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final phaseOffset = _blinkPhaseForMood(widget.moodLabel);
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final blink = _blinkValue(_controller.value, phaseOffset);
+        final scale = widget.isSelected ? 1.06 : 1.0;
+
+        return Transform.scale(
+          scale: scale,
+          child: MiniMePortraitAvatar(
+            bodyModel: widget.bodyModel,
+            hairModel: widget.hairModel,
+            shirtModel: widget.shirtModel,
+            bodyWidthScale: widget.bodyWidthScale,
+            companionId: widget.companionId,
+            moodLabel: widget.moodLabel,
+            size: widget.size,
+            blink: blink,
+            degradationLevel: widget.degradationLevel,
+            visualState: const MiniMeVisualState(),
+          ),
+        );
+      },
+    );
+  }
+}
+
+double _blinkPhaseForMood(String moodLabel) {
+  final normalized = moodLabel.trim().toLowerCase();
+  return (normalized.hashCode.abs() % 100) / 100.0;
+}
+
+double _blinkValue(double progress, double phaseOffset) {
+  final phased = (progress + phaseOffset) % 1.0;
+  final firstBlink = _blinkPulse(phased, 0.18, 0.08);
+  final secondBlink = _blinkPulse(phased, 0.62, 0.06);
+  return math.max(firstBlink, secondBlink).clamp(0.0, 1.0);
+}
+
+double _blinkPulse(double progress, double center, double width) {
+  final distance = (progress - center).abs();
+  if (distance > width) return 0;
+  final normalized = 1 - (distance / width);
+  return Curves.easeInOut.transform(normalized);
+}
+
 class _SectionCard extends StatelessWidget {
   const _SectionCard({required this.child});
   final Widget child;
@@ -522,7 +888,7 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
       ),
       child: child,
     );
@@ -597,7 +963,7 @@ class _RecentCheckInRowState extends State<_RecentCheckInRow> {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
         ),
         child: Column(
           children: [
@@ -653,7 +1019,7 @@ class _RecentCheckInRowState extends State<_RecentCheckInRow> {
                   color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: cs.outlineVariant.withOpacity(0.45),
+                    color: cs.outlineVariant.withValues(alpha: 0.45),
                   ),
                 ),
                 child: Text(

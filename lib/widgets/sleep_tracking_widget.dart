@@ -28,7 +28,7 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,22 +77,13 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
+            runSpacing: 8,
             children: sleepQualities
                 .map(
-                  (quality) => ChoiceChip(
-                    label: Text('${quality.emoji} ${quality.label}'),
+                  (quality) => _SleepQualityChip(
+                    quality: quality,
                     selected: _quality == quality,
-                    onSelected: (_) => setState(() => _quality = quality),
-                    backgroundColor: cs.primaryContainer,
-                    side: BorderSide(color: cs.outlineVariant.withValues(alpha:0.4)),
-                    labelStyle: TextStyle(
-                      color: _quality == quality
-                          ? cs.onPrimaryContainer
-                          : cs.onSurface,
-                      fontWeight: _quality == quality
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
+                    onTap: () => setState(() => _quality = quality),
                   ),
                 )
                 .toList(),
@@ -111,7 +102,7 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: cs.outlineVariant.withValues(alpha:0.4),
+                  color: cs.outlineVariant.withValues(alpha: 0.4),
                 ),
               ),
               focusedBorder: OutlineInputBorder(
@@ -208,6 +199,129 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
   }
 }
 
+class _SleepQualityChip extends StatelessWidget {
+  const _SleepQualityChip({
+    required this.quality,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final SleepQuality quality;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final accent = _qualityColor(quality, cs);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? accent.withValues(alpha: 0.16) : cs.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? accent.withValues(alpha: 0.9)
+                : cs.outlineVariant.withValues(alpha: 0.45),
+            width: selected ? 1.4 : 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.18),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _SleepQualityMeter(
+              quality: quality,
+              accent: accent,
+              activeFill: selected ? 1 : 0.92,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              quality.label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: selected ? accent : cs.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SleepQualityMeter extends StatelessWidget {
+  const _SleepQualityMeter({
+    required this.quality,
+    required this.accent,
+    this.activeFill = 1,
+  });
+
+  final SleepQuality quality;
+  final Color accent;
+  final double activeFill;
+
+  @override
+  Widget build(BuildContext context) {
+    final inactive = accent.withValues(alpha: 0.18);
+    final barHeights = <double>[0.4, 0.6, 0.8, 1];
+    const height = 20.0;
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(barHeights.length, (index) {
+          final isActive = index < quality.value;
+          return Padding(
+            padding: EdgeInsets.only(
+              right: index == barHeights.length - 1 ? 0 : 3,
+            ),
+            child: Container(
+              width: 4,
+              height: height * barHeights[index],
+              decoration: BoxDecoration(
+                color: isActive
+                    ? accent.withValues(alpha: activeFill)
+                    : inactive,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+Color _qualityColor(SleepQuality quality, ColorScheme cs) {
+  switch (quality) {
+    case SleepQuality.poor:
+      return const Color(0xFFE06C75);
+    case SleepQuality.fair:
+      return const Color(0xFFE7A94C);
+    case SleepQuality.good:
+      return cs.primary;
+    case SleepQuality.excellent:
+      return const Color(0xFF4DBB8A);
+  }
+}
+
 class _TimeSelector extends StatelessWidget {
   const _TimeSelector({
     required this.label,
@@ -242,7 +356,7 @@ class _TimeSelector extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha:0.4)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [

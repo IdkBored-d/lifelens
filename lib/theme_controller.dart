@@ -2,15 +2,20 @@ import 'package:flutter/material.dart';
 import 'lifelens_theme.dart';
 
 class ThemeController extends ChangeNotifier {
-  bool _calmMode = false; // default to dark mode until toggled
+  bool _darkMode = true;
 
-  bool get isCalmMode => _calmMode;
+  bool get isDarkMode => _darkMode;
+  bool get isCalmMode => !_darkMode;
 
-  ThemeData get theme => _calmMode ? lifeLensCalmTheme() : lifeLensDarkTheme();
+  ThemeData get theme => _darkMode ? lifeLensDarkTheme() : lifeLensCalmTheme();
+
+  void setDarkMode(bool value) {
+    if (value == _darkMode) return;
+    _darkMode = value;
+    notifyListeners();
+  }
 
   void setCalmMode(bool value) {
-    if (value == _calmMode) return;
-    _calmMode = value;
-    notifyListeners();
+    setDarkMode(!value);
   }
 }

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:lifelens/community/community_prompt_service.dart';
 import 'package:provider/provider.dart';
 import '../avatar_store.dart';
 import '../models/sphere.dart';
@@ -82,10 +81,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
           'pinnedBody':
               _defaultPinnedBodies[name] ??
               'Support each other with kindness, practical tips, and privacy in mind.',
-          'dailyPrompt': CommunityPromptService.promptForSphere(name),
-          'dailyPromptDateKey': CommunityPromptService.dateKeyFor(
-            DateTime.now(),
-          ),
           'lastActivityText': 'Fresh support threads are ready to start.',
           'lastActivityAt': FieldValue.serverTimestamp(),
         });
@@ -189,8 +184,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
       'pinnedBody':
           _defaultPinnedBodies[sphereName] ??
           'Support each other with kindness, practical tips, and privacy in mind.',
-      'dailyPrompt': CommunityPromptService.promptForSphere(sphereName),
-      'dailyPromptDateKey': CommunityPromptService.dateKeyFor(DateTime.now()),
       'lastActivityText': seededMessages.first,
       'lastActivityAt': Timestamp.fromDate(now),
     }, SetOptions(merge: true));
@@ -750,8 +743,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
         'pinnedTitle': 'Start here',
         'pinnedBody':
             'Introduce yourself with a nickname, share what you are working on, and keep replies practical, kind, and privacy-safe.',
-        'dailyPrompt': CommunityPromptService.promptForSphere(name),
-        'dailyPromptDateKey': CommunityPromptService.dateKeyFor(DateTime.now()),
         'lastActivityText': 'This sphere is ready for its first check-in.',
         'lastActivityAt': FieldValue.serverTimestamp(),
       });

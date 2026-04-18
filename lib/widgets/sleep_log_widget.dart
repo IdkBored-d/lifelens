@@ -17,15 +17,11 @@ class SleepLogWidget extends StatelessWidget {
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
         ),
         child: Column(
           children: [
-            Icon(
-              Icons.bedtime_outlined,
-              size: 48,
-              color: cs.onSurfaceVariant,
-            ),
+            Icon(Icons.bedtime_outlined, size: 48, color: cs.onSurfaceVariant),
 
             const SizedBox(height: 12),
             Text(
@@ -50,12 +46,14 @@ class SleepLogWidget extends StatelessWidget {
     }
 
     return Column(
-      children: sleepData.map((sleep) =>
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _SleepEntryCard(sleep: sleep),
-        ),
-        ).toList(),
+      children: sleepData
+          .map(
+            (sleep) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _SleepEntryCard(sleep: sleep),
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -75,7 +73,7 @@ class _SleepEntryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,15 +93,29 @@ class _SleepEntryCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _getQualityColor(sleep.quality, cs).withValues(alpha:0.2),
+                  color: _getQualityColor(
+                    sleep.quality,
+                    cs,
+                  ).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  '${sleep.quality.emoji} ${sleep.quality.label}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: _getQualityColor(sleep.quality, cs),
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _SleepQualityMeter(
+                      quality: sleep.quality,
+                      accent: _getQualityColor(sleep.quality, cs),
+                      height: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      sleep.quality.label,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: _getQualityColor(sleep.quality, cs),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -174,7 +186,7 @@ class _SleepEntryCard extends StatelessWidget {
     final hour = dateTime.hour;
     final minute = dateTime.minute;
     final amPm = hour >= 12 ? 'PM' : 'AM';
-    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12: hour);
+    final displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
     return '$displayHour:${minute.toString().padLeft(2, '0')} $amPm';
   }
 
@@ -228,6 +240,48 @@ class _TimeInfo extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SleepQualityMeter extends StatelessWidget {
+  const _SleepQualityMeter({
+    required this.quality,
+    required this.accent,
+    this.height = 20,
+  });
+
+  final SleepQuality quality;
+  final Color accent;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final inactive = accent.withValues(alpha: 0.18);
+    final barHeights = <double>[0.4, 0.6, 0.8, 1];
+
+    return SizedBox(
+      height: height,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(barHeights.length, (index) {
+          final isActive = index < quality.value;
+          return Padding(
+            padding: EdgeInsets.only(
+              right: index == barHeights.length - 1 ? 0 : 3,
+            ),
+            child: Container(
+              width: 4,
+              height: height * barHeights[index],
+              decoration: BoxDecoration(
+                color: isActive ? accent : inactive,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 }

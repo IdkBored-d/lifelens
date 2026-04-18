@@ -53,6 +53,18 @@ class DailySuggestionsSnapshot {
   final int todayExerciseCount;
 }
 
+class _RequiredLogStatus {
+  const _RequiredLogStatus({
+    required this.hasAnyRequiredLogsToday,
+    required this.hasAllRequiredLogsToday,
+    required this.missingRequiredLogs,
+  });
+
+  final bool hasAnyRequiredLogsToday;
+  final bool hasAllRequiredLogsToday;
+  final List<String> missingRequiredLogs;
+}
+
 class DailySuggestionsService {
   DailySuggestionsService._();
 
@@ -69,10 +81,16 @@ class DailySuggestionsService {
     await exerciseStore.refreshFromCloud();
 
     final activeSymptoms = await AppServices.isar.getActiveSymptomEntries();
-    final recentSymptoms = await AppServices.isar.getRecentSymptomEntries(days: 45);
-    final recentFitness = await AppServices.isar.getRecentFitnessEntries(days: 45);
+    final recentSymptoms = await AppServices.isar.getRecentSymptomEntries(
+      days: 45,
+    );
+    final recentFitness = await AppServices.isar.getRecentFitnessEntries(
+      days: 45,
+    );
     final recentEod = await AppServices.isar.getRecentEodEntries(days: 30);
-    final recentSessions = await AppServices.isar.getRecentChatSessions(limit: 6);
+    final recentSessions = await AppServices.isar.getRecentChatSessions(
+      limit: 6,
+    );
 
     final recentChatMessages = <String>[];
     final backendHistory = <MiniMeChatTurn>[];
@@ -84,16 +102,80 @@ class DailySuggestionsService {
         final trimmed = message.text.trim();
         if (trimmed.isEmpty) continue;
         recentChatMessages.add(trimmed);
-        backendHistory.add(
-          MiniMeChatTurn(role: message.role, text: trimmed),
-        );
+        backendHistory.add(MiniMeChatTurn(role: message.role, text: trimmed));
       }
     }
 
     final latestMood = moodStore.items.isEmpty ? null : moodStore.items.first;
-    final latestSleep = sleepStore.items.isEmpty ? null : sleepStore.items.first;
+    final latestSleep = sleepStore.items.isEmpty
+        ? null
+        : sleepStore.items.first;
     final latestFitness = recentFitness.isEmpty ? null : recentFitness.first;
     final todayExerciseCount = _todayExerciseCount(exerciseStore);
+    final requiredLogStatus = await _requiredLogStatus(
+      moodStore: moodStore,
+      sleepStore: sleepStore,
+      todayExerciseCount: todayExerciseCount,
+    );
+
+    if (!requiredLogStatus.hasAnyRequiredLogsToday) {
+      return DailySuggestionsSnapshot(
+        generatedAt: DateTime.now(),
+        suggestions: const <DailySuggestion>[],
+        summary: _buildSummary(
+          latestMoodLabel: latestMood?.moodLabel ?? 'No recent mood',
+          latestSleepHours: latestSleep == null
+              ? null
+              : latestSleep.duration.inMinutes / 60.0,
+          activeSymptomCount: activeSymptoms.length,
+          latestFitnessScore: latestFitness?.fitnessScore,
+          todayExerciseCount: todayExerciseCount,
+        ),
+        latestMoodLabel: latestMood?.moodLabel ?? 'Unknown',
+        activeSymptomCount: activeSymptoms.length,
+        latestSleepHours: latestSleep == null
+            ? null
+            : latestSleep.duration.inMinutes / 60.0,
+        latestFitnessScore: latestFitness?.fitnessScore,
+        todayExerciseCount: todayExerciseCount,
+      );
+    }
+
+    if (!requiredLogStatus.hasAllRequiredLogsToday) {
+      final missingAction =
+          'Log your ${_joinLogLabels(requiredLogStatus.missingRequiredLogs)} as well.';
+      return DailySuggestionsSnapshot(
+        generatedAt: DateTime.now(),
+        suggestions: [
+          DailySuggestion(
+            title: 'Finish Today\'s Logging',
+            reason:
+                'You already started logging today, but mood, sleep, and exercise should all be logged for a complete daily picture.',
+            action: missingAction,
+            icon: Icons.playlist_add_check_circle_outlined,
+            category: 'Logging',
+            priority: 120,
+            sourceSignals: const ['required daily logs'],
+          ),
+        ],
+        summary: _buildSummary(
+          latestMoodLabel: latestMood?.moodLabel ?? 'No recent mood',
+          latestSleepHours: latestSleep == null
+              ? null
+              : latestSleep.duration.inMinutes / 60.0,
+          activeSymptomCount: activeSymptoms.length,
+          latestFitnessScore: latestFitness?.fitnessScore,
+          todayExerciseCount: todayExerciseCount,
+        ),
+        latestMoodLabel: latestMood?.moodLabel ?? 'Unknown',
+        activeSymptomCount: activeSymptoms.length,
+        latestSleepHours: latestSleep == null
+            ? null
+            : latestSleep.duration.inMinutes / 60.0,
+        latestFitnessScore: latestFitness?.fitnessScore,
+        todayExerciseCount: todayExerciseCount,
+      );
+    }
 
     final holisticSuggestions = await _generateHolisticSuggestions(
       moodStore: moodStore,
@@ -152,11 +234,52 @@ class DailySuggestionsService {
       ),
       latestMoodLabel: latestMood?.moodLabel ?? 'Unknown',
       activeSymptomCount: activeSymptoms.length,
-      latestSleepHours:
-          latestSleep == null ? null : latestSleep.duration.inMinutes / 60.0,
+      latestSleepHours: latestSleep == null
+          ? null
+          : latestSleep.duration.inMinutes / 60.0,
       latestFitnessScore: latestFitness?.fitnessScore,
       todayExerciseCount: todayExerciseCount,
     );
+  }
+
+  Future<_RequiredLogStatus> _requiredLogStatus({
+    required MoodLogStore moodStore,
+    required SleepStore sleepStore,
+    required int todayExerciseCount,
+  }) async {
+    final today = DateTime.now();
+
+    final hasMoodToday = moodStore.items.any(
+      (item) => _isSameDay(item.createdAt, today),
+    );
+    final hasSleepToday = sleepStore.items.any(
+      (item) =>
+          _isSameDay(item.date, today) || _isSameDay(item.wakeTime, today),
+    );
+
+    final missing = <String>[
+      if (!hasMoodToday) 'mood',
+      if (!hasSleepToday) 'sleep',
+      if (todayExerciseCount <= 0) 'exercise',
+    ];
+
+    return _RequiredLogStatus(
+      hasAnyRequiredLogsToday:
+          hasMoodToday || hasSleepToday || todayExerciseCount > 0,
+      hasAllRequiredLogsToday: missing.isEmpty,
+      missingRequiredLogs: missing,
+    );
+  }
+
+  String _joinLogLabels(List<String> labels) {
+    if (labels.length == 1) {
+      return labels.first;
+    }
+    if (labels.length == 2) {
+      return '${labels[0]} and ${labels[1]}';
+    }
+    final head = labels.sublist(0, labels.length - 1).join(', ');
+    return '$head, and ${labels.last}';
   }
 
   Future<List<DailySuggestion>> _generateHolisticSuggestions({
@@ -232,12 +355,13 @@ class DailySuggestionsService {
     }
 
     try {
-      final intelligence = await MiniMeBackendService.instance.analyzeIntelligence(
-        sleep: _sleepSeries(sleepStore.items),
-        mood: _moodSeries(moodStore.items),
-        exercise: _exerciseSeries(exerciseStore),
-        symptomCount: _symptomCountSeries(recentSymptoms),
-      );
+      final intelligence = await MiniMeBackendService.instance
+          .analyzeIntelligence(
+            sleep: _sleepSeries(sleepStore.items),
+            mood: _moodSeries(moodStore.items),
+            exercise: _exerciseSeries(exerciseStore),
+            symptomCount: _symptomCountSeries(recentSymptoms),
+          );
 
       final combined = <DailySuggestion>[];
       for (var i = 0; i < intelligence.selectedActions.length; i++) {
@@ -279,9 +403,8 @@ class DailySuggestionsService {
     required List<String> recentChatMessages,
     required int todayExerciseCount,
   }) async {
-    final aggregated = await MiniMeSuggestionAggregator.generateDailySuggestions(
-      days: 14,
-    );
+    final aggregated =
+        await MiniMeSuggestionAggregator.generateDailySuggestions(days: 14);
     if (aggregated.isNotEmpty) {
       return aggregated
           .map(
@@ -301,10 +424,14 @@ class DailySuggestionsService {
     }
 
     final latestMood = moodStore.items.isEmpty ? null : moodStore.items.first;
-    final latestSleep = sleepStore.items.isEmpty ? null : sleepStore.items.first;
+    final latestSleep = sleepStore.items.isEmpty
+        ? null
+        : sleepStore.items.first;
     final latestFitness = recentFitness.isEmpty ? null : recentFitness.first;
     final latestSummary = recentEod.isEmpty ? null : recentEod.first;
-    final latestChat = recentChatMessages.isEmpty ? '' : recentChatMessages.last;
+    final latestChat = recentChatMessages.isEmpty
+        ? ''
+        : recentChatMessages.last;
     final activeSymptomLabels = _flattenSymptoms(activeSymptoms);
 
     final action = _buildHolisticFallbackAction(
@@ -395,7 +522,10 @@ class DailySuggestionsService {
     final sleepSummary = _buildSleepContext(sleepStore.items);
     final symptomSummary = _buildSymptomContext(activeSymptoms, recentSymptoms);
     final fitnessSummary = _buildFitnessContext(recentFitness);
-    final exerciseSummary = _buildExerciseContext(exerciseStore, todayExerciseCount);
+    final exerciseSummary = _buildExerciseContext(
+      exerciseStore,
+      todayExerciseCount,
+    );
     final eodSummary = _buildEodContext(recentEod);
     final crossSignalSummary = _buildCrossSignalContext(
       moodStore: moodStore,
@@ -515,10 +645,21 @@ class DailySuggestionsService {
       }
       final name = (item['exerciseName'] ?? '').trim();
       final duration = (item['durationMinutes'] ?? '').trim();
+      final sets = (item['sets'] ?? '').trim();
+      final reps = (item['reps'] ?? '').trim();
+      final noExercise = (item['noExercise'] ?? '').trim() == 'true';
       final notes = (item['notes'] ?? '').trim();
       final details = <String>[
-        if (name.isNotEmpty) name else (item['exerciseId'] ?? 'activity').trim(),
-        if (duration.isNotEmpty) '$duration min',
+        if (name.isNotEmpty)
+          name
+        else
+          (item['exerciseId'] ?? 'activity').trim(),
+        if (noExercise)
+          'no exercise'
+        else if (sets.isNotEmpty && reps.isNotEmpty)
+          '$sets sets x $reps reps'
+        else if (duration.isNotEmpty)
+          '$duration min',
         if (notes.isNotEmpty) notes,
       ];
       combined.add(
@@ -572,8 +713,8 @@ class DailySuggestionsService {
     final volatility = distinctLabels >= 4
         ? 'more variable than usual'
         : distinctLabels >= 2
-            ? 'mixed'
-            : 'fairly consistent';
+        ? 'mixed'
+        : 'fairly consistent';
     return 'Mood logs: latest ${recent.first.moodLabel}. Recent moods: ${labels.join(', ')}. Pattern looks $volatility, with $positiveCount higher-energy check-ins and $heavyCount heavier check-ins.${notes.isEmpty ? '' : ' Recent notes: ${notes.join(' | ')}'}';
   }
 
@@ -582,7 +723,8 @@ class DailySuggestionsService {
       return 'Sleep logs: none yet.';
     }
     final recent = sleepLogs.take(7).toList(growable: false);
-    final avgHours = recent
+    final avgHours =
+        recent
             .map((item) => item.duration.inMinutes / 60.0)
             .fold<double>(0, (sum, value) => sum + value) /
         recent.length;
@@ -618,19 +760,26 @@ class DailySuggestionsService {
     if (recentFitness.isEmpty) {
       return 'Fitness logs: none.';
     }
-    final scores = recentFitness.take(7).map((entry) => entry.fitnessScore).toList(growable: false);
-    final avg = scores.fold<double>(0, (sum, value) => sum + value) / scores.length;
+    final scores = recentFitness
+        .take(7)
+        .map((entry) => entry.fitnessScore)
+        .toList(growable: false);
+    final avg =
+        scores.fold<double>(0, (sum, value) => sum + value) / scores.length;
     final latest = recentFitness.first.fitnessScore;
     final trend = scores.length >= 2 ? latest - scores[1] : 0.0;
     final trendLabel = trend > 4
         ? 'improving'
         : trend < -4
-            ? 'declining'
-            : 'steady';
+        ? 'declining'
+        : 'steady';
     return 'Fitness logs: latest ${latest.toStringAsFixed(0)}/100, recent average ${avg.toStringAsFixed(0)}/100, overall $trendLabel.';
   }
 
-  String _buildExerciseContext(ExerciseStore exerciseStore, int todayExerciseCount) {
+  String _buildExerciseContext(
+    ExerciseStore exerciseStore,
+    int todayExerciseCount,
+  ) {
     final recent = exerciseStore.getRecentExerciseHistory(limit: 10);
     if (recent.isEmpty) {
       return 'Exercise logs: none yet.';
@@ -640,10 +789,9 @@ class DailySuggestionsService {
         .where((name) => name.isNotEmpty)
         .take(5)
         .toList(growable: false);
-    final weeklyCount = exerciseStore.getRecentExerciseActivity(days: 7).fold<int>(
-      0,
-      (sum, count) => sum + count,
-    );
+    final weeklyCount = exerciseStore
+        .getRecentExerciseActivity(days: 7)
+        .fold<int>(0, (sum, count) => sum + count);
     return 'Exercise logs: $todayExerciseCount today and $weeklyCount in the last 7 days. Recent sessions include ${names.isEmpty ? 'recorded activity' : names.join(', ')}.';
   }
 
@@ -679,10 +827,9 @@ class DailySuggestionsService {
     final lowSleepCount = recentSleep
         .where((item) => (item.duration.inMinutes / 60.0) < 7.0)
         .length;
-    final weeklyExerciseCount = exerciseStore.getRecentExerciseActivity(days: 7).fold<int>(
-      0,
-      (sum, count) => sum + count,
-    );
+    final weeklyExerciseCount = exerciseStore
+        .getRecentExerciseActivity(days: 7)
+        .fold<int>(0, (sum, count) => sum + count);
 
     if (heavyMoodCount >= 2 && lowSleepCount >= 2) {
       observations.add(
@@ -778,7 +925,9 @@ class DailySuggestionsService {
     final counts = <int>[];
     for (var offset = 6; offset >= 0; offset--) {
       final day = DateTime(now.year, now.month, now.day - offset);
-      final count = recentSymptoms.where((entry) => _isSameDay(entry.timestamp, day)).length;
+      final count = recentSymptoms
+          .where((entry) => _isSameDay(entry.timestamp, day))
+          .length;
       counts.add(count);
     }
     return counts;
@@ -841,7 +990,9 @@ class DailySuggestionsService {
     if ((latestFitnessScore ?? 60) < 55 && todayExerciseCount == 0) {
       return 'Your recent pattern suggests lower reserve, so focus on essentials first and choose only one realistic health-support action for today.';
     }
-    if (mood.contains('sad') || mood.contains('scared') || mood.contains('angry')) {
+    if (mood.contains('sad') ||
+        mood.contains('scared') ||
+        mood.contains('angry')) {
       return 'Your recent logs suggest more strain than steadiness, so make today smaller, reduce pressure where you can, and pick one calming action that is easy to follow through on.';
     }
     if (latestSleepHours != null && latestSleepHours < 6.5) {
@@ -875,7 +1026,9 @@ class DailySuggestionsService {
       pieces.add('fitness ${latestFitnessScore.toStringAsFixed(0)}/100');
     }
     if (todayExerciseCount > 0) {
-      pieces.add('$todayExerciseCount exercise session${todayExerciseCount == 1 ? '' : 's'} today');
+      pieces.add(
+        '$todayExerciseCount exercise session${todayExerciseCount == 1 ? '' : 's'} today',
+      );
     }
     if (activeSymptoms.isNotEmpty) {
       pieces.add('active symptoms ${activeSymptoms.join(', ')}');
@@ -919,9 +1072,16 @@ class DailySuggestionsService {
           ),
           '',
         )
-        .replaceFirst(RegExp(r"^(your|today's|today)\s+", caseSensitive: false), '')
+        .replaceFirst(
+          RegExp(r"^(your|today's|today)\s+", caseSensitive: false),
+          '',
+        )
         .trim();
-    final words = cleaned.split(RegExp(r'\s+')).where((word) => word.isNotEmpty).take(5).toList();
+    final words = cleaned
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .take(5)
+        .toList();
     if (words.isEmpty) {
       return 'Suggestion';
     }
@@ -964,7 +1124,9 @@ class DailySuggestionsService {
 
   IconData _iconForAction(String action) {
     final lowered = action.toLowerCase();
-    if (lowered.contains('sleep') || lowered.contains('wind-down') || lowered.contains('bed')) {
+    if (lowered.contains('sleep') ||
+        lowered.contains('wind-down') ||
+        lowered.contains('bed')) {
       return Icons.nightlight_round;
     }
     if (lowered.contains('walk') ||
@@ -1015,10 +1177,7 @@ class DailySuggestionsService {
 }
 
 class _CombinedLogPoint {
-  const _CombinedLogPoint({
-    required this.timestamp,
-    required this.text,
-  });
+  const _CombinedLogPoint({required this.timestamp, required this.text});
 
   final DateTime timestamp;
   final String text;

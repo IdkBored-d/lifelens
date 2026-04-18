@@ -100,13 +100,16 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
 
     final moods = await AppServices.isar.getMoodEntriesForDate(dateKey);
     final symptoms = await AppServices.isar.getSymptomEntriesForDate(dateKey);
-    final fitnessEntries = await AppServices.isar.getRecentFitnessEntries(days: 365);
+    final fitnessEntries = await AppServices.isar.getRecentFitnessEntries(
+      days: 365,
+    );
     final eod = await AppServices.isar.getEodEntry(dateKey);
 
-    final sleeps = sleepStore.items
-        .where((item) => _matchesSleepDate(item, _selectedDate))
-        .toList(growable: false)
-      ..sort((a, b) => b.wakeTime.compareTo(a.wakeTime));
+    final sleeps =
+        sleepStore.items
+            .where((item) => _matchesSleepDate(item, _selectedDate))
+            .toList(growable: false)
+          ..sort((a, b) => b.wakeTime.compareTo(a.wakeTime));
 
     final exercises = exerciseStore
         .getRecentExerciseHistory(limit: 365)
@@ -116,10 +119,13 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         })
         .toList(growable: false);
 
-    final fitness = fitnessEntries
-        .where((entry) => entry.date == dateKey)
-        .toList(growable: false)
-      ..sort((a, b) => b.inferenceTimestamp.compareTo(a.inferenceTimestamp));
+    final fitness =
+        fitnessEntries
+            .where((entry) => entry.date == dateKey)
+            .toList(growable: false)
+          ..sort(
+            (a, b) => b.inferenceTimestamp.compareTo(a.inferenceTimestamp),
+          );
 
     if (!mounted) return;
     setState(() {
@@ -171,6 +177,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         _CalendarCard(
           visibleMonth: _visibleMonth,
           selectedDate: _selectedDate,
+          compact: widget.embedded,
           onPreviousMonth: () => _shiftMonth(-1),
           onNextMonth: () => _shiftMonth(1),
           onDateSelected: _selectDate,
@@ -180,7 +187,9 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.38,
+          ),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Text(
@@ -298,8 +307,11 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
             title: entry.symptomList.isEmpty
                 ? 'Symptom entry'
                 : entry.symptomList.map(_titleCase).join(', '),
-            subtitle: '${_timeLabel(entry.timestamp)}  •  ${_titleCase(entry.status)}',
-            body: entry.rawSymptoms.trim().isEmpty ? null : entry.rawSymptoms.trim(),
+            subtitle:
+                '${_timeLabel(entry.timestamp)}  •  ${_titleCase(entry.status)}',
+            body: entry.rawSymptoms.trim().isEmpty
+                ? null
+                : entry.rawSymptoms.trim(),
           ),
         )
         .toList(growable: false);
@@ -307,15 +319,27 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
 
   List<Widget> _buildExerciseTiles(List<Map<String, String>> exercises) {
     return exercises
-        .map(
-          (entry) => _InfoTile(
+        .map((entry) {
+          final noExercise = (entry['noExercise'] ?? '').trim() == 'true';
+          final sets = (entry['sets'] ?? '').trim();
+          final reps = (entry['reps'] ?? '').trim();
+          final duration = (entry['durationMinutes'] ?? '').trim();
+          final detail = noExercise
+              ? 'No exercise'
+              : sets.isNotEmpty && reps.isNotEmpty
+              ? '$sets sets • $reps reps'
+              : duration.isNotEmpty
+              ? '$duration min'
+              : 'Exercise logged';
+
+          return _InfoTile(
             title: (entry['exerciseName'] ?? '').trim().isEmpty
                 ? 'Exercise session'
                 : entry['exerciseName']!.trim(),
             subtitle:
-                '${entry['durationMinutes']?.trim().isEmpty ?? true ? 'Duration not logged' : '${entry['durationMinutes']} min'}  •  ${_timeLabel(DateTime.tryParse(entry['timestamp'] ?? '') ?? DateTime.now())}',
-          ),
-        )
+                '$detail  •  ${_timeLabel(DateTime.tryParse(entry['timestamp'] ?? '') ?? DateTime.now())}',
+          );
+        })
         .toList(growable: false);
   }
 
@@ -326,7 +350,8 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
             title: '${entry.fitnessScore.toStringAsFixed(0)}/100 fitness score',
             subtitle:
                 '${entry.sleepHours.toStringAsFixed(1)}h sleep  •  ${entry.activityIndex.toStringAsFixed(1)} activity',
-            body: 'Heart rate ${entry.heartRate.toStringAsFixed(0)}  •  Nutrition ${entry.nutritionQuality.toStringAsFixed(1)}',
+            body:
+                'Heart rate ${entry.heartRate.toStringAsFixed(0)}  •  Nutrition ${entry.nutritionQuality.toStringAsFixed(1)}',
           ),
         )
         .toList(growable: false);
@@ -369,6 +394,7 @@ class _CalendarCard extends StatelessWidget {
   const _CalendarCard({
     required this.visibleMonth,
     required this.selectedDate,
+    this.compact = false,
     required this.onPreviousMonth,
     required this.onNextMonth,
     required this.onDateSelected,
@@ -376,6 +402,7 @@ class _CalendarCard extends StatelessWidget {
 
   final DateTime visibleMonth;
   final DateTime selectedDate;
+  final bool compact;
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
   final ValueChanged<DateTime> onDateSelected;
@@ -386,9 +413,17 @@ class _CalendarCard extends StatelessWidget {
     final cs = theme.colorScheme;
     final days = _calendarDaysForMonth(visibleMonth);
     final today = _startOfDay(DateTime.now());
+    final cardPadding = compact ? 12.0 : 16.0;
+    final headerButtonConstraints = BoxConstraints.tightFor(
+      width: compact ? 36 : 44,
+      height: compact ? 36 : 44,
+    );
+    final weekdayGap = compact ? 6.0 : 8.0;
+    final dayGridAspectRatio = compact ? 1.35 : 1.0;
+    final dayCornerRadius = compact ? 12.0 : 14.0;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(cardPadding),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(24),
@@ -400,6 +435,9 @@ class _CalendarCard extends StatelessWidget {
             children: [
               IconButton(
                 onPressed: onPreviousMonth,
+                constraints: headerButtonConstraints,
+                padding: EdgeInsets.zero,
+                iconSize: compact ? 20 : 24,
                 icon: const Icon(Icons.chevron_left_rounded),
               ),
               Expanded(
@@ -408,18 +446,23 @@ class _CalendarCard extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
+                    fontSize: compact ? 16 : null,
                   ),
                 ),
               ),
               IconButton(
-                onPressed: _monthStart(visibleMonth).isBefore(_monthStart(today))
+                onPressed:
+                    _monthStart(visibleMonth).isBefore(_monthStart(today))
                     ? onNextMonth
                     : null,
+                constraints: headerButtonConstraints,
+                padding: EdgeInsets.zero,
+                iconSize: compact ? 20 : 24,
                 icon: const Icon(Icons.chevron_right_rounded),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: compact ? 6 : 10),
           Row(
             children: const [
               _WeekLabel('Sun'),
@@ -431,16 +474,16 @@ class _CalendarCard extends StatelessWidget {
               _WeekLabel('Sat'),
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: weekdayGap),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: days.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              childAspectRatio: 1,
+              mainAxisSpacing: weekdayGap,
+              crossAxisSpacing: weekdayGap,
+              childAspectRatio: dayGridAspectRatio,
             ),
             itemBuilder: (context, index) {
               final day = days[index];
@@ -451,30 +494,31 @@ class _CalendarCard extends StatelessWidget {
               final isEnabled = inMonth && !isFutureDay;
 
               return InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(dayCornerRadius),
                 onTap: isEnabled ? () => onDateSelected(day) : null,
                 child: Container(
                   decoration: BoxDecoration(
                     color: isSelected
                         ? cs.primaryContainer
                         : isToday
-                            ? cs.secondaryContainer.withValues(alpha: 0.45)
-                            : cs.surfaceContainerHighest.withValues(
-                                alpha: isEnabled ? 0.25 : 0.08,
-                              ),
-                    borderRadius: BorderRadius.circular(14),
+                        ? cs.secondaryContainer.withValues(alpha: 0.45)
+                        : cs.surfaceContainerHighest.withValues(
+                            alpha: isEnabled ? 0.25 : 0.08,
+                          ),
+                    borderRadius: BorderRadius.circular(dayCornerRadius),
                     border: Border.all(
                       color: isSelected
                           ? cs.primary
                           : isToday
-                              ? cs.secondary
-                              : Colors.transparent,
+                          ? cs.secondary
+                          : Colors.transparent,
                     ),
                   ),
                   child: Center(
                     child: Text(
                       '${day.day}',
                       style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: compact ? 13 : null,
                         fontWeight: isSelected || isToday
                             ? FontWeight.w800
                             : FontWeight.w600,
@@ -507,9 +551,9 @@ class _WeekLabel extends StatelessWidget {
         child: Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -671,7 +715,8 @@ class _DetailSection extends StatelessWidget {
                 color: cs.onSurfaceVariant,
               ),
             )
-          else ..._spacedChildren(children),
+          else
+            ..._spacedChildren(children),
         ],
       ),
     );
@@ -679,11 +724,7 @@ class _DetailSection extends StatelessWidget {
 }
 
 class _InfoTile extends StatelessWidget {
-  const _InfoTile({
-    required this.title,
-    required this.subtitle,
-    this.body,
-  });
+  const _InfoTile({required this.title, required this.subtitle, this.body});
 
   final String title;
   final String subtitle;
@@ -745,7 +786,8 @@ List<DateTime> _calendarDaysForMonth(DateTime month) {
 
 DateTime _monthStart(DateTime date) => DateTime(date.year, date.month);
 
-DateTime _startOfDay(DateTime date) => DateTime(date.year, date.month, date.day);
+DateTime _startOfDay(DateTime date) =>
+    DateTime(date.year, date.month, date.day);
 
 bool _isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;

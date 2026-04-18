@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:lifelens/models/exercise_model.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
@@ -13,9 +14,13 @@ class ExerciseScreen extends StatefulWidget {
 }
 
 class _ExerciseScreenState extends State<ExerciseScreen> {
-  static const List<int> _durationOptions = <int>[5, 10, 15, 20, 30, 45, 60];
-
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _setsController = TextEditingController(
+    text: '3',
+  );
+  final TextEditingController _repsController = TextEditingController(
+    text: '10',
+  );
   final ExerciseService _service = ExerciseService();
   final ExerciseStore _exerciseStore = ExerciseStore();
 
@@ -24,7 +29,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   List<Map<String, String>> _history = const <Map<String, String>>[];
   String _searchQuery = '';
   String? _selectedExerciseId;
-  int _selectedDuration = 30;
+  bool _noExercise = false;
+  bool _showPreviousLogs = false;
   int _loggedToday = 0;
   int _loggedWeek = 0;
   LogButtonVisualState _logButtonState = LogButtonVisualState.idle;
@@ -38,7 +44,24 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _setsController.dispose();
+    _repsController.dispose();
     super.dispose();
+  }
+
+  int? get _parsedSets => int.tryParse(_setsController.text.trim());
+
+  int? get _parsedReps => int.tryParse(_repsController.text.trim());
+
+  bool get _canLogExercise {
+    if (_noExercise) return true;
+    final sets = _parsedSets;
+    final reps = _parsedReps;
+    return _selectedExerciseId != null &&
+        sets != null &&
+        reps != null &&
+        sets > 0 &&
+        reps > 0;
   }
 
   Future<void> _load() async {
@@ -94,7 +117,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   Future<void> _logSelectedExercise() async {
     final exercise = _selectedExercise;
-    if (exercise == null) {
+    if (!_noExercise && exercise == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Choose an exercise first.'),
@@ -107,9 +130,11 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     setState(() => _logButtonState = LogButtonVisualState.loading);
 
     final syncMessage = await _exerciseStore.logExercise(
-      exercise.id,
-      exerciseName: exercise.name,
-      durationMinutes: _selectedDuration,
+      _noExercise ? 'no_exercise' : exercise!.id,
+      exerciseName: _noExercise ? 'No exercise' : exercise!.name,
+      sets: _noExercise ? 0 : _parsedSets!,
+      reps: _noExercise ? 0 : _parsedReps!,
+      noExercise: _noExercise,
     );
 
     final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
@@ -122,9 +147,11 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _loggedWeek = activity.fold(0, (sum, value) => sum + value);
       _logButtonState = LogButtonVisualState.success;
       _selectedExerciseId = null;
-      _selectedDuration = 30;
+      _noExercise = false;
       _searchQuery = '';
       _searchController.clear();
+      _setsController.text = '3';
+      _repsController.text = '10';
     });
 
     if (syncMessage != null) {
@@ -146,6 +173,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     setState(() {
       _selectedExerciseId = exercise.id;
       _searchQuery = exercise.name;
+      _noExercise = false;
     });
   }
 
@@ -201,6 +229,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                       children: [
                         TextField(
                           controller: _searchController,
+                          enabled: !_noExercise,
                           onChanged: (value) =>
                               setState(() => _searchQuery = value),
                           decoration: InputDecoration(
@@ -230,87 +259,123 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                         ),
                         if (_filteredExercises.isNotEmpty) ...[
                           const SizedBox(height: 12),
-                          Container(
-                            constraints: const BoxConstraints(maxHeight: 220),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest.withValues(
-                                alpha: 0.35,
-                              ),
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: ListView.separated(
-                              shrinkWrap: true,
-                              itemCount: _filteredExercises.length,
-                              separatorBuilder: (_, _) => Divider(
-                                height: 1,
-                                color: cs.outlineVariant.withValues(alpha: 0.2),
-                              ),
-                              itemBuilder: (context, index) {
-                                final exercise = _filteredExercises[index];
-                                return ListTile(
-                                  dense: true,
-                                  title: Text(exercise.name),
-                                  subtitle: Text(
-                                    '${exercise.type} • ${exercise.muscle}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  onTap: () => _selectExercise(exercise),
-                                );
-                              },
+                          _ExercisePickerSection(
+                            title: 'Search results',
+                            subtitle: 'Tap one to add it to this log.',
+                            child: Column(
+                              children: _filteredExercises
+                                  .map(
+                                    (exercise) => Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 10,
+                                      ),
+                                      child: _ExerciseOptionCard(
+                                        exercise: exercise,
+                                        selected:
+                                            _selectedExerciseId == exercise.id,
+                                        onTap: () => _selectExercise(exercise),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(growable: false),
                             ),
                           ),
+                        ] else ...[
+                          const SizedBox(height: 12),
+                          if (_selectedExercise != null)
+                            _ExercisePickerSection(
+                              title: 'Selected exercise',
+                              subtitle: 'You can change this any time.',
+                              child: _SelectedExerciseCard(
+                                exercise: _selectedExercise!,
+                                onClear: _noExercise
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _selectedExerciseId = null;
+                                          _searchQuery = '';
+                                          _searchController.clear();
+                                        });
+                                      },
+                              ),
+                            )
+                          else
+                            _ExercisePickerSection(
+                              title: 'Choose an exercise',
+                              subtitle:
+                                  'Start typing above to search for an exercise.',
+                              child: const SizedBox.shrink(),
+                            ),
                         ],
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _selectedExerciseId,
-                          items: _exercises
-                              .map(
-                                (exercise) => DropdownMenuItem<String>(
-                                  value: exercise.id,
-                                  child: Text(
-                                    exercise.name,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                              .toList(growable: false),
-                          onChanged: (value) {
-                            if (value == null) return;
-                            final exercise = _exercises.firstWhere(
-                              (item) => item.id == value,
-                            );
-                            _selectExercise(exercise);
-                          },
-                          decoration: const InputDecoration(
-                            hintText: 'Choose exercise',
+                        Container(
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest.withValues(
+                              alpha: 0.28,
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: CheckboxListTile(
+                            value: _noExercise,
+                            onChanged: (value) {
+                              setState(() {
+                                _noExercise = value ?? false;
+                                if (_noExercise) {
+                                  _selectedExerciseId = null;
+                                  _searchQuery = '';
+                                  _searchController.clear();
+                                }
+                              });
+                            },
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                            title: const Text('No exercise'),
+                            controlAffinity: ListTileControlAffinity.leading,
                           ),
                         ),
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<int>(
-                          initialValue: _selectedDuration,
-                          items: _durationOptions
-                              .map(
-                                (value) => DropdownMenuItem<int>(
-                                  value: value,
-                                  child: Text('$value min'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _setsController,
+                                enabled: !_noExercise,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: <TextInputFormatter>[
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                onChanged: (_) => setState(() {}),
+                                decoration: const InputDecoration(
+                                  hintText: 'Sets',
+                                  labelText: 'Sets',
                                 ),
-                              )
-                              .toList(growable: false),
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() => _selectedDuration = value);
-                          },
-                          decoration: const InputDecoration(
-                            hintText: 'Duration',
-                          ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _repsController,
+                                enabled: !_noExercise,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: <TextInputFormatter>[
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                onChanged: (_) => setState(() {}),
+                                decoration: const InputDecoration(
+                                  hintText: 'Reps',
+                                  labelText: 'Reps',
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 14),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
                             onPressed:
-                                _selectedExerciseId == null ||
+                                !_canLogExercise ||
                                     _logButtonState ==
                                         LogButtonVisualState.loading
                                 ? null
@@ -327,31 +392,78 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  Text(
-                    'Recent',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                  _HistoryDisclosureButton(
+                    expanded: _showPreviousLogs,
+                    onTap: () {
+                      setState(() => _showPreviousLogs = !_showPreviousLogs);
+                    },
                   ),
-                  const SizedBox(height: 12),
-                  if (_history.isEmpty)
-                    const _EmptyExerciseState()
-                  else
-                    ..._history.map(
-                      (record) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _ExerciseHistoryCard(
-                          record: record,
-                          fallbackName: _exerciseNameForId(
-                            record['exerciseId'] ?? '',
+                  if (_showPreviousLogs) ...[
+                    const SizedBox(height: 12),
+                    if (_history.isEmpty)
+                      const _EmptyExerciseState()
+                    else
+                      ..._history.map(
+                        (record) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _ExerciseHistoryCard(
+                            record: record,
+                            fallbackName: _exerciseNameForId(
+                              record['exerciseId'] ?? '',
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                  ],
                 ],
               );
             },
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HistoryDisclosureButton extends StatelessWidget {
+  const _HistoryDisclosureButton({required this.expanded, required this.onTap});
+
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.32),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.28)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                expanded ? 'Hide previous logs' : 'View previous logs',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Icon(
+              expanded
+                  ? Icons.keyboard_arrow_up_rounded
+                  : Icons.keyboard_arrow_down_rounded,
+              color: cs.onSurfaceVariant,
+            ),
+          ],
         ),
       ),
     );
@@ -376,6 +488,197 @@ class _TrackerSummary extends StatelessWidget {
           child: _SummaryPill(label: 'Week', value: '$loggedWeek'),
         ),
       ],
+    );
+  }
+}
+
+class _ExercisePickerSection extends StatelessWidget {
+  const _ExercisePickerSection({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectedExerciseCard extends StatelessWidget {
+  const _SelectedExerciseCard({required this.exercise, this.onClear});
+
+  final ExerciseModel exercise;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.52),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.fitness_center_rounded, color: cs.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  exercise.name,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${exercise.type} • ${exercise.muscle} • ${exercise.difficulty}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onClear != null)
+            IconButton(
+              onPressed: onClear,
+              icon: const Icon(Icons.close_rounded),
+              tooltip: 'Clear selection',
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExerciseOptionCard extends StatelessWidget {
+  const _ExerciseOptionCard({
+    required this.exercise,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ExerciseModel exercise;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Material(
+      color: selected
+          ? cs.primaryContainer.withValues(alpha: 0.52)
+          : cs.surface,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.6)
+                  : cs.outlineVariant.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.bolt_rounded,
+                  color: selected ? cs.primary : cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      exercise.name,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${exercise.type} • ${exercise.muscle}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (selected) Icon(Icons.check_circle_rounded, color: cs.primary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -436,7 +739,17 @@ class _ExerciseHistoryCard extends StatelessWidget {
     final name = (record['exerciseName'] ?? '').trim().isNotEmpty
         ? record['exerciseName']!.trim()
         : fallbackName;
+    final noExercise = (record['noExercise'] ?? '').trim() == 'true';
+    final sets = (record['sets'] ?? '').trim();
+    final reps = (record['reps'] ?? '').trim();
     final duration = (record['durationMinutes'] ?? '').trim();
+    final detail = noExercise
+        ? 'No exercise'
+        : sets.isNotEmpty && reps.isNotEmpty
+        ? '$sets sets • $reps reps'
+        : duration.isNotEmpty
+        ? '$duration min'
+        : 'Exercise logged';
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -473,7 +786,7 @@ class _ExerciseHistoryCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   [
-                    if (duration.isNotEmpty) '$duration min',
+                    detail,
                     if ((record['timestamp'] ?? '').isNotEmpty)
                       _formatTimestamp(record['timestamp']!),
                   ].join(' • '),

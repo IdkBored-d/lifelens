@@ -18,8 +18,6 @@ class OnboardingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final avatarStore = context.watch<AvatarStore>();
-    final preset = avatarStore.selectedCompanion;
 
     return Container(
       decoration: BoxDecoration(
@@ -47,91 +45,9 @@ class OnboardingScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            SizedBox(
-              height: 184,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: miniMeCompanionPresets.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  final companion = miniMeCompanionPresets[index];
-                  final selected = companion.id == avatarStore.companionId;
-                  return RepaintBoundary(
-                    child: _CompanionCard(
-                      companion: companion,
-                      selected: selected,
-                      onTap: () => avatarStore.setCompanionId(companion.id),
-                    ),
-                  );
-                },
-              ),
-            ),
+            const _CompanionCarousel(),
             const SizedBox(height: 16),
-            RepaintBoundary(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: cs.outlineVariant.withValues(alpha: 0.38),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            avatarStore.isMiniMeHatched
-                                ? '${preset.name} is ready'
-                                : 'Hatch ${preset.name}',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        SizedBox(
-                          width: 120,
-                          height: 120,
-                          child: avatarStore.isMiniMeHatched
-                              ? MiniMePortraitAvatar(
-                                  bodyModel: avatarStore.bodyModel,
-                                  hairModel: avatarStore.hairModel,
-                                  shirtModel: avatarStore.shirtModel,
-                                  bodyWidthScale:
-                                      avatarStore.effectiveBodyWidthScale,
-                                  companionId: avatarStore.companionId,
-                                  size: 118,
-                                  degradationLevel:
-                                      avatarStore.degradationLevel,
-                                )
-                              : _EggPreview(accentColor: preset.accentColor),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: avatarStore.isMiniMeHatched
-                          ? avatarStore.resetHatchState
-                          : avatarStore.hatchMiniMe,
-                      icon: Icon(
-                        avatarStore.isMiniMeHatched
-                            ? Icons.refresh_rounded
-                            : Icons.egg_alt_rounded,
-                      ),
-                      label: Text(
-                        avatarStore.isMiniMeHatched
-                            ? 'Preview hatch again'
-                            : 'Create this Mini-Me',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            const _MiniMePreviewPanel(),
             const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: onGetStarted,
@@ -149,6 +65,179 @@ class OnboardingScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CompanionCarousel extends StatelessWidget {
+  const _CompanionCarousel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<AvatarStore, String>(
+      selector: (_, store) => store.companionId,
+      builder: (context, companionId, _) {
+        final avatarStore = context.read<AvatarStore>();
+        return SizedBox(
+          height: 184,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: miniMeCompanionPresets.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final companion = miniMeCompanionPresets[index];
+              final selected = companion.id == companionId;
+              return RepaintBoundary(
+                child: _CompanionCard(
+                  companion: companion,
+                  selected: selected,
+                  onTap: () => avatarStore.setCompanionId(companion.id),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MiniMePreviewPanel extends StatelessWidget {
+  const _MiniMePreviewPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Selector<AvatarStore, _MiniMePreviewData>(
+      selector: (_, store) => _MiniMePreviewData(
+        companionId: store.companionId,
+        companionName: store.selectedCompanion.name,
+        accentColor: store.selectedCompanion.accentColor,
+        isMiniMeHatched: store.isMiniMeHatched,
+        bodyModel: store.bodyModel,
+        hairModel: store.hairModel,
+        shirtModel: store.shirtModel,
+        bodyWidthScale: store.effectiveBodyWidthScale,
+        degradationLevel: store.degradationLevel,
+      ),
+      builder: (context, data, _) {
+        final avatarStore = context.read<AvatarStore>();
+        final theme = Theme.of(context);
+        return RepaintBoundary(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.38),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        data.isMiniMeHatched
+                            ? '${data.companionName} is ready'
+                            : 'Hatch ${data.companionName}',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 120,
+                      height: 120,
+                      child: data.isMiniMeHatched
+                          ? MiniMePortraitAvatar(
+                              bodyModel: data.bodyModel,
+                              hairModel: data.hairModel,
+                              shirtModel: data.shirtModel,
+                              bodyWidthScale: data.bodyWidthScale,
+                              companionId: data.companionId,
+                              size: 118,
+                              degradationLevel: data.degradationLevel,
+                            )
+                          : _EggPreview(accentColor: data.accentColor),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                OutlinedButton.icon(
+                  onPressed: data.isMiniMeHatched
+                      ? avatarStore.resetHatchState
+                      : avatarStore.hatchMiniMe,
+                  icon: Icon(
+                    data.isMiniMeHatched
+                        ? Icons.refresh_rounded
+                        : Icons.egg_alt_rounded,
+                  ),
+                  label: Text(
+                    data.isMiniMeHatched
+                        ? 'Preview hatch again'
+                        : 'Create this Mini-Me',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MiniMePreviewData {
+  const _MiniMePreviewData({
+    required this.companionId,
+    required this.companionName,
+    required this.accentColor,
+    required this.isMiniMeHatched,
+    required this.bodyModel,
+    required this.hairModel,
+    required this.shirtModel,
+    required this.bodyWidthScale,
+    required this.degradationLevel,
+  });
+
+  final String companionId;
+  final String companionName;
+  final Color accentColor;
+  final bool isMiniMeHatched;
+  final String bodyModel;
+  final String hairModel;
+  final String shirtModel;
+  final double bodyWidthScale;
+  final double degradationLevel;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _MiniMePreviewData &&
+        other.companionId == companionId &&
+        other.companionName == companionName &&
+        other.accentColor == accentColor &&
+        other.isMiniMeHatched == isMiniMeHatched &&
+        other.bodyModel == bodyModel &&
+        other.hairModel == hairModel &&
+        other.shirtModel == shirtModel &&
+        other.bodyWidthScale == bodyWidthScale &&
+        other.degradationLevel == degradationLevel;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    companionId,
+    companionName,
+    accentColor,
+    isMiniMeHatched,
+    bodyModel,
+    hairModel,
+    shirtModel,
+    bodyWidthScale,
+    degradationLevel,
+  );
 }
 
 class _CompanionCard extends StatelessWidget {

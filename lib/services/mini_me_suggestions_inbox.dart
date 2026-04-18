@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
@@ -11,14 +12,15 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     _init();
   }
 
-  static const String _viewedDigestsKey =
+  static const String _viewedDigestsKeyBase =
       'miniMeSuggestionsInbox.viewedDigests';
-  static const String _unreadSuggestionsKey =
+  static const String _unreadSuggestionsKeyBase =
       'miniMeSuggestionsInbox.unreadSuggestions';
 
   SharedPreferences? _prefs;
   bool _isInitialized = false;
   bool _isRefreshing = false;
+  String? _loadedScopeKey;
   final Set<String> _viewedDigests = <String>{};
   List<_StoredSuggestion> _unread = const <_StoredSuggestion>[];
 
@@ -29,12 +31,28 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   List<DailySuggestion> get unreadSuggestions =>
       _unread.map((item) => item.toDailySuggestion()).toList(growable: false);
 
+  String get _scopeKey => FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  String get _viewedDigestsKey => '${_viewedDigestsKeyBase}_$_scopeKey';
+  String get _unreadSuggestionsKey => '${_unreadSuggestionsKeyBase}_$_scopeKey';
+
   Future<void> _init() async {
     if (_isInitialized) return;
     _prefs = await SharedPreferences.getInstance();
-    _viewedDigests.addAll(_prefs!.getStringList(_viewedDigestsKey) ?? const []);
+    await _loadScopedState();
+    _isInitialized = true;
+    notifyListeners();
+  }
 
-    final rawUnread = _prefs!.getString(_unreadSuggestionsKey);
+  Future<void> _loadScopedState() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+
+    _loadedScopeKey = _scopeKey;
+    _viewedDigests
+      ..clear()
+      ..addAll(prefs.getStringList(_viewedDigestsKey) ?? const []);
+
+    final rawUnread = prefs.getString(_unreadSuggestionsKey);
     if (rawUnread != null && rawUnread.isNotEmpty) {
       try {
         final decoded = jsonDecode(rawUnread);
@@ -46,13 +64,20 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
                     _StoredSuggestion.fromJson(Map<String, dynamic>.from(item)),
               )
               .toList(growable: false);
+          return;
         }
       } catch (_) {
-        _unread = const <_StoredSuggestion>[];
+        // Fall through to empty state.
       }
     }
 
-    _isInitialized = true;
+    _unread = const <_StoredSuggestion>[];
+  }
+
+  Future<void> _ensureCurrentScopeLoaded() async {
+    await _init();
+    if (_loadedScopeKey == _scopeKey) return;
+    await _loadScopedState();
     notifyListeners();
   }
 
@@ -60,7 +85,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     required MoodLogStore moodStore,
     required SleepStore sleepStore,
   }) async {
-    await _init();
+    await _ensureCurrentScopeLoaded();
     if (_isRefreshing) return;
 
     _isRefreshing = true;
@@ -94,7 +119,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   Future<void> markSuggestionsViewed(
     Iterable<DailySuggestion> suggestions,
   ) async {
-    await _init();
+    await _ensureCurrentScopeLoaded();
 
     final digests = suggestions
         .map(_StoredSuggestion.fromDailySuggestion)

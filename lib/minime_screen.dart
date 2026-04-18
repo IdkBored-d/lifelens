@@ -41,6 +41,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   bool _isCoachExpanded = false;
   bool _isReplying = false;
   bool _isIntelligenceLoading = false;
+  String? _dailyLoggingPromptText;
   final List<_MiniMeChatMessage> _messages = [];
   MiniMeIntelligenceReply? _intelligence;
   final ExerciseStore _exerciseStore = ExerciseStore();
@@ -66,6 +67,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         const Duration(seconds: 3),
         onTimeout: () {},
       );
+      if (!mounted) return;
+      await _refreshStartLoggingPromptState();
       if (!mounted) return;
       final moodStore = context.read<MoodLogStore>();
       final moodCtx = _buildMoodContext(moodStore);
@@ -154,11 +157,27 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _scrollToBottom();
   }
 
+  Future<void> _refreshStartLoggingPromptState() async {
+    final promptText = await _computeDailyLoggingPromptText();
+    if (!mounted) return;
+    setState(() {
+      _dailyLoggingPromptText = promptText;
+      if (promptText != null) {
+        _messages.clear();
+      }
+    });
+  }
+
   Future<void> _loadOpeningSuggestion() async {
     if (_didLoadOpeningSuggestion) return;
+    final moodStore = context.read<MoodLogStore>();
+
+    if (await _computeDailyLoggingPromptText() != null) {
+      return;
+    }
+
     _didLoadOpeningSuggestion = true;
 
-    final moodStore = context.read<MoodLogStore>();
     final moodContext = _buildMoodContext(moodStore);
     final summaryContext = await _buildSummaryContext();
 
@@ -277,6 +296,62 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       });
       await _persistMessages();
     }
+  }
+
+  Future<String?> _computeDailyLoggingPromptText() async {
+    final moodStore = context.read<MoodLogStore>();
+    final sleepStore = context.read<SleepStore>();
+    final today = DateTime.now();
+    final firstName = _displayFirstName(widget.userName);
+
+    final hasMoodToday = moodStore.items.any(
+      (item) => _isSameDay(item.createdAt, today),
+    );
+    final hasSleepToday = sleepStore.items.any(
+      (item) =>
+          _isSameDay(item.date, today) || _isSameDay(item.wakeTime, today),
+    );
+
+    await _exerciseStore.ensureReady();
+    final hasExerciseToday = _exerciseStore
+        .getRecentExerciseHistory(limit: 40)
+        .any((item) {
+          final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
+          return timestamp != null && _isSameDay(timestamp, today);
+        });
+
+    final missing = <String>[
+      if (!hasMoodToday) 'mood',
+      if (!hasSleepToday) 'sleep',
+      if (!hasExerciseToday) 'exercise',
+    ];
+
+    if (missing.length == 3) {
+      return 'Hello $firstName. Start logging to get started';
+    }
+
+    if (missing.isEmpty) {
+      return null;
+    }
+
+    return 'Make sure you log your ${_joinLogLabels(missing)} as well';
+  }
+
+  bool _isSameDay(DateTime left, DateTime right) {
+    return left.year == right.year &&
+        left.month == right.month &&
+        left.day == right.day;
+  }
+
+  String _joinLogLabels(List<String> labels) {
+    if (labels.length == 1) {
+      return labels.first;
+    }
+    if (labels.length == 2) {
+      return '${labels[0]} and ${labels[1]}';
+    }
+    final head = labels.sublist(0, labels.length - 1).join(', ');
+    return '$head, and ${labels.last}';
   }
 
   Future<void> _refreshIntelligence() async {
@@ -439,6 +514,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   Future<void> _bootstrapMiniMe() async {
+    if (_dailyLoggingPromptText != null) {
+      return;
+    }
+
     // Load recent messages from ISAR (last session) to restore history.
     final recentSessions = await IsarService.instance.getRecentChatSessions(
       limit: 1,
@@ -1358,6 +1437,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       moodEmoji: latest?.emoji,
                       avatarAnimationState: avatarAnimationState,
                       suggestionText: latestSuggestion,
+                      dailyLoggingPromptText: _dailyLoggingPromptText,
                       visualState: visualState,
                       avatarWaveToken: _avatarWaveToken,
                       celebrateOnOpen: celebrateOnOpen,
@@ -1401,6 +1481,7 @@ class _AvatarPanel extends StatelessWidget {
     required this.moodEmoji,
     required this.avatarAnimationState,
     required this.suggestionText,
+    required this.dailyLoggingPromptText,
     required this.visualState,
     required this.avatarWaveToken,
     required this.celebrateOnOpen,
@@ -1429,6 +1510,7 @@ class _AvatarPanel extends StatelessWidget {
   final String? moodEmoji;
   final String? avatarAnimationState;
   final String suggestionText;
+  final String? dailyLoggingPromptText;
   final MiniMeVisualState visualState;
   final int avatarWaveToken;
   final bool celebrateOnOpen;
@@ -1464,7 +1546,9 @@ class _AvatarPanel extends StatelessWidget {
         }
         final showPromptBubble =
             messages.isEmpty || (latestAssistantText?.isNotEmpty ?? false);
-        final promptBubbleText = messages.isEmpty
+        final promptBubbleText = dailyLoggingPromptText != null
+            ? dailyLoggingPromptText!
+            : messages.isEmpty
             ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
             : _bubblePreviewText(
                 latestAssistantText ??
@@ -1777,6 +1861,7 @@ String _displayFirstName(String userName) {
 class _InlineCoachPanel extends StatelessWidget {
   const _InlineCoachPanel({
     required this.miniMeName,
+    required this.userName,
     required this.moodLabel,
     required this.isReplying,
     required this.messages,
@@ -1790,6 +1875,7 @@ class _InlineCoachPanel extends StatelessWidget {
   });
 
   final String miniMeName;
+  final String userName;
   final String moodLabel;
   final bool isReplying;
   final List<_MiniMeChatMessage> messages;
@@ -1805,6 +1891,7 @@ class _InlineCoachPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final firstName = _displayFirstName(userName);
     final previewMessages = messages.length <= 3
         ? messages
         : messages.sublist(messages.length - 3);
@@ -2040,7 +2127,7 @@ class _InlineCoachPanel extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.all(24),
                           child: Text(
-                            'Start the conversation below and $miniMeName will build on your latest check-ins.',
+                            'Hello $firstName! Start logging to get started.',
                             textAlign: TextAlign.center,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: cs.onSurfaceVariant,

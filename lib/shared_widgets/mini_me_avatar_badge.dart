@@ -43,7 +43,8 @@ class MiniMeAvatarBadge extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final avatarSize = size - (padding * 2);
-    final usePortraitRenderer = avatarSize <= 60;
+    final usePortraitRenderer = avatarSize <= 96;
+    final portraitSize = usePortraitRenderer ? avatarSize * 0.88 : avatarSize;
 
     return Container(
       width: size,
@@ -60,31 +61,39 @@ class MiniMeAvatarBadge extends StatelessWidget {
         child: ColoredBox(
           color: cs.surface.withValues(alpha: 0.96),
           child: _hasMiniMeSnapshot
-              ? IgnorePointer(
-                  child: usePortraitRenderer
-                      ? MiniMePortraitAvatar(
-                          bodyModel: bodyModel!,
-                          hairModel: hairModel!,
-                          shirtModel: shirtModel!,
-                          bodyWidthScale: bodyWidthScale ?? 1.0,
-                          companionId: companionId,
-                          size: avatarSize,
-                          degradationLevel: degradationLevel,
-                          visualState: visualState,
-                        )
-                      : MiniMeAvatar(
-                          bodyModel: bodyModel!,
-                          hairModel: hairModel!,
-                          shirtModel: shirtModel!,
-                          bodyWidthScale: bodyWidthScale ?? 1.0,
-                          companionId: companionId,
-                          size: avatarSize,
-                          enableAutoRotate: false,
-                          enableInteractions: false,
-                          isHatched: isHatched,
-                          degradationLevel: degradationLevel,
-                          visualState: visualState,
-                        ),
+              ? Center(
+                  child: IgnorePointer(
+                    child: usePortraitRenderer
+                        ? SizedBox.square(
+                            dimension: portraitSize,
+                            child: MiniMePortraitAvatar(
+                              bodyModel: bodyModel!,
+                              hairModel: hairModel!,
+                              shirtModel: shirtModel!,
+                              bodyWidthScale: bodyWidthScale ?? 1.0,
+                              companionId: companionId,
+                              size: portraitSize,
+                              degradationLevel: degradationLevel,
+                              visualState: visualState,
+                            ),
+                          )
+                        : SizedBox.square(
+                            dimension: avatarSize,
+                            child: MiniMeAvatar(
+                              bodyModel: bodyModel!,
+                              hairModel: hairModel!,
+                              shirtModel: shirtModel!,
+                              bodyWidthScale: bodyWidthScale ?? 1.0,
+                              companionId: companionId,
+                              size: avatarSize,
+                              enableAutoRotate: false,
+                              enableInteractions: false,
+                              isHatched: isHatched,
+                              degradationLevel: degradationLevel,
+                              visualState: visualState,
+                            ),
+                          ),
+                  ),
                 )
               : Center(
                   child: Text(

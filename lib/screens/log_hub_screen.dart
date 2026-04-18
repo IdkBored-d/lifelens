@@ -26,6 +26,25 @@ class _LogHubScreenState extends State<LogHubScreen> {
   int _dashboardRefreshTick = 0;
   DateTime _selectedHistoryDate = DateTime.now();
   final ExerciseStore _exerciseStore = ExerciseStore();
+  bool _isTrackersExpanded = false;
+  Future<bool>? _firstTimeUserFuture;
+  Future<bool>? _hasAnyExerciseLogsTodayFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshAsyncState();
+  }
+
+  void _refreshAsyncState() {
+    final moodStore = context.read<MoodLogStore>();
+    final sleepStore = context.read<SleepStore>();
+    _firstTimeUserFuture = _isFirstTimeUser(
+      moodStore: moodStore,
+      sleepStore: sleepStore,
+    );
+    _hasAnyExerciseLogsTodayFuture = _hasAnyExerciseLogsToday();
+  }
 
   Future<void> _openTracker(Widget screen) async {
     final moodStore = context.read<MoodLogStore>();
@@ -35,7 +54,10 @@ class _LogHubScreenState extends State<LogHubScreen> {
     await moodStore.refreshFromPersistence();
     await sleepStore.refresh();
     if (!mounted) return;
-    setState(() => _dashboardRefreshTick += 1);
+    setState(() {
+      _dashboardRefreshTick += 1;
+      _refreshAsyncState();
+    });
   }
 
   Future<void> _openSelectedDayLogs(DateTime date) async {
@@ -54,10 +76,33 @@ class _LogHubScreenState extends State<LogHubScreen> {
     });
   }
 
+  Future<bool> _isFirstTimeUser({
+    required MoodLogStore moodStore,
+    required SleepStore sleepStore,
+  }) async {
+    final hasMoodLogs = moodStore.items.isNotEmpty;
+    final hasSleepLogs = sleepStore.items.isNotEmpty;
+
+    await _exerciseStore.ensureReady();
+    final hasExerciseLogs = _exerciseStore
+        .getRecentExerciseHistory(limit: 1)
+        .isNotEmpty;
+
+    await AppServices.isar.init();
+    final hasSymptomLogs = (await AppServices.isar.getRecentSymptomEntries(
+      days: 3650,
+    )).isNotEmpty;
+
+    return !hasMoodLogs && !hasSleepLogs && !hasExerciseLogs && !hasSymptomLogs;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final userName = widget.userName.trim().isEmpty
+        ? 'Friend'
+        : widget.userName.trim();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Log Center'), centerTitle: false),
@@ -67,11 +112,30 @@ class _LogHubScreenState extends State<LogHubScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Welcome back, ${widget.userName}',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+              Consumer2<MoodLogStore, SleepStore>(
+                builder: (context, moodStore, sleepStore, _) {
+                  return FutureBuilder<bool>(
+                    future:
+                        _firstTimeUserFuture ??
+                        _isFirstTimeUser(
+                          moodStore: moodStore,
+                          sleepStore: sleepStore,
+                        ),
+                    builder: (context, snapshot) {
+                      final isFirstTimeUser = snapshot.data ?? false;
+                      final title = isFirstTimeUser
+                          ? 'Welcome, let\'s get started $userName'
+                          : 'Welcome back, $userName';
+
+                      return Text(
+                        title,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
               const SizedBox(height: 6),
               Text(
@@ -93,39 +157,41 @@ class _LogHubScreenState extends State<LogHubScreen> {
               const SizedBox(height: 18),
               const _SectionHeader(title: 'Trackers'),
               const SizedBox(height: 12),
-              _TrackerListCard(
+              _TrackersDropdownCard(
+                isExpanded: _isTrackersExpanded,
+                onToggle: () {
+                  setState(() => _isTrackersExpanded = !_isTrackersExpanded);
+                },
                 children: [
-                  _TrackerRow(
+                  _TrackerShortcutTile(
                     icon: Icons.emoji_emotions_outlined,
-                    title: 'Mood Log',
-                    subtitle: 'Capture mood, intensity, and context',
+                    label: 'Mood Log',
                     onTap: () => _openTracker(
                       const MoodLogScreen(source: LogSource.tab),
                     ),
                   ),
-                  _TrackerRow(
+                  _TrackerShortcutTile(
                     icon: Icons.nightlight_round,
-                    title: 'Sleep Tracking',
-                    subtitle: 'Record sleep and review patterns',
+                    label: 'Sleep Log',
                     onTap: () => _openTracker(const SleepScreen()),
                   ),
-                  _TrackerRow(
+                  _TrackerShortcutTile(
                     icon: Icons.fitness_center_outlined,
-                    title: 'Exercise Log',
-                    subtitle: 'Open workouts and favorites',
+                    label: 'Exercise Log',
                     onTap: () => _openTracker(const ExerciseScreen()),
                   ),
-                  _TrackerRow(
+                  _TrackerShortcutTile(
                     icon: Icons.healing_outlined,
-                    title: 'Symptom Log',
-                    subtitle: 'Track symptom changes and summaries',
+                    label: 'Symptom Log',
                     onTap: () => _openTracker(const SymptomsScreen()),
                   ),
                 ],
               ),
               _DashboardVisibilityGate(
                 refreshKey: ValueKey(_dashboardRefreshTick),
-                hasAnyExerciseLogsToday: _hasAnyExerciseLogsToday,
+                hasAnyExerciseLogsTodayFuture:
+                    _hasAnyExerciseLogsTodayFuture ?? Future.value(false),
+                refreshTick: _dashboardRefreshTick,
               ),
             ],
           ),
@@ -138,11 +204,13 @@ class _LogHubScreenState extends State<LogHubScreen> {
 class _DashboardVisibilityGate extends StatelessWidget {
   const _DashboardVisibilityGate({
     required this.refreshKey,
-    required this.hasAnyExerciseLogsToday,
+    required this.hasAnyExerciseLogsTodayFuture,
+    required this.refreshTick,
   });
 
   final Key refreshKey;
-  final Future<bool> Function() hasAnyExerciseLogsToday;
+  final Future<bool> hasAnyExerciseLogsTodayFuture;
+  final int refreshTick;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +220,7 @@ class _DashboardVisibilityGate extends StatelessWidget {
           stream: AppServices.isar.watchRecentSymptomEntries(limit: 1),
           builder: (context, symptomSnapshot) {
             return FutureBuilder<bool>(
-              future: hasAnyExerciseLogsToday(),
+              future: hasAnyExerciseLogsTodayFuture,
               builder: (context, exerciseSnapshot) {
                 final now = DateTime.now();
                 final hasMoodLogs = moodStore.items.any(
@@ -180,7 +248,10 @@ class _DashboardVisibilityGate extends StatelessWidget {
 
                 return Padding(
                   padding: const EdgeInsets.only(top: 18),
-                  child: _TodayDashboard(key: refreshKey, refreshTick: 0),
+                  child: _TodayDashboard(
+                    key: refreshKey,
+                    refreshTick: refreshTick,
+                  ),
                 );
               },
             );
@@ -202,6 +273,21 @@ class _TodayDashboard extends StatefulWidget {
 
 class _TodayDashboardState extends State<_TodayDashboard> {
   final ExerciseStore _exerciseStore = ExerciseStore();
+  late Future<int> _todayExerciseCountFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _todayExerciseCountFuture = _loadTodayExerciseCount();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TodayDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshTick != widget.refreshTick) {
+      _todayExerciseCountFuture = _loadTodayExerciseCount();
+    }
+  }
 
   Future<int> _loadTodayExerciseCount() async {
     await _exerciseStore.ensureReady();
@@ -270,7 +356,7 @@ class _TodayDashboardState extends State<_TodayDashboard> {
                 : symptomEntries.first;
 
             return FutureBuilder<int>(
-              future: _loadTodayExerciseCount(),
+              future: _todayExerciseCountFuture,
               builder: (context, exerciseSnapshot) {
                 final todayExerciseCount = exerciseSnapshot.data ?? 0;
                 final nextStep = _buildNextStep(
@@ -483,62 +569,141 @@ class _TodayMetricTile extends StatelessWidget {
   }
 }
 
-class _TrackerListCard extends StatelessWidget {
-  const _TrackerListCard({required this.children});
+class _TrackersDropdownCard extends StatelessWidget {
+  const _TrackersDropdownCard({
+    required this.isExpanded,
+    required this.onToggle,
+    required this.children,
+  });
 
+  final bool isExpanded;
+  final VoidCallback onToggle;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final cs = Theme.of(context).colorScheme;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
-      ),
-      child: Column(children: children),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onToggle,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: cs.outlineVariant.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'Trackers +',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Spacer(),
+                AnimatedRotation(
+                  turns: isExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final child in children) ...[
+                  child,
+                  if (child != children.last) const SizedBox(height: 8),
+                ],
+              ],
+            ),
+          ),
+          crossFadeState: isExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 180),
+          sizeCurve: Curves.easeOutCubic,
+        ),
+      ],
     );
   }
 }
 
-class _TrackerRow extends StatelessWidget {
-  const _TrackerRow({
+class _TrackerShortcutTile extends StatelessWidget {
+  const _TrackerShortcutTile({
     required this.icon,
-    required this.title,
-    required this.subtitle,
+    required this.label,
     required this.onTap,
   });
 
   final IconData icon;
-  final String title;
-  final String subtitle;
+  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return ListTile(
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      leading: Container(
-        width: 42,
-        height: 42,
+      child: Ink(
         decoration: BoxDecoration(
-          color: cs.primaryContainer.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(12),
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
         ),
-        child: Icon(icon, color: cs.onPrimaryContainer),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withValues(alpha: 0.82),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: cs.onPrimaryContainer, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: cs.onSurfaceVariant,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
       ),
-      title: Text(
-        title,
-        style: Theme.of(
-          context,
-        ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-      ),
-      subtitle: Text(subtitle),
-      trailing: Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
     );
   }
 }

@@ -150,6 +150,7 @@ class MiniMePortraitAvatar extends StatelessWidget {
     this.companionId,
     this.moodLabel,
     this.size = 64,
+    this.blink = 0,
     this.degradationLevel = 0,
     this.visualState = const MiniMeVisualState(),
   });
@@ -161,6 +162,7 @@ class MiniMePortraitAvatar extends StatelessWidget {
   final String? companionId;
   final String? moodLabel;
   final double size;
+  final double blink;
   final double degradationLevel;
   final MiniMeVisualState visualState;
 
@@ -173,9 +175,13 @@ class MiniMePortraitAvatar extends StatelessWidget {
       companionId,
     );
     final expression = _resolveExpression(moodLabel, null);
-    final headSize = size * 0.66;
-    final shouldersWidth = size * 0.76 * bodyWidthScale.clamp(0.82, 1.24);
-    final shouldersHeight = size * 0.34;
+    final normalizedBodyWidth = bodyWidthScale.clamp(0.82, 1.24);
+    final headSize = size * 0.62;
+    final shouldersWidth = size * 0.68 * normalizedBodyWidth;
+    final shouldersHeight = size * 0.28;
+    final headTop = size * 0.12;
+    final faceTop = headTop + headSize * 0.26;
+    final shouldersBottom = size * 0.12;
 
     return SizedBox(
       width: size,
@@ -185,7 +191,7 @@ class MiniMePortraitAvatar extends StatelessWidget {
         clipBehavior: Clip.none,
         children: [
           Positioned(
-            bottom: size * 0.02,
+            bottom: shouldersBottom,
             child: Container(
               width: shouldersWidth,
               height: shouldersHeight,
@@ -200,7 +206,7 @@ class MiniMePortraitAvatar extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: size * 0.04,
+            top: headTop,
             child: SizedBox(
               width: headSize,
               height: headSize,
@@ -214,12 +220,12 @@ class MiniMePortraitAvatar extends StatelessWidget {
             ),
           ),
           Positioned(
-            top: size * 0.18,
+            top: faceTop,
             child: CartoonFace(
               expression: expression,
               palette: palette,
               size: headSize * 0.5,
-              blink: 0,
+              blink: blink,
               degradationLevel: degradationLevel,
               headDip: 0,
               wateryEyes: visualState.wateryEyes,
@@ -2050,6 +2056,26 @@ _IdleMotion _motionForExpression(String expression, double t) {
   final slowWave = math.cos(t * math.pi * 2);
 
   switch (expression) {
+    case 'affectionate':
+      return _IdleMotion(
+        bob: wave * 4.8,
+        sway: wave * 0.02,
+        turn: slowWave * 0.026,
+        offsetX: wave * 0.9,
+        shimmer: (slowWave + 1) / 2 * 0.75,
+        headDip: math.max(0, wave) * -1.8,
+        shadowScale: 0.98 - math.max(0, wave) * 0.03,
+      );
+    case 'surprised':
+      return _IdleMotion(
+        bob: wave.abs() * 6.2 - 1.2,
+        sway: wave * 0.018,
+        turn: slowWave * 0.012,
+        offsetX: fastWave * 0.5,
+        shimmer: 0.82,
+        headDip: -1.6 + math.max(0, wave) * -1.3,
+        shadowScale: 0.96,
+      );
     case 'happy':
       return _IdleMotion(
         bob: wave * 6.5,
@@ -2277,14 +2303,16 @@ String _resolveExpression(String? moodLabel, String? animationState) {
   }
 
   switch ((moodLabel ?? '').trim().toLowerCase()) {
+    case 'affectionate':
+    case 'love':
+      return 'affectionate';
+    case 'surprised':
+    case 'surprise':
+      return 'surprised';
     case 'happy':
     case 'excited':
     case 'joyful':
     case 'joy':
-    case 'surprised':
-    case 'surprise':
-    case 'affectionate':
-    case 'love':
       return 'happy';
     case 'neutral':
     case 'content':

@@ -347,6 +347,36 @@ class _CartoonFacePainter extends CustomPainter {
           mouthPaint,
         );
         break;
+      case 'affectionate':
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: mouthCenter.translate(0, -size.height * 0.012),
+            width: size.width * 0.2,
+            height: size.height * 0.11,
+          ),
+          0.12,
+          math.pi - 0.24,
+          false,
+          mouthPaint,
+        );
+        _drawSoftBrows(canvas, size, center);
+        _drawAffectionAccent(canvas, size, center);
+        break;
+      case 'surprised':
+        final surprisedPaint = Paint()
+          ..color = palette.eye.withValues(alpha: 0.92)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.022;
+        canvas.drawOval(
+          Rect.fromCenter(
+            center: mouthCenter.translate(0, -size.height * 0.005),
+            width: size.width * 0.1,
+            height: size.height * 0.15,
+          ),
+          surprisedPaint,
+        );
+        _drawRaisedBrows(canvas, size, center);
+        break;
       case 'sad':
         canvas.drawArc(
           Rect.fromCenter(
@@ -360,19 +390,41 @@ class _CartoonFacePainter extends CustomPainter {
           mouthPaint,
         );
         break;
-      case 'angry':
+      case 'neutral':
         canvas.drawLine(
-          Offset(
-            center.dx - size.width * 0.08,
-            mouthCenter.dy + size.height * 0.01,
-          ),
-          Offset(
-            center.dx + size.width * 0.08,
-            mouthCenter.dy - size.height * 0.01,
-          ),
+          Offset(center.dx - size.width * 0.075, mouthCenter.dy),
+          Offset(center.dx + size.width * 0.075, mouthCenter.dy),
           mouthPaint,
         );
-        _drawBrows(canvas, size, center, intensity: 1);
+        break;
+      case 'angry':
+        final snarlTop = mouthCenter.dy - size.height * 0.004;
+        final snarlBottom = mouthCenter.dy + size.height * 0.028;
+        final snarlLeft = center.dx - size.width * 0.09;
+        final snarlRight = center.dx + size.width * 0.09;
+        final snarlPath = Path()
+          ..moveTo(snarlLeft, snarlTop)
+          ..lineTo(center.dx - size.width * 0.03, snarlTop)
+          ..lineTo(center.dx, snarlBottom)
+          ..lineTo(center.dx + size.width * 0.03, snarlTop)
+          ..lineTo(snarlRight, snarlTop);
+        canvas.drawPath(snarlPath, mouthPaint);
+        canvas.drawLine(
+          Offset(center.dx, snarlTop + size.height * 0.004),
+          Offset(center.dx, snarlBottom - size.height * 0.004),
+          mouthPaint,
+        );
+        canvas.drawLine(
+          Offset(center.dx - size.width * 0.05, snarlTop),
+          Offset(center.dx - size.width * 0.05, snarlTop + size.height * 0.02),
+          mouthPaint,
+        );
+        canvas.drawLine(
+          Offset(center.dx + size.width * 0.05, snarlTop),
+          Offset(center.dx + size.width * 0.05, snarlTop + size.height * 0.02),
+          mouthPaint,
+        );
+        _drawFurrowedBrows(canvas, size, center);
         break;
       case 'calm':
         canvas.drawArc(
@@ -478,34 +530,145 @@ class _CartoonFacePainter extends CustomPainter {
     }
   }
 
-  void _drawBrows(
-    Canvas canvas,
-    Size size,
-    Offset center, {
-    required double intensity,
-  }) {
+  void _drawRaisedBrows(Canvas canvas, Size size, Offset center) {
     final browPaint = Paint()
       ..color = palette.eye
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
-      ..strokeWidth = size.width * 0.024;
+      ..strokeWidth = size.width * 0.02;
+
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(center.dx - size.width * 0.19, size.height * 0.22),
+        width: size.width * 0.16,
+        height: size.height * 0.06,
+      ),
+      math.pi + 0.2,
+      math.pi - 0.4,
+      false,
+      browPaint,
+    );
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(center.dx + size.width * 0.19, size.height * 0.22),
+        width: size.width * 0.16,
+        height: size.height * 0.06,
+      ),
+      math.pi + 0.2,
+      math.pi - 0.4,
+      false,
+      browPaint,
+    );
+  }
+
+  void _drawSoftBrows(Canvas canvas, Size size, Offset center) {
+    final browPaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.9)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.018;
+
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(center.dx - size.width * 0.19, size.height * 0.275),
+        width: size.width * 0.14,
+        height: size.height * 0.05,
+      ),
+      math.pi + 0.35,
+      math.pi - 0.7,
+      false,
+      browPaint,
+    );
+    canvas.drawArc(
+      Rect.fromCenter(
+        center: Offset(center.dx + size.width * 0.19, size.height * 0.275),
+        width: size.width * 0.14,
+        height: size.height * 0.05,
+      ),
+      math.pi + 0.35,
+      math.pi - 0.7,
+      false,
+      browPaint,
+    );
+  }
+
+  void _drawFurrowedBrows(Canvas canvas, Size size, Offset center) {
+    final browPaint = Paint()
+      ..color = palette.eye
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.028;
 
     canvas.drawLine(
-      Offset(
-        center.dx - size.width * 0.27,
-        size.height * 0.29 + intensity * size.height * 0.015,
-      ),
-      Offset(center.dx - size.width * 0.15, size.height * 0.25),
+      Offset(center.dx - size.width * 0.295, size.height * 0.292),
+      Offset(center.dx - size.width * 0.14, size.height * 0.214),
       browPaint,
     );
     canvas.drawLine(
-      Offset(center.dx + size.width * 0.15, size.height * 0.25),
-      Offset(
-        center.dx + size.width * 0.27,
-        size.height * 0.29 + intensity * size.height * 0.015,
-      ),
+      Offset(center.dx + size.width * 0.14, size.height * 0.214),
+      Offset(center.dx + size.width * 0.295, size.height * 0.292),
       browPaint,
     );
+
+    final furrowPaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.62)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.016;
+    canvas.drawLine(
+      Offset(center.dx - size.width * 0.038, size.height * 0.302),
+      Offset(center.dx, size.height * 0.338),
+      furrowPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx + size.width * 0.038, size.height * 0.302),
+      Offset(center.dx, size.height * 0.338),
+      furrowPaint,
+    );
+  }
+
+  void _drawAffectionAccent(Canvas canvas, Size size, Offset center) {
+    final accentPaint = Paint()
+      ..color = palette.cheek.withValues(alpha: 0.82)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(center.dx - size.width * 0.18, size.height * 0.57),
+      size.width * 0.028,
+      accentPaint,
+    );
+    canvas.drawCircle(
+      Offset(center.dx + size.width * 0.18, size.height * 0.57),
+      size.width * 0.028,
+      accentPaint,
+    );
+
+    final heartPath = Path();
+    final heartCenter = Offset(
+      center.dx + size.width * 0.21,
+      size.height * 0.46,
+    );
+    final heartSize = size.width * 0.04;
+    heartPath
+      ..moveTo(heartCenter.dx, heartCenter.dy + heartSize * 0.8)
+      ..cubicTo(
+        heartCenter.dx - heartSize * 1.2,
+        heartCenter.dy + heartSize * 0.15,
+        heartCenter.dx - heartSize * 0.9,
+        heartCenter.dy - heartSize * 0.8,
+        heartCenter.dx,
+        heartCenter.dy - heartSize * 0.15,
+      )
+      ..cubicTo(
+        heartCenter.dx + heartSize * 0.9,
+        heartCenter.dy - heartSize * 0.8,
+        heartCenter.dx + heartSize * 1.2,
+        heartCenter.dy + heartSize * 0.15,
+        heartCenter.dx,
+        heartCenter.dy + heartSize * 0.8,
+      )
+      ..close();
+    canvas.drawPath(heartPath, accentPaint);
   }
 
   @override

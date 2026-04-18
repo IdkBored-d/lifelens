@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
@@ -21,10 +24,14 @@ class MoodCheckIn {
 
 class MoodLogStore extends ChangeNotifier {
   MoodLogStore() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
+      refreshFromPersistence();
+    });
     refreshFromPersistence();
   }
 
   final List<MoodCheckIn> _items = [];
+  late final StreamSubscription<User?> _authSub;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -122,5 +129,11 @@ class MoodLogStore extends ChangeNotifier {
       return int.tryParse(match.group(1) ?? '') ?? 3;
     }
     return 3;
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 }

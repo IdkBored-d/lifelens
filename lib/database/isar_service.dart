@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -25,10 +28,17 @@ import 'chat_message.dart';
 ///   ChatSession   — MiniMe chat session metadata
 ///   ChatMessage   — individual MiniMe chat messages
 class IsarService {
-  IsarService._();
+  IsarService._() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
+      unawaited(init());
+    });
+  }
   static final IsarService instance = IsarService._();
 
   Isar? _isar;
+  String? _currentScopeKey;
+  // ignore: unused_field, retained to keep auth-scope DB switching active.
+  late final StreamSubscription<User?> _authSub;
 
   bool get isOpen => _isar?.isOpen ?? false;
 
@@ -37,7 +47,14 @@ class IsarService {
   /// Open the ISAR database. Must be called once at app startup
   /// before any read/write operations.
   Future<void> init() async {
-    if (isOpen) return;
+    final nextScopeKey = _scopeKeyForCurrentUser();
+    if (isOpen && _currentScopeKey == nextScopeKey) return;
+
+    if (isOpen) {
+      await _isar!.close();
+      _isar = null;
+    }
+
     final dir = await getApplicationDocumentsDirectory();
     _isar = await Isar.open(
       [
@@ -49,8 +66,9 @@ class IsarService {
         ChatMessageSchema,
       ],
       directory: dir.path,
-      name: 'lifelens',
+      name: _databaseNameForScope(nextScopeKey),
     );
+    _currentScopeKey = nextScopeKey;
   }
 
   Isar get _db {
@@ -58,6 +76,15 @@ class IsarService {
       throw StateError('IsarService not initialised. Call init() first.');
     }
     return _isar!;
+  }
+
+  String _scopeKeyForCurrentUser() {
+    return FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  }
+
+  String _databaseNameForScope(String scopeKey) {
+    final safeScopeKey = scopeKey.replaceAll(RegExp(r'[^A-Za-z0-9_]'), '_');
+    return 'lifelens_$safeScopeKey';
   }
 
   // ─────────────────────────────────────────────

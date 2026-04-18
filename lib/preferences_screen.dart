@@ -15,7 +15,6 @@ class PreferencesScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // ---------- Calm Mode Card ----------
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
@@ -26,20 +25,19 @@ class PreferencesScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header row
                   Row(
                     children: [
                       Icon(
-                        Icons.spa_outlined,
+                        Icons.dark_mode_outlined,
                         color: theme.colorScheme.primary,
                       ),
                       const SizedBox(width: 10),
-                      Text('Calm Mode', style: theme.textTheme.titleMedium),
+                      Text('Dark Mode', style: theme.textTheme.titleMedium),
                       const Spacer(),
                       Switch(
-                        value: themeController.isCalmMode,
+                        value: themeController.isDarkMode,
                         onChanged: (value) =>
-                            context.read<ThemeController>().setCalmMode(value),
+                            context.read<ThemeController>().setDarkMode(value),
                       ),
                     ],
                   ),
@@ -47,7 +45,7 @@ class PreferencesScreen extends StatelessWidget {
                   const SizedBox(height: 12),
 
                   Text(
-                    'Default is Dark Mode. Calm Mode switches to the soft palette shown here.',
+                    'Turn dark mode on for the darker palette, or off for the lighter calm palette.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -55,22 +53,21 @@ class PreferencesScreen extends StatelessWidget {
 
                   const SizedBox(height: 20),
 
-                  // Benefits list
                   _CalmFeature(
                     icon: Icons.palette_outlined,
-                    text: 'Softer colors and contrast',
+                    text: 'Switch between dark and light presentation',
                   ),
                   _CalmFeature(
                     icon: Icons.motion_photos_off_outlined,
-                    text: 'Reduced animations',
+                    text: 'Keep the interface easy on the eyes',
                   ),
                   _CalmFeature(
-                    icon: Icons.notifications_none,
-                    text: 'Fewer notifications',
+                    icon: Icons.brightness_6_outlined,
+                    text: 'Choose the mode that fits your environment',
                   ),
                   _CalmFeature(
-                    icon: Icons.layers_clear_outlined,
-                    text: 'Simplified screens',
+                    icon: Icons.tune_outlined,
+                    text: 'Adjust your app appearance in one place',
                   ),
                 ],
               ),
@@ -79,9 +76,8 @@ class PreferencesScreen extends StatelessWidget {
 
           const SizedBox(height: 32),
 
-          // ---------- Optional Calm Preferences ----------
           Text(
-            'Calm preferences',
+            'Appearance preferences',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.bold,
             ),

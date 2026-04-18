@@ -117,10 +117,19 @@ class StreakService {
       );
 
       if (loggedDays.isEmpty && persisted != null) {
-        _cachedSnapshot = persisted;
+        await _clearPersistedSnapshot(uid);
+        final emptySnapshot = _buildSnapshotFromLoggedDays(
+          loggedDays: loggedDays,
+          today: today,
+          recentDays: recentDays,
+          currentStreak: 0,
+          bestStreak: 0,
+        );
+        _cachedSnapshot = emptySnapshot;
         _cachedKey = requestKey;
         _cachedAt = now;
-        return persisted;
+        _lastPersistedFingerprint = null;
+        return emptySnapshot;
       }
     }
 
@@ -136,48 +145,18 @@ class StreakService {
       }
     }
 
-    final loggedToday = currentStreak > 0;
-    final activeDays = _activeStreakDays(
+    final snapshot = _buildSnapshotFromLoggedDays(
+      loggedDays: loggedDays,
       today: today,
-      currentStreak: currentStreak,
-      loggedToday: loggedToday,
-    );
-
-    final recent = List<DateTime>.generate(
-      recentDays,
-      (index) =>
-          _startOfDay(today.subtract(Duration(days: recentDays - 1 - index))),
-    );
-
-    final renderedDays = <StreakCalendarDay>[];
-    var rollingLevel = 0;
-    for (final day in recent) {
-      final isLogged = activeDays.contains(day);
-      if (isLogged) {
-        rollingLevel += 1;
-      } else {
-        rollingLevel = 0;
-      }
-      renderedDays.add(
-        StreakCalendarDay(
-          date: day,
-          isLogged: isLogged,
-          runLevel: rollingLevel,
-        ),
-      );
-    }
-
-    final snapshot = StreakSnapshot(
+      recentDays: recentDays,
       currentStreak: currentStreak,
       bestStreak: bestStreak,
-      loggedToday: loggedToday,
-      recentDays: renderedDays,
-      badge: _badgeForStreak(currentStreak, loggedToday),
-      message: _messageForStreak(currentStreak, bestStreak, loggedToday),
     );
 
     if (uid != null) {
-      final lastLoggedDay = loggedToday ? today : _latestLoggedDay(loggedDays);
+      final lastLoggedDay = snapshot.loggedToday
+          ? today
+          : _latestLoggedDay(loggedDays);
       if (lastLoggedDay != null) {
         final fingerprint =
             '$uid|$currentStreak|$bestStreak|${lastLoggedDay.toIso8601String()}';
@@ -197,6 +176,16 @@ class StreakService {
     _cachedKey = requestKey;
     _cachedAt = now;
     return snapshot;
+  }
+
+  Future<void> _clearPersistedSnapshot(String uid) async {
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('streaks')
+        .doc('daily')
+        .delete()
+        .catchError((_) {});
   }
 
   Future<void> _persistSnapshot({
@@ -325,6 +314,54 @@ class StreakService {
     if (raw is DateTime) return raw;
     if (raw is String) return DateTime.tryParse(raw);
     return null;
+  }
+
+  StreakSnapshot _buildSnapshotFromLoggedDays({
+    required Set<DateTime> loggedDays,
+    required DateTime today,
+    required int recentDays,
+    required int currentStreak,
+    required int bestStreak,
+  }) {
+    final loggedToday = currentStreak > 0;
+    final activeDays = _activeStreakDays(
+      today: today,
+      currentStreak: currentStreak,
+      loggedToday: loggedToday,
+    );
+
+    final recent = List<DateTime>.generate(
+      recentDays,
+      (index) =>
+          _startOfDay(today.subtract(Duration(days: recentDays - 1 - index))),
+    );
+
+    final renderedDays = <StreakCalendarDay>[];
+    var rollingLevel = 0;
+    for (final day in recent) {
+      final isLogged = activeDays.contains(day);
+      if (isLogged) {
+        rollingLevel += 1;
+      } else {
+        rollingLevel = 0;
+      }
+      renderedDays.add(
+        StreakCalendarDay(
+          date: day,
+          isLogged: isLogged,
+          runLevel: rollingLevel,
+        ),
+      );
+    }
+
+    return StreakSnapshot(
+      currentStreak: currentStreak,
+      bestStreak: bestStreak,
+      loggedToday: loggedToday,
+      recentDays: renderedDays,
+      badge: _badgeForStreak(currentStreak, loggedToday),
+      message: _messageForStreak(currentStreak, bestStreak, loggedToday),
+    );
   }
 
   int _currentStreakLength(Set<DateTime> loggedDays, DateTime today) {

@@ -13,24 +13,39 @@ class ExerciseStore {
     _ready = _initializePrefs();
   }
 
-  static const String _favoritesKey = 'favorite_exercises';
-  static const String _exerciseHistoryKey = 'exercise_history_v2';
-  static const String _pendingExerciseSyncKey = 'pending_exercise_sync_v1';
+  static const String _favoritesKeyBase = 'favorite_exercises';
+  static const String _exerciseHistoryKeyBase = 'exercise_history_v2';
+  static const String _pendingExerciseSyncKeyBase = 'pending_exercise_sync_v1';
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   late SharedPreferences _prefs;
   late final Future<void> _ready;
   List<ExerciseModel> exercises = [];
   List<String> _favoriteIds = [];
+  String? _loadedScopeKey;
 
   Future<void> _initializePrefs() async {
     _prefs = await SharedPreferences.getInstance();
+    _loadedScopeKey = _scopeKey;
     _loadFavorites();
     await _flushPendingCloudSync();
     await _loadCloudHistory();
   }
 
   Future<void> ensureReady() => _ready;
+
+  String get _scopeKey => _auth.currentUser?.uid ?? 'guest';
+
+  String get _favoritesKey => '${_favoritesKeyBase}_$_scopeKey';
+  String get _exerciseHistoryKey => '${_exerciseHistoryKeyBase}_$_scopeKey';
+  String get _pendingExerciseSyncKey =>
+      '${_pendingExerciseSyncKeyBase}_$_scopeKey';
+
+  void _ensureCurrentScopeLoaded() {
+    if (_loadedScopeKey == _scopeKey) return;
+    _loadedScopeKey = _scopeKey;
+    _loadFavorites();
+  }
 
   /// Load favorite exercise IDs from local storage
   void _loadFavorites() {
@@ -58,11 +73,13 @@ class ExerciseStore {
 
   /// Check if an exercise is favorited
   bool isFavorite(String exerciseId) {
+    _ensureCurrentScopeLoaded();
     return _favoriteIds.contains(exerciseId);
   }
 
   /// Get all favorite exercises
   List<ExerciseModel> getFavoriteExercises() {
+    _ensureCurrentScopeLoaded();
     return exercises
         .where((exercise) => _favoriteIds.contains(exercise.id))
         .toList();
@@ -70,6 +87,7 @@ class ExerciseStore {
 
   /// Get favorite count
   int getFavoriteCount() {
+    _ensureCurrentScopeLoaded();
     return _favoriteIds.length;
   }
 
@@ -82,6 +100,7 @@ class ExerciseStore {
 
   /// Get favorite IDs
   List<String> getFavoriteIds() {
+    _ensureCurrentScopeLoaded();
     return List.from(_favoriteIds);
   }
 
@@ -116,6 +135,9 @@ class ExerciseStore {
     String mood = '',
     String exerciseName = '',
     int durationMinutes = 0,
+    int sets = 0,
+    int reps = 0,
+    bool noExercise = false,
   }) async {
     await _ready;
     final timestamp = DateTime.now();
@@ -124,6 +146,9 @@ class ExerciseStore {
       'exerciseName': exerciseName,
       'mood': mood,
       'durationMinutes': durationMinutes.toString(),
+      'sets': sets.toString(),
+      'reps': reps.toString(),
+      'noExercise': noExercise.toString(),
       'timestamp': timestamp.toIso8601String(),
     };
     final history = List<Map<String, String>>.from(_loadExerciseHistory());
@@ -180,6 +205,7 @@ class ExerciseStore {
   }
 
   List<Map<String, String>> _loadExerciseHistory() {
+    _ensureCurrentScopeLoaded();
     final raw = _prefs.getStringList(_exerciseHistoryKey) ?? const <String>[];
     return raw
         .map(_decodeHistoryRecord)
@@ -208,6 +234,9 @@ class ExerciseStore {
         'exerciseName': '',
         'mood': parts.length > 1 ? parts[1] : '',
         'durationMinutes': '',
+        'sets': '',
+        'reps': '',
+        'noExercise': 'false',
         'timestamp': parts.length > 2 ? parts[2] : '',
       };
     }
@@ -217,6 +246,9 @@ class ExerciseStore {
       'exerciseName': '',
       'mood': '',
       'durationMinutes': '',
+      'sets': '',
+      'reps': '',
+      'noExercise': 'false',
       'timestamp': '',
     };
   }
@@ -275,6 +307,7 @@ class ExerciseStore {
   }
 
   List<Map<String, String>> _loadPendingSyncRecords() {
+    _ensureCurrentScopeLoaded();
     final raw =
         _prefs.getStringList(_pendingExerciseSyncKey) ?? const <String>[];
     return raw
@@ -353,6 +386,9 @@ class ExerciseStore {
       'exerciseName': record['exerciseName'],
       'mood': record['mood'],
       'durationMinutes': int.tryParse(record['durationMinutes'] ?? '') ?? 0,
+      'sets': int.tryParse(record['sets'] ?? '') ?? 0,
+      'reps': int.tryParse(record['reps'] ?? '') ?? 0,
+      'noExercise': (record['noExercise'] ?? '').trim() == 'true',
       'timestamp': Timestamp.fromDate(timestamp),
       'createdAt': FieldValue.serverTimestamp(),
     };
@@ -369,6 +405,9 @@ class ExerciseStore {
       'exerciseName': (data['exerciseName'] ?? '').toString(),
       'mood': (data['mood'] ?? '').toString(),
       'durationMinutes': (data['durationMinutes'] ?? '').toString(),
+      'sets': (data['sets'] ?? '').toString(),
+      'reps': (data['reps'] ?? '').toString(),
+      'noExercise': (data['noExercise'] ?? false).toString(),
       'timestamp': switch (timestamp) {
         Timestamp value => value.toDate().toIso8601String(),
         DateTime value => value.toIso8601String(),
