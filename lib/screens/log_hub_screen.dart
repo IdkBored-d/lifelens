@@ -29,21 +29,44 @@ class _LogHubScreenState extends State<LogHubScreen> {
   bool _isTrackersExpanded = false;
   Future<bool>? _firstTimeUserFuture;
   Future<bool>? _hasAnyExerciseLogsTodayFuture;
+  String? _asyncStateSignature;
 
   @override
   void initState() {
     super.initState();
-    _refreshAsyncState();
+    _refreshAsyncState(
+      moodSelection: const _MoodLogSnapshot.empty(),
+      sleepSelection: const _SleepLogSnapshot.empty(),
+    );
   }
 
-  void _refreshAsyncState() {
-    final moodStore = context.read<MoodLogStore>();
-    final sleepStore = context.read<SleepStore>();
+  void _refreshAsyncState({
+    required _MoodLogSnapshot moodSelection,
+    required _SleepLogSnapshot sleepSelection,
+  }) {
     _firstTimeUserFuture = _isFirstTimeUser(
-      moodStore: moodStore,
-      sleepStore: sleepStore,
+      moodSelection: moodSelection,
+      sleepSelection: sleepSelection,
     );
     _hasAnyExerciseLogsTodayFuture = _hasAnyExerciseLogsToday();
+  }
+
+  void _ensureAsyncState({
+    required _MoodLogSnapshot moodSelection,
+    required _SleepLogSnapshot sleepSelection,
+  }) {
+    final nextSignature =
+        '${moodSelection.signature}::${sleepSelection.signature}';
+    if (_asyncStateSignature == nextSignature &&
+        _firstTimeUserFuture != null &&
+        _hasAnyExerciseLogsTodayFuture != null) {
+      return;
+    }
+    _asyncStateSignature = nextSignature;
+    _refreshAsyncState(
+      moodSelection: moodSelection,
+      sleepSelection: sleepSelection,
+    );
   }
 
   Future<void> _openTracker(Widget screen) async {
@@ -56,7 +79,10 @@ class _LogHubScreenState extends State<LogHubScreen> {
     if (!mounted) return;
     setState(() {
       _dashboardRefreshTick += 1;
-      _refreshAsyncState();
+      _refreshAsyncState(
+        moodSelection: _MoodLogSnapshot.fromItems(moodStore.items),
+        sleepSelection: _SleepLogSnapshot.fromItems(sleepStore.items),
+      );
     });
   }
 
@@ -77,11 +103,11 @@ class _LogHubScreenState extends State<LogHubScreen> {
   }
 
   Future<bool> _isFirstTimeUser({
-    required MoodLogStore moodStore,
-    required SleepStore sleepStore,
+    required _MoodLogSnapshot moodSelection,
+    required _SleepLogSnapshot sleepSelection,
   }) async {
-    final hasMoodLogs = moodStore.items.isNotEmpty;
-    final hasSleepLogs = sleepStore.items.isNotEmpty;
+    final hasMoodLogs = moodSelection.items.isNotEmpty;
+    final hasSleepLogs = sleepSelection.items.isNotEmpty;
 
     await _exerciseStore.ensureReady();
     final hasExerciseLogs = _exerciseStore
@@ -103,6 +129,16 @@ class _LogHubScreenState extends State<LogHubScreen> {
     final userName = widget.userName.trim().isEmpty
         ? 'Friend'
         : widget.userName.trim();
+    final moodSelection = context.select<MoodLogStore, _MoodLogSnapshot>(
+      (moodStore) => _MoodLogSnapshot.fromItems(moodStore.items),
+    );
+    final sleepSelection = context.select<SleepStore, _SleepLogSnapshot>(
+      (sleepStore) => _SleepLogSnapshot.fromItems(sleepStore.items),
+    );
+    _ensureAsyncState(
+      moodSelection: moodSelection,
+      sleepSelection: sleepSelection,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Log Center'), centerTitle: false),
@@ -112,28 +148,19 @@ class _LogHubScreenState extends State<LogHubScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Consumer2<MoodLogStore, SleepStore>(
-                builder: (context, moodStore, sleepStore, _) {
-                  return FutureBuilder<bool>(
-                    future:
-                        _firstTimeUserFuture ??
-                        _isFirstTimeUser(
-                          moodStore: moodStore,
-                          sleepStore: sleepStore,
-                        ),
-                    builder: (context, snapshot) {
-                      final isFirstTimeUser = snapshot.data ?? false;
-                      final title = isFirstTimeUser
-                          ? 'Welcome, let\'s get started $userName'
-                          : 'Welcome back, $userName';
+              FutureBuilder<bool>(
+                future: _firstTimeUserFuture,
+                builder: (context, snapshot) {
+                  final isFirstTimeUser = snapshot.data ?? false;
+                  final title = isFirstTimeUser
+                      ? 'Welcome, let\'s get started $userName'
+                      : 'Welcome back, $userName';
 
-                      return Text(
-                        title,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      );
-                    },
+                  return Text(
+                    title,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   );
                 },
               ),
@@ -189,6 +216,8 @@ class _LogHubScreenState extends State<LogHubScreen> {
               ),
               _DashboardVisibilityGate(
                 refreshKey: ValueKey(_dashboardRefreshTick),
+                moodSelection: moodSelection,
+                sleepSelection: sleepSelection,
                 hasAnyExerciseLogsTodayFuture:
                     _hasAnyExerciseLogsTodayFuture ?? Future.value(false),
                 refreshTick: _dashboardRefreshTick,
@@ -204,56 +233,45 @@ class _LogHubScreenState extends State<LogHubScreen> {
 class _DashboardVisibilityGate extends StatelessWidget {
   const _DashboardVisibilityGate({
     required this.refreshKey,
+    required this.moodSelection,
+    required this.sleepSelection,
     required this.hasAnyExerciseLogsTodayFuture,
     required this.refreshTick,
   });
 
   final Key refreshKey;
+  final _MoodLogSnapshot moodSelection;
+  final _SleepLogSnapshot sleepSelection;
   final Future<bool> hasAnyExerciseLogsTodayFuture;
   final int refreshTick;
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<MoodLogStore, SleepStore>(
-      builder: (context, moodStore, sleepStore, _) {
-        return StreamBuilder<List<SymptomEntry>>(
-          stream: AppServices.isar.watchRecentSymptomEntries(limit: 1),
-          builder: (context, symptomSnapshot) {
-            return FutureBuilder<bool>(
-              future: hasAnyExerciseLogsTodayFuture,
-              builder: (context, exerciseSnapshot) {
-                final now = DateTime.now();
-                final hasMoodLogs = moodStore.items.any(
-                  (item) => _isSameDay(item.createdAt, now),
+    return StreamBuilder<List<SymptomEntry>>(
+      stream: AppServices.isar.watchRecentSymptomEntries(limit: 1),
+      builder: (context, symptomSnapshot) {
+        return FutureBuilder<bool>(
+          future: hasAnyExerciseLogsTodayFuture,
+          builder: (context, exerciseSnapshot) {
+            final now = DateTime.now();
+            final hasSymptomLogs =
+                (symptomSnapshot.data ?? const <SymptomEntry>[]).any(
+                  (entry) => _isSameDay(entry.timestamp, now),
                 );
-                final hasSleepLogs = sleepStore.items.any(
-                  (item) =>
-                      _isSameDay(item.date, now) ||
-                      _isSameDay(item.wakeTime, now),
-                );
-                final hasSymptomLogs =
-                    (symptomSnapshot.data ?? const <SymptomEntry>[]).any(
-                      (entry) => _isSameDay(entry.timestamp, now),
-                    );
-                final hasExerciseLogs = exerciseSnapshot.data ?? false;
-                final hasAnyLogsToday =
-                    hasMoodLogs ||
-                    hasSleepLogs ||
-                    hasSymptomLogs ||
-                    hasExerciseLogs;
+            final hasExerciseLogs = exerciseSnapshot.data ?? false;
+            final hasAnyLogsToday =
+                moodSelection.hasEntryToday ||
+                sleepSelection.hasEntryToday ||
+                hasSymptomLogs ||
+                hasExerciseLogs;
 
-                if (!hasAnyLogsToday) {
-                  return const SizedBox.shrink();
-                }
+            if (!hasAnyLogsToday) {
+              return const SizedBox.shrink();
+            }
 
-                return Padding(
-                  padding: const EdgeInsets.only(top: 18),
-                  child: _TodayDashboard(
-                    key: refreshKey,
-                    refreshTick: refreshTick,
-                  ),
-                );
-              },
+            return Padding(
+              padding: const EdgeInsets.only(top: 18),
+              child: _TodayDashboard(key: refreshKey, refreshTick: refreshTick),
             );
           },
         );
@@ -332,147 +350,135 @@ class _TodayDashboardState extends State<_TodayDashboard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final moodSelection = context.select<MoodLogStore, _MoodLogSnapshot>(
+      (moodStore) => _MoodLogSnapshot.fromItems(moodStore.items),
+    );
+    final sleepSelection = context.select<SleepStore, _SleepLogSnapshot>(
+      (sleepStore) => _SleepLogSnapshot.fromItems(sleepStore.items),
+    );
+    final now = DateTime.now();
+    final latestMood = moodSelection.latest;
+    final latestSleep = sleepSelection.latest;
 
-    return Consumer2<MoodLogStore, SleepStore>(
-      builder: (context, moodStore, sleepStore, _) {
-        final now = DateTime.now();
-        final latestMood = moodStore.items.isEmpty
+    return StreamBuilder<List<SymptomEntry>>(
+      stream: AppServices.isar.watchRecentSymptomEntries(limit: 60),
+      builder: (context, symptomSnapshot) {
+        final symptomEntries = symptomSnapshot.data ?? const <SymptomEntry>[];
+        final todaySymptoms = symptomEntries
+            .where((entry) => _isSameDay(entry.timestamp, now))
+            .length;
+        final latestSymptom = symptomEntries.isEmpty
             ? null
-            : moodStore.items.first;
-        final latestSleep = sleepStore.items.isEmpty
-            ? null
-            : sleepStore.items.first;
+            : symptomEntries.first;
 
-        return StreamBuilder<List<SymptomEntry>>(
-          stream: AppServices.isar.watchRecentSymptomEntries(limit: 60),
-          builder: (context, symptomSnapshot) {
-            final symptomEntries =
-                symptomSnapshot.data ?? const <SymptomEntry>[];
-            final todaySymptoms = symptomEntries
-                .where((entry) => _isSameDay(entry.timestamp, now))
-                .length;
-            final latestSymptom = symptomEntries.isEmpty
-                ? null
-                : symptomEntries.first;
+        return FutureBuilder<int>(
+          future: _todayExerciseCountFuture,
+          builder: (context, exerciseSnapshot) {
+            final todayExerciseCount = exerciseSnapshot.data ?? 0;
+            final nextStep = _buildNextStep(
+              latestMood: latestMood,
+              latestSleep: latestSleep,
+              todaySymptoms: todaySymptoms,
+              todayExerciseCount: todayExerciseCount,
+            );
 
-            return FutureBuilder<int>(
-              future: _todayExerciseCountFuture,
-              builder: (context, exerciseSnapshot) {
-                final todayExerciseCount = exerciseSnapshot.data ?? 0;
-                final nextStep = _buildNextStep(
-                  latestMood: latestMood,
-                  latestSleep: latestSleep,
-                  todaySymptoms: todaySymptoms,
-                  todayExerciseCount: todayExerciseCount,
-                );
-
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: cs.surface,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cs.surface,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Today',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            _formatCompactDate(now),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      GridView.count(
-                        shrinkWrap: true,
-                        crossAxisCount: 2,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 1.7,
-                        children: [
-                          _TodayMetricTile(
-                            icon: Icons.emoji_emotions_outlined,
-                            label: 'Mood',
-                            value:
-                                latestMood != null &&
-                                    _isSameDay(latestMood.createdAt, now)
-                                ? latestMood.moodLabel
-                                : 'Not logged',
-                          ),
-                          _TodayMetricTile(
-                            icon: Icons.nightlight_round,
-                            label: 'Sleep',
-                            value:
-                                latestSleep != null &&
-                                    (_isSameDay(latestSleep.date, now) ||
-                                        _isSameDay(latestSleep.wakeTime, now))
-                                ? latestSleep.durationFormatted
-                                : 'Not logged',
-                            detail:
-                                latestSleep != null &&
-                                    (_isSameDay(latestSleep.date, now) ||
-                                        _isSameDay(latestSleep.wakeTime, now))
-                                ? latestSleep.quality.label
-                                : null,
-                          ),
-                          _TodayMetricTile(
-                            icon: Icons.healing_outlined,
-                            label: 'Symptoms',
-                            value: todaySymptoms == 0
-                                ? 'None logged'
-                                : '$todaySymptoms entr${todaySymptoms == 1 ? 'y' : 'ies'}',
-                            detail: todaySymptoms > 0 && latestSymptom != null
-                                ? _formatSymptomPreview(latestSymptom)
-                                : null,
-                          ),
-                          _TodayMetricTile(
-                            icon: Icons.fitness_center_outlined,
-                            label: 'Exercise',
-                            value: todayExerciseCount == 0
-                                ? 'Not logged'
-                                : '$todayExerciseCount session${todayExerciseCount == 1 ? '' : 's'}',
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+                      Text(
+                        'Today',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
                         ),
-                        decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest.withValues(
-                            alpha: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Text(
-                          nextStep,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _formatCompactDate(now),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
-                );
-              },
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: 2,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 1.7,
+                    children: [
+                      _TodayMetricTile(
+                        icon: Icons.emoji_emotions_outlined,
+                        label: 'Mood',
+                        value: moodSelection.hasEntryToday && latestMood != null
+                            ? latestMood.moodLabel
+                            : 'Not logged',
+                      ),
+                      _TodayMetricTile(
+                        icon: Icons.nightlight_round,
+                        label: 'Sleep',
+                        value:
+                            sleepSelection.hasEntryToday && latestSleep != null
+                            ? latestSleep.durationFormatted
+                            : 'Not logged',
+                        detail:
+                            sleepSelection.hasEntryToday && latestSleep != null
+                            ? latestSleep.quality.label
+                            : null,
+                      ),
+                      _TodayMetricTile(
+                        icon: Icons.healing_outlined,
+                        label: 'Symptoms',
+                        value: todaySymptoms == 0
+                            ? 'None logged'
+                            : '$todaySymptoms entr${todaySymptoms == 1 ? 'y' : 'ies'}',
+                        detail: todaySymptoms > 0 && latestSymptom != null
+                            ? _formatSymptomPreview(latestSymptom)
+                            : null,
+                      ),
+                      _TodayMetricTile(
+                        icon: Icons.fitness_center_outlined,
+                        label: 'Exercise',
+                        value: todayExerciseCount == 0
+                            ? 'Not logged'
+                            : '$todayExerciseCount session${todayExerciseCount == 1 ? '' : 's'}',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      nextStep,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -706,6 +712,100 @@ class _TrackerShortcutTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MoodLogSnapshot {
+  const _MoodLogSnapshot({
+    required this.items,
+    required this.signature,
+    required this.latest,
+    required this.hasEntryToday,
+  });
+
+  const _MoodLogSnapshot.empty()
+    : items = const <MoodCheckIn>[],
+      signature = 'empty',
+      latest = null,
+      hasEntryToday = false;
+
+  factory _MoodLogSnapshot.fromItems(List<MoodCheckIn> items) {
+    final latest = items.isEmpty ? null : items.first;
+    final now = DateTime.now();
+    final hasEntryToday = items.any((item) => _isSameDay(item.createdAt, now));
+    final signature = items
+        .take(20)
+        .map(
+          (item) =>
+              '${item.createdAt.microsecondsSinceEpoch}:${item.intensity}:${item.moodLabel}:${item.emoji}',
+        )
+        .join('|');
+    return _MoodLogSnapshot(
+      items: items,
+      signature: '${items.length}::$hasEntryToday::$signature',
+      latest: latest,
+      hasEntryToday: hasEntryToday,
+    );
+  }
+
+  final List<MoodCheckIn> items;
+  final String signature;
+  final MoodCheckIn? latest;
+  final bool hasEntryToday;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _MoodLogSnapshot && other.signature == signature;
+
+  @override
+  int get hashCode => signature.hashCode;
+}
+
+class _SleepLogSnapshot {
+  const _SleepLogSnapshot({
+    required this.items,
+    required this.signature,
+    required this.latest,
+    required this.hasEntryToday,
+  });
+
+  const _SleepLogSnapshot.empty()
+    : items = const <Sleep>[],
+      signature = 'empty',
+      latest = null,
+      hasEntryToday = false;
+
+  factory _SleepLogSnapshot.fromItems(List<Sleep> items) {
+    final latest = items.isEmpty ? null : items.first;
+    final now = DateTime.now();
+    final hasEntryToday = items.any(
+      (item) => _isSameDay(item.date, now) || _isSameDay(item.wakeTime, now),
+    );
+    final signature = items
+        .take(20)
+        .map(
+          (item) =>
+              '${item.date.microsecondsSinceEpoch}:${item.wakeTime.microsecondsSinceEpoch}:${item.duration.inMinutes}:${item.quality.name}',
+        )
+        .join('|');
+    return _SleepLogSnapshot(
+      items: items,
+      signature: '${items.length}::$hasEntryToday::$signature',
+      latest: latest,
+      hasEntryToday: hasEntryToday,
+    );
+  }
+
+  final List<Sleep> items;
+  final String signature;
+  final Sleep? latest;
+  final bool hasEntryToday;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _SleepLogSnapshot && other.signature == signature;
+
+  @override
+  int get hashCode => signature.hashCode;
 }
 
 bool _isSameDay(DateTime a, DateTime b) {

@@ -33,6 +33,10 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
       _sphereRef.collection('members');
 
   String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _postsStream =
+      _postsRef.orderBy('createdAt', descending: true).snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _membersStream =
+      _membersRef.snapshots();
 
   @override
   void initState() {
@@ -656,7 +660,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
           children: [
             Text(widget.sphere.name),
             StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _membersRef.snapshots(),
+              stream: _membersStream,
               builder: (context, snapshot) {
                 final count =
                     snapshot.data?.docs.length ?? widget.sphere.memberCount;
@@ -713,9 +717,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
               children: [
                 Expanded(
                   child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _postsRef
-                        .orderBy('createdAt', descending: true)
-                        .snapshots(),
+                    stream: _postsStream,
                     builder: (context, snapshot) {
                       if (snapshot.hasError) {
                         return Center(child: Text('Error: ${snapshot.error}'));

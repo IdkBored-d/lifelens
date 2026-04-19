@@ -43,9 +43,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   bool _isIntelligenceLoading = false;
   String? _dailyLoggingPromptText;
   final List<_MiniMeChatMessage> _messages = [];
+  String? _latestAssistantMessageText;
   MiniMeIntelligenceReply? _intelligence;
   final ExerciseStore _exerciseStore = ExerciseStore();
   int _activeSymptomCount = 0;
+  String? _derivedUiSignature;
+  _MiniMeDerivedUiState? _derivedUiState;
 
   // Chat session persistence (ISAR-backed, replaces flat-file MiniMeChatStorageService)
   String? _sessionId;
@@ -102,6 +105,31 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
   }
 
+  void _appendMessage(_MiniMeChatMessage message) {
+    _messages.add(message);
+    if (message.role == _ChatRole.assistant) {
+      final trimmed = message.text.trim();
+      if (trimmed.isNotEmpty) {
+        _latestAssistantMessageText = trimmed;
+      }
+    }
+  }
+
+  void _replaceMessages(Iterable<_MiniMeChatMessage> messages) {
+    _messages
+      ..clear()
+      ..addAll(messages);
+
+    _latestAssistantMessageText = null;
+    for (final message in _messages.reversed) {
+      if (message.role != _ChatRole.assistant) continue;
+      final trimmed = message.text.trim();
+      if (trimmed.isEmpty) continue;
+      _latestAssistantMessageText = trimmed;
+      break;
+    }
+  }
+
   // ignore: unused_element
   Future<void> _runDaySummary() async {
     if (_isReplying) return;
@@ -109,7 +137,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     setState(() {
       _isCoachExpanded = true;
       _isReplying = true;
-      _messages.add(
+      _appendMessage(
         const _MiniMeChatMessage(
           role: _ChatRole.user,
           text: 'Generate my day summary',
@@ -135,7 +163,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           : 'Day summary complete. No significant patterns detected today.';
 
       setState(() {
-        _messages.add(
+        _appendMessage(
           _MiniMeChatMessage(role: _ChatRole.assistant, text: replyText),
         );
         _isReplying = false;
@@ -143,7 +171,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _messages.add(
+        _appendMessage(
           const _MiniMeChatMessage(
             role: _ChatRole.assistant,
             text:
@@ -163,7 +191,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     setState(() {
       _dailyLoggingPromptText = promptText;
       if (promptText != null) {
-        _messages.clear();
+        _replaceMessages(const <_MiniMeChatMessage>[]);
       }
     });
   }
@@ -200,7 +228,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           : response.openingSuggestion;
 
       setState(() {
-        _messages.add(
+        _appendMessage(
           _MiniMeChatMessage(role: _ChatRole.assistant, text: opening),
         );
       });
@@ -216,7 +244,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         await Future<void>.delayed(const Duration(milliseconds: 800));
         if (!mounted) return;
         setState(() {
-          _messages.add(
+          _appendMessage(
             const _MiniMeChatMessage(
               role: _ChatRole.assistant,
               text:
@@ -246,7 +274,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                 .timeout(const Duration(seconds: 20));
             if (!mounted) return;
             setState(() {
-              _messages.add(
+              _appendMessage(
                 _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
               );
             });
@@ -271,7 +299,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
               !greeting.startsWith('Unable to reach Gemini')) {
             if (!mounted) return;
             setState(() {
-              _messages.add(
+              _appendMessage(
                 _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
               );
             });
@@ -286,7 +314,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       // Tier 4: Static offline message
       if (!mounted) return;
       setState(() {
-        _messages.add(
+        _appendMessage(
           const _MiniMeChatMessage(
             role: _ChatRole.assistant,
             text:
@@ -529,16 +557,14 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           .getMessagesForSession(recentSessions.first.sessionId);
       if (stored.isNotEmpty) {
         setState(() {
-          _messages
-            ..clear()
-            ..addAll(
-              stored.map(
-                (m) => _MiniMeChatMessage(
-                  role: m.role == 'user' ? _ChatRole.user : _ChatRole.assistant,
-                  text: m.text,
-                ),
+          _replaceMessages(
+            stored.map(
+              (m) => _MiniMeChatMessage(
+                role: m.role == 'user' ? _ChatRole.user : _ChatRole.assistant,
+                text: m.text,
               ),
-            );
+            ),
+          );
         });
         _scrollToBottom();
         await _syncUnreadSuggestions(forceRefresh: true);
@@ -560,7 +586,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     setState(() {
       _isCoachExpanded = true;
-      _messages.add(_MiniMeChatMessage(role: _ChatRole.user, text: text));
+      _appendMessage(_MiniMeChatMessage(role: _ChatRole.user, text: text));
       _isReplying = true;
     });
     await _persistMessages();
@@ -685,7 +711,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     if (!mounted) return;
     setState(() {
-      _messages.add(
+      _appendMessage(
         _MiniMeChatMessage(role: _ChatRole.assistant, text: normalizedReply),
       );
     });
@@ -718,7 +744,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
       if (!mounted) return;
       setState(() {
-        _messages.add(
+        _appendMessage(
           _MiniMeChatMessage(role: _ChatRole.assistant, text: reply),
         );
       });
@@ -932,6 +958,76 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
   }
 
+  _MiniMeDerivedUiState _getDerivedUiState({
+    required List<MoodCheckIn> moodItems,
+    required List<Sleep> sleepItems,
+    required String? effectiveMoodLabel,
+  }) {
+    final signature = _buildDerivedUiSignature(
+      moodItems: moodItems,
+      sleepItems: sleepItems,
+      effectiveMoodLabel: effectiveMoodLabel,
+    );
+    final cached = _derivedUiState;
+    if (cached != null && _derivedUiSignature == signature) {
+      return cached;
+    }
+
+    final now = DateTime.now();
+    final trackedStreakDays = _trackingStreakDays(
+      now: now,
+      moodItems: moodItems,
+      sleepItems: sleepItems,
+    );
+    final computed = _MiniMeDerivedUiState(
+      visualState: _buildMiniMeVisualState(
+        moodItems: moodItems,
+        sleepItems: sleepItems,
+        effectiveMoodLabel: effectiveMoodLabel,
+      ),
+      celebrateOnOpen:
+          trackedStreakDays >= 3 || _hasPositiveTrendForCelebration(),
+    );
+    _derivedUiSignature = signature;
+    _derivedUiState = computed;
+    return computed;
+  }
+
+  String _buildDerivedUiSignature({
+    required List<MoodCheckIn> moodItems,
+    required List<Sleep> sleepItems,
+    required String? effectiveMoodLabel,
+  }) {
+    final moodSignature = moodItems
+        .take(6)
+        .map(
+          (item) =>
+              '${item.createdAt.microsecondsSinceEpoch}:${item.intensity}:${item.moodLabel}',
+        )
+        .join('|');
+    final sleepSignature = sleepItems
+        .take(6)
+        .map(
+          (item) =>
+              '${item.date.microsecondsSinceEpoch}:${item.wakeTime.microsecondsSinceEpoch}:${item.duration.inMinutes}',
+        )
+        .join('|');
+    final intelligence = _intelligence;
+    final intelligenceSignature = [
+      _dayKey(DateTime.now()),
+      _activeSymptomCount,
+      effectiveMoodLabel ?? '',
+      intelligence?.userPhase ?? '',
+      intelligence?.lowSleep ?? false,
+      intelligence?.lowMood ?? false,
+      intelligence?.inactive ?? false,
+      (intelligence?.miniMeLinkage['animation_state'] as String?) ?? '',
+      intelligence?.trendClassification.values.join('|') ?? '',
+    ].join('~');
+    return '${moodItems.length}::${moodSignature}__${sleepItems.length}::${sleepSignature}__'
+        '$intelligenceSignature';
+  }
+
   Future<String> _buildSummaryContext() async {
     try {
       final moodSummary = await AppServices.quickTrack.buildMoodContext();
@@ -951,26 +1047,15 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
   }
 
-  String _latestSuggestionText() {
-    for (final message in _messages.reversed) {
-      if (message.role == _ChatRole.assistant &&
-          message.text.trim().isNotEmpty) {
-        return message.text;
-      }
-    }
-    return 'Preparing your daily suggestion...';
-  }
-
   // ignore: unused_element
   MiniMeVisualState _buildMiniMeVisualState({
-    required MoodLogStore moodStore,
-    required AvatarStore avatarStore,
-    required SleepStore sleepStore,
+    required List<MoodCheckIn> moodItems,
+    required List<Sleep> sleepItems,
     required String? effectiveMoodLabel,
   }) {
     final now = DateTime.now();
-    final recentMoodItems = moodStore.items.take(6).toList(growable: false);
-    final recentSleepItems = sleepStore.items.take(6).toList(growable: false);
+    final recentMoodItems = moodItems.take(6).toList(growable: false);
+    final recentSleepItems = sleepItems.take(6).toList(growable: false);
 
     final avgMoodRecent = _averageMoodIntensity(
       recentMoodItems.take(3).toList(),
@@ -992,13 +1077,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final symptomLevel = (_activeSymptomCount / 5).clamp(0.0, 1.0);
     final consistency = _trackingConsistency(
       now: now,
-      moodItems: moodStore.items,
-      sleepItems: sleepStore.items,
+      moodItems: moodItems,
+      sleepItems: sleepItems,
     );
     final streakStrength = _trackingStreakStrength(
       now: now,
-      moodItems: moodStore.items,
-      sleepItems: sleepStore.items,
+      moodItems: moodItems,
+      sleepItems: sleepItems,
     );
 
     final moodLabel = (effectiveMoodLabel ?? '').trim().toLowerCase();
@@ -1322,8 +1407,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       backgroundColor: cs.surface,
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
-        title: Consumer<AvatarStore>(
-          builder: (context, avatarStore, _) => Text(avatarStore.miniMeName),
+        title: Selector<AvatarStore, String>(
+          selector: (context, avatarStore) => avatarStore.miniMeName,
+          builder: (context, miniMeName, _) => Text(miniMeName),
         ),
         actions: [
           IconButton(
@@ -1358,7 +1444,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       _chatSessionService.endSession(_sessionId!);
                     }
                     setState(() {
-                      _messages.clear();
+                      _replaceMessages(const <_MiniMeChatMessage>[]);
                       _isCoachExpanded = false;
                       _isReplying = false;
                       _didLoadOpeningSuggestion = false;
@@ -1390,83 +1476,153 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           ),
         ],
       ),
-      body: Consumer3<MoodLogStore, AvatarStore, SleepStore>(
-        builder: (context, moodStore, avatarStore, sleepStore, _) {
-          final miniMeName = avatarStore.miniMeName;
-          final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
-          final intensity = latest?.intensity ?? 0;
-          final glow = glowForIntensity(theme.colorScheme, intensity);
-          final latestSuggestion = _latestSuggestionText();
-          final avatarMoodLabel = _avatarMoodFromIntelligence(
-            latest?.moodLabel,
-          );
-          final avatarAnimationState =
-              _intelligence?.miniMeLinkage['animation_state'] as String?;
-          final visualState = _buildMiniMeVisualState(
-            moodStore: moodStore,
-            avatarStore: avatarStore,
-            sleepStore: sleepStore,
-            effectiveMoodLabel: avatarMoodLabel,
-          );
-          final trackedStreakDays = _trackingStreakDays(
-            now: DateTime.now(),
-            moodItems: moodStore.items,
-            sleepItems: sleepStore.items,
-          );
-          final celebrateOnOpen =
-              trackedStreakDays >= 3 || _hasPositiveTrendForCelebration();
-
-          return Container(
-            width: double.infinity,
-            height: double.infinity,
-            color: cs.surface,
-            child: SafeArea(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                    child: _MiniMeStreakSection(moodLogs: moodStore.items),
-                  ),
-                  Expanded(
-                    child: _AvatarPanel(
-                      miniMeName: miniMeName,
-                      userName: widget.userName,
-                      avatarStore: avatarStore,
-                      glow: glow,
-                      moodLabel: avatarMoodLabel,
-                      moodEmoji: latest?.emoji,
-                      avatarAnimationState: avatarAnimationState,
-                      suggestionText: latestSuggestion,
-                      dailyLoggingPromptText: _dailyLoggingPromptText,
-                      visualState: visualState,
-                      avatarWaveToken: _avatarWaveToken,
-                      celebrateOnOpen: celebrateOnOpen,
-                      intelligenceState: _intelligence?.state,
-                      intelligenceInsights:
-                          _intelligence?.insights ?? const <String>[],
-                      intelligenceAlert: _intelligence?.alert,
-                      intelligenceMessage: _intelligence?.message,
-                      isIntelligenceLoading: _isIntelligenceLoading,
-                      chatController: _chatController,
-                      chatFocusNode: _chatFocusNode,
-                      isReplying: _isReplying,
-                      isCoachExpanded: _isCoachExpanded,
-                      messages: _messages,
-                      scrollController: _scrollController,
-                      onToggleCoachExpanded: () {
-                        _toggleCoachExpanded();
-                      },
-                      onExpandCoach: _expandCoachAndFocus,
-                      onOpenFullChat: _openFullChatSheet,
-                      onSend: _sendMessage,
-                    ),
-                  ),
-                ],
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: cs.surface,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Selector<MoodLogStore, _MiniMeMoodSelection>(
+                  selector: (context, moodStore) =>
+                      _MiniMeMoodSelection.fromItems(moodStore.items),
+                  builder: (context, moodSelection, _) {
+                    return _MiniMeStreakSection(moodLogs: moodSelection.items);
+                  },
+                ),
               ),
-            ),
-          );
-        },
+              Expanded(
+                child: _MiniMePanelContent(
+                  userName: widget.userName,
+                  latestAssistantText: _latestAssistantMessageText,
+                  dailyLoggingPromptText: _dailyLoggingPromptText,
+                  intelligence: _intelligence,
+                  resolveAvatarMoodLabel: _avatarMoodFromIntelligence,
+                  computeDerivedUiState: _getDerivedUiState,
+                  isIntelligenceLoading: _isIntelligenceLoading,
+                  chatController: _chatController,
+                  chatFocusNode: _chatFocusNode,
+                  isReplying: _isReplying,
+                  isCoachExpanded: _isCoachExpanded,
+                  messages: _messages,
+                  scrollController: _scrollController,
+                  avatarWaveToken: _avatarWaveToken,
+                  onToggleCoachExpanded: _toggleCoachExpanded,
+                  onExpandCoach: _expandCoachAndFocus,
+                  onOpenFullChat: _openFullChatSheet,
+                  onSend: _sendMessage,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+}
+
+class _MiniMePanelContent extends StatelessWidget {
+  const _MiniMePanelContent({
+    required this.userName,
+    required this.latestAssistantText,
+    required this.dailyLoggingPromptText,
+    required this.intelligence,
+    required this.resolveAvatarMoodLabel,
+    required this.computeDerivedUiState,
+    required this.isIntelligenceLoading,
+    required this.chatController,
+    required this.chatFocusNode,
+    required this.isReplying,
+    required this.isCoachExpanded,
+    required this.messages,
+    required this.scrollController,
+    required this.avatarWaveToken,
+    required this.onToggleCoachExpanded,
+    required this.onExpandCoach,
+    required this.onOpenFullChat,
+    required this.onSend,
+  });
+
+  final String userName;
+  final String? latestAssistantText;
+  final String? dailyLoggingPromptText;
+  final MiniMeIntelligenceReply? intelligence;
+  final String? Function(String? baseMoodLabel) resolveAvatarMoodLabel;
+  final _MiniMeDerivedUiState Function({
+    required List<MoodCheckIn> moodItems,
+    required List<Sleep> sleepItems,
+    required String? effectiveMoodLabel,
+  })
+  computeDerivedUiState;
+  final bool isIntelligenceLoading;
+  final TextEditingController chatController;
+  final FocusNode chatFocusNode;
+  final bool isReplying;
+  final bool isCoachExpanded;
+  final List<_MiniMeChatMessage> messages;
+  final ScrollController scrollController;
+  final int avatarWaveToken;
+  final VoidCallback onToggleCoachExpanded;
+  final VoidCallback onExpandCoach;
+  final VoidCallback onOpenFullChat;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    final moodSelection = context.select<MoodLogStore, _MiniMeMoodSelection>(
+      (moodStore) => _MiniMeMoodSelection.fromItems(moodStore.items),
+    );
+    final sleepSelection = context.select<SleepStore, _MiniMeSleepSelection>(
+      (sleepStore) => _MiniMeSleepSelection.fromItems(sleepStore.items),
+    );
+    final avatarSelection = context.select<AvatarStore, _MiniMeAvatarSelection>(
+      (avatarStore) => _MiniMeAvatarSelection.fromStore(avatarStore),
+    );
+
+    final latest = moodSelection.latest;
+    final glow = glowForIntensity(
+      Theme.of(context).colorScheme,
+      latest?.intensity ?? 0,
+    );
+    final avatarMoodLabel = resolveAvatarMoodLabel(latest?.moodLabel);
+    final avatarAnimationState =
+        intelligence?.miniMeLinkage['animation_state'] as String?;
+    final derivedUiState = computeDerivedUiState(
+      moodItems: moodSelection.items,
+      sleepItems: sleepSelection.items,
+      effectiveMoodLabel: avatarMoodLabel,
+    );
+
+    return _AvatarPanel(
+      miniMeName: avatarSelection.miniMeName,
+      userName: userName,
+      avatarSelection: avatarSelection,
+      glow: glow,
+      moodLabel: avatarMoodLabel,
+      moodEmoji: latest?.emoji,
+      avatarAnimationState: avatarAnimationState,
+      latestAssistantText: latestAssistantText,
+      dailyLoggingPromptText: dailyLoggingPromptText,
+      visualState: derivedUiState.visualState,
+      avatarWaveToken: avatarWaveToken,
+      celebrateOnOpen: derivedUiState.celebrateOnOpen,
+      intelligenceState: intelligence?.state,
+      intelligenceInsights: intelligence?.insights ?? const <String>[],
+      intelligenceAlert: intelligence?.alert,
+      intelligenceMessage: intelligence?.message,
+      isIntelligenceLoading: isIntelligenceLoading,
+      chatController: chatController,
+      chatFocusNode: chatFocusNode,
+      isReplying: isReplying,
+      isCoachExpanded: isCoachExpanded,
+      messages: messages,
+      scrollController: scrollController,
+      onToggleCoachExpanded: onToggleCoachExpanded,
+      onExpandCoach: onExpandCoach,
+      onOpenFullChat: onOpenFullChat,
+      onSend: onSend,
     );
   }
 }
@@ -1475,12 +1631,12 @@ class _AvatarPanel extends StatelessWidget {
   const _AvatarPanel({
     required this.miniMeName,
     required this.userName,
-    required this.avatarStore,
+    required this.avatarSelection,
     required this.glow,
     required this.moodLabel,
     required this.moodEmoji,
     required this.avatarAnimationState,
-    required this.suggestionText,
+    required this.latestAssistantText,
     required this.dailyLoggingPromptText,
     required this.visualState,
     required this.avatarWaveToken,
@@ -1504,12 +1660,12 @@ class _AvatarPanel extends StatelessWidget {
 
   final String miniMeName;
   final String userName;
-  final AvatarStore avatarStore;
+  final _MiniMeAvatarSelection avatarSelection;
   final Color glow;
   final String? moodLabel;
   final String? moodEmoji;
   final String? avatarAnimationState;
-  final String suggestionText;
+  final String? latestAssistantText;
   final String? dailyLoggingPromptText;
   final MiniMeVisualState visualState;
   final int avatarWaveToken;
@@ -1536,14 +1692,6 @@ class _AvatarPanel extends StatelessWidget {
       builder: (context, constraints) {
         const chatDockHeight = 112.0;
         const collapsedBottomInset = 16.0;
-        String? latestAssistantText;
-        for (final message in messages.reversed) {
-          if (message.role == _ChatRole.assistant &&
-              message.text.trim().isNotEmpty) {
-            latestAssistantText = message.text.trim();
-            break;
-          }
-        }
         final showPromptBubble =
             messages.isEmpty || (latestAssistantText?.isNotEmpty ?? false);
         final promptBubbleText = dailyLoggingPromptText != null
@@ -1598,25 +1746,27 @@ class _AvatarPanel extends StatelessWidget {
                       alignment: const Alignment(0, -0.2),
                       child: Transform.translate(
                         offset: const Offset(0, -62),
-                        child: MiniMeAvatar(
-                          bodyModel: avatarStore.bodyModel,
-                          hairModel: avatarStore.hairModel,
-                          shirtModel: avatarStore.shirtModel,
-                          bodyWidthScale: avatarStore.effectiveBodyWidthScale,
-                          companionId: avatarStore.companionId,
-                          moodLabel: moodLabel,
-                          moodEmoji: moodEmoji,
-                          animationState: avatarAnimationState,
-                          glow: glow,
-                          size: avatarSize,
-                          degradationLevel: visualState.wearLevel,
-                          isHatched: avatarStore.isMiniMeHatched,
-                          visualState: visualState,
-                          onHatchComplete: avatarStore.hatchMiniMe,
-                          autoWaveToken: avatarWaveToken,
-                          lockScreenPosition: true,
-                          headTiltBias: headTiltBias,
-                          celebrateOnOpen: celebrateOnOpen,
+                        child: RepaintBoundary(
+                          child: MiniMeAvatar(
+                            bodyModel: avatarSelection.bodyModel,
+                            hairModel: avatarSelection.hairModel,
+                            shirtModel: avatarSelection.shirtModel,
+                            bodyWidthScale: avatarSelection.bodyWidthScale,
+                            companionId: avatarSelection.companionId,
+                            moodLabel: moodLabel,
+                            moodEmoji: moodEmoji,
+                            animationState: avatarAnimationState,
+                            glow: glow,
+                            size: avatarSize,
+                            degradationLevel: visualState.wearLevel,
+                            isHatched: avatarSelection.isMiniMeHatched,
+                            visualState: visualState,
+                            onHatchComplete: avatarSelection.onHatchComplete,
+                            autoWaveToken: avatarWaveToken,
+                            lockScreenPosition: true,
+                            headTiltBias: headTiltBias,
+                            celebrateOnOpen: celebrateOnOpen,
+                          ),
                         ),
                       ),
                     ),
@@ -1628,14 +1778,16 @@ class _AvatarPanel extends StatelessWidget {
               left: 16,
               right: 16,
               bottom: 12,
-              child: _CoachComposerCard(
-                miniMeName: miniMeName,
-                chatController: chatController,
-                chatFocusNode: chatFocusNode,
-                isReplying: isReplying,
-                onExpandCoach: onExpandCoach,
-                onOpenFullChat: onOpenFullChat,
-                onSend: onSend,
+              child: RepaintBoundary(
+                child: _CoachComposerCard(
+                  miniMeName: miniMeName,
+                  chatController: chatController,
+                  chatFocusNode: chatFocusNode,
+                  isReplying: isReplying,
+                  onExpandCoach: onExpandCoach,
+                  onOpenFullChat: onOpenFullChat,
+                  onSend: onSend,
+                ),
               ),
             ),
           ],
@@ -2355,12 +2507,10 @@ class _ChatBubbleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final suggestionParts = !isUser
-        ? _parseSuggestionSections(message.text)
-        : const <_SuggestionSection>[];
-    final introText = suggestionParts.isNotEmpty
-        ? _extractSuggestionIntro(message.text, suggestionParts)
-        : null;
+    final suggestionParts = isUser
+        ? const <_SuggestionSection>[]
+        : message.suggestionSections;
+    final introText = isUser ? null : message.suggestionIntro;
     final bubbleColor = isUser
         ? cs.primaryContainer.withValues(alpha: 0.96)
         : cs.surface.withValues(alpha: 0.92);
@@ -2744,6 +2894,155 @@ class _SuggestionSection {
   final String body;
 }
 
+class _MiniMeDerivedUiState {
+  const _MiniMeDerivedUiState({
+    required this.visualState,
+    required this.celebrateOnOpen,
+  });
+
+  final MiniMeVisualState visualState;
+  final bool celebrateOnOpen;
+}
+
+class _MiniMeMoodSelection {
+  const _MiniMeMoodSelection({
+    required this.items,
+    required this.signature,
+    required this.latest,
+  });
+
+  factory _MiniMeMoodSelection.fromItems(List<MoodCheckIn> items) {
+    final latest = items.isEmpty ? null : items.first;
+    final recentSignature = items
+        .take(14)
+        .map(
+          (item) =>
+              '${item.createdAt.microsecondsSinceEpoch}:${item.intensity}:${item.moodLabel}:${item.emoji}',
+        )
+        .join('|');
+    final trackedDays = items
+        .map(
+          (item) =>
+              '${item.createdAt.year}-${item.createdAt.month}-${item.createdAt.day}',
+        )
+        .take(14)
+        .join('|');
+    return _MiniMeMoodSelection(
+      items: items,
+      signature: '${items.length}__${recentSignature}__$trackedDays',
+      latest: latest,
+    );
+  }
+
+  final List<MoodCheckIn> items;
+  final String signature;
+  final MoodCheckIn? latest;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _MiniMeMoodSelection && other.signature == signature;
+
+  @override
+  int get hashCode => signature.hashCode;
+}
+
+class _MiniMeSleepSelection {
+  const _MiniMeSleepSelection({required this.items, required this.signature});
+
+  factory _MiniMeSleepSelection.fromItems(List<Sleep> items) {
+    final recentSignature = items
+        .take(14)
+        .map(
+          (item) =>
+              '${item.date.microsecondsSinceEpoch}:${item.wakeTime.microsecondsSinceEpoch}:${item.duration.inMinutes}',
+        )
+        .join('|');
+    final trackedDays = items
+        .map((item) => '${item.date.year}-${item.date.month}-${item.date.day}')
+        .take(14)
+        .join('|');
+    return _MiniMeSleepSelection(
+      items: items,
+      signature: '${items.length}__${recentSignature}__$trackedDays',
+    );
+  }
+
+  final List<Sleep> items;
+  final String signature;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _MiniMeSleepSelection && other.signature == signature;
+
+  @override
+  int get hashCode => signature.hashCode;
+}
+
+class _MiniMeAvatarSelection {
+  const _MiniMeAvatarSelection({
+    required this.miniMeName,
+    required this.bodyModel,
+    required this.hairModel,
+    required this.shirtModel,
+    required this.bodyWidthScale,
+    required this.companionId,
+    required this.isMiniMeHatched,
+    required this.onHatchComplete,
+  });
+
+  factory _MiniMeAvatarSelection.fromStore(AvatarStore avatarStore) {
+    return _MiniMeAvatarSelection(
+      miniMeName: avatarStore.miniMeName,
+      bodyModel: avatarStore.bodyModel,
+      hairModel: avatarStore.hairModel,
+      shirtModel: avatarStore.shirtModel,
+      bodyWidthScale: avatarStore.effectiveBodyWidthScale,
+      companionId: avatarStore.companionId,
+      isMiniMeHatched: avatarStore.isMiniMeHatched,
+      onHatchComplete: avatarStore.hatchMiniMe,
+    );
+  }
+
+  final String miniMeName;
+  final String bodyModel;
+  final String hairModel;
+  final String shirtModel;
+  final double bodyWidthScale;
+  final String companionId;
+  final bool isMiniMeHatched;
+  final VoidCallback onHatchComplete;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _MiniMeAvatarSelection &&
+        other.miniMeName == miniMeName &&
+        other.bodyModel == bodyModel &&
+        other.hairModel == hairModel &&
+        other.shirtModel == shirtModel &&
+        other.bodyWidthScale == bodyWidthScale &&
+        other.companionId == companionId &&
+        other.isMiniMeHatched == isMiniMeHatched;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    miniMeName,
+    bodyModel,
+    hairModel,
+    shirtModel,
+    bodyWidthScale,
+    companionId,
+    isMiniMeHatched,
+  );
+}
+
+final Expando<List<_SuggestionSection>> _messageSuggestionSectionsCache =
+    Expando<List<_SuggestionSection>>('messageSuggestionSections');
+final Object _nullSuggestionIntro = Object();
+final Expando<Object> _messageSuggestionIntroCache = Expando<Object>(
+  'messageSuggestionIntro',
+);
+
 class _MiniMeStreakSection extends StatefulWidget {
   const _MiniMeStreakSection({required this.moodLogs});
 
@@ -3031,6 +3330,32 @@ class _MiniMeChatMessage {
 
   final _ChatRole role;
   final String text;
+
+  List<_SuggestionSection> get suggestionSections {
+    final cached = _messageSuggestionSectionsCache[this];
+    if (cached != null) {
+      return cached;
+    }
+    final parsed = role == _ChatRole.assistant
+        ? _parseSuggestionSections(text)
+        : const <_SuggestionSection>[];
+    _messageSuggestionSectionsCache[this] = parsed;
+    return parsed;
+  }
+
+  String? get suggestionIntro {
+    final cached = _messageSuggestionIntroCache[this];
+    if (cached != null) {
+      return identical(cached, _nullSuggestionIntro) ? null : cached as String;
+    }
+
+    final sections = suggestionSections;
+    final intro = sections.isNotEmpty
+        ? _extractSuggestionIntro(text, sections)
+        : null;
+    _messageSuggestionIntroCache[this] = intro ?? _nullSuggestionIntro;
+    return intro;
+  }
 }
 
 class _MiniMeMoodContext {

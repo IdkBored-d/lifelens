@@ -30,20 +30,20 @@ class BottomNav extends StatelessWidget {
         ),
 
         NavigationDestination(
-          icon: Icon(Icons.add_circle_outline_rounded),
-          selectedIcon: Icon(Icons.add_circle_rounded),
+          icon: const Icon(Icons.add_circle_outline_rounded),
+          selectedIcon: const Icon(Icons.add_circle_rounded),
           label: 'Log',
         ),
 
         NavigationDestination(
-          icon: Icon(Icons.forum_outlined),
-          selectedIcon: Icon(Icons.forum_rounded),
+          icon: const Icon(Icons.forum_outlined),
+          selectedIcon: const Icon(Icons.forum_rounded),
           label: 'Community',
         ),
 
         NavigationDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: MiniMeProfileIcon(size: 28, padding: 2),
+          icon: const Icon(Icons.settings_outlined),
+          selectedIcon: const Icon(Icons.settings_rounded),
           label: 'Profile',
         ),
       ],
@@ -59,54 +59,49 @@ class _MiniMeNavIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final unreadCount = context.select<MiniMeSuggestionsInbox, int>(
+      (inbox) => inbox.unreadCount,
+    );
 
-    return Consumer<MiniMeSuggestionsInbox>(
-      builder: (context, inbox, _) {
-        final unreadCount = inbox.unreadCount;
-        final badgeLabel = unreadCount > 99 ? '99+' : '$unreadCount';
+    final badgeLabel = unreadCount > 99 ? '99+' : '$unreadCount';
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            MiniMeProfileIcon(
-              size: selected ? 30 : 28,
-              padding: 2,
-              backgroundColor: selected
-                  ? cs.primaryContainer
-                  : cs.surfaceContainerHighest,
-              borderColor: selected
-                  ? cs.primary.withValues(alpha: 0.24)
-                  : cs.outlineVariant.withValues(alpha: 0.45),
-            ),
-            if (unreadCount > 0)
-              Positioned(
-                right: -8,
-                top: -6,
-                child: Container(
-                  constraints: const BoxConstraints(minWidth: 18),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: cs.error,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: cs.surface, width: 1.4),
-                  ),
-                  child: Text(
-                    badgeLabel,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: cs.onError,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
-                    ),
-                  ),
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        MiniMeProfileIcon(
+          size: selected ? 30 : 28,
+          padding: 2,
+          backgroundColor: selected
+              ? cs.primaryContainer
+              : cs.surfaceContainerHighest,
+          borderColor: selected
+              ? cs.primary.withValues(alpha: 0.24)
+              : cs.outlineVariant.withValues(alpha: 0.45),
+        ),
+        if (unreadCount > 0)
+          Positioned(
+            right: -8,
+            top: -6,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: cs.error,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: cs.surface, width: 1.4),
+              ),
+              child: Text(
+                badgeLabel,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.onError,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
                 ),
               ),
-          ],
-        );
-      },
+            ),
+          ),
+      ],
     );
   }
 }

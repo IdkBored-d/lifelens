@@ -17,6 +17,8 @@ class SymptomsScreen extends StatefulWidget {
 
 class _SymptomsScreenState extends State<SymptomsScreen> {
   final TextEditingController _symptomsController = TextEditingController();
+  late final Stream<List<SymptomEntry>> _trendEntriesStream = AppServices.isar
+      .watchRecentSymptomEntries();
 
   LogButtonVisualState _saveButtonState = LogButtonVisualState.idle;
   bool _showPreviousLogs = false;
@@ -160,10 +162,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     await AppServices.isar.writeSymptomEntry(entry);
   }
 
-  Stream<List<SymptomEntry>> _trendStream() {
-    return AppServices.isar.watchRecentSymptomEntries();
-  }
-
   String _formatDate(DateTime date) {
     const months = [
       'Jan',
@@ -261,81 +259,9 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                   onTap: () {
                     setState(() => _showPreviousLogs = !_showPreviousLogs);
                   },
-                  child: StreamBuilder<List<SymptomEntry>>(
-                    stream: _trendStream(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: LinearProgressIndicator(minHeight: 3),
-                        );
-                      }
-
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return Text(
-                          'No symptom entries yet. Save one above and it will show up here.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                        );
-                      }
-
-                      final entries = snapshot.data!.toList(growable: false)
-                        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: entries
-                            .take(10)
-                            .map((entry) {
-                              final symptoms = entry.symptomList.isNotEmpty
-                                  ? entry.symptomList
-                                  : entry.rawSymptoms
-                                        .split(',')
-                                        .map((item) => item.trim())
-                                        .where((item) => item.isNotEmpty)
-                                        .toList(growable: false);
-
-                              return Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.only(bottom: 10),
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: cs.surface,
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: cs.outlineVariant.withValues(
-                                      alpha: 0.4,
-                                    ),
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      symptoms.isEmpty
-                                          ? 'Symptom entry'
-                                          : symptoms.map(_titleCase).join(', '),
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _formatDateTime(entry.timestamp),
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: cs.onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            })
-                            .toList(growable: false),
-                      );
-                    },
+                  child: _SymptomHistoryList(
+                    entriesStream: _trendEntriesStream,
+                    formatDateTime: _formatDateTime,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -442,6 +368,113 @@ class _HistoryDisclosureCard extends StatelessWidget {
             ),
           ),
           if (expanded) ...[const SizedBox(height: 10), child],
+        ],
+      ),
+    );
+  }
+}
+
+class _SymptomHistoryList extends StatelessWidget {
+  const _SymptomHistoryList({
+    required this.entriesStream,
+    required this.formatDateTime,
+  });
+
+  final Stream<List<SymptomEntry>> entriesStream;
+  final String Function(DateTime date) formatDateTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return StreamBuilder<List<SymptomEntry>>(
+      stream: entriesStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(minHeight: 3),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return Text(
+            'No symptom entries yet. Save one above and it will show up here.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          );
+        }
+
+        final entries = snapshot.data!.toList(growable: false)
+          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: entries
+              .take(10)
+              .map(
+                (entry) => _SymptomHistoryCard(
+                  entry: entry,
+                  formattedDateTime: formatDateTime(entry.timestamp),
+                ),
+              )
+              .toList(growable: false),
+        );
+      },
+    );
+  }
+}
+
+class _SymptomHistoryCard extends StatelessWidget {
+  const _SymptomHistoryCard({
+    required this.entry,
+    required this.formattedDateTime,
+  });
+
+  final SymptomEntry entry;
+  final String formattedDateTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final symptoms = entry.symptomList.isNotEmpty
+        ? entry.symptomList
+        : entry.rawSymptoms
+              .split(',')
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty)
+              .toList(growable: false);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            symptoms.isEmpty
+                ? 'Symptom entry'
+                : symptoms.map(_titleCase).join(', '),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            formattedDateTime,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );

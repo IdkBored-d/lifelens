@@ -23,6 +23,7 @@ class _IntroScreenState extends State<IntroScreen> {
   bool _importingHealth = false;
   String? _healthImportMessage;
   HealthSnapshot? _importedHealthSnapshot;
+  HealthImportSource? _selectedHealthImportSource;
 
   final _formKey = GlobalKey<FormState>();
 
@@ -162,16 +163,17 @@ class _IntroScreenState extends State<IntroScreen> {
     }
   }
 
-  Future<void> _importFromAppleHealth() async {
+  Future<void> _importHealthInformation(HealthImportSource source) async {
     if (_importingHealth) return;
 
     setState(() {
       _importingHealth = true;
       _healthImportMessage = null;
+      _selectedHealthImportSource = source;
     });
 
     try {
-      final snapshot = await HealthService().fetchSnapshot();
+      final snapshot = await HealthService().fetchSnapshot(source: source);
       if (!mounted) return;
 
       _applyImportedHealthSnapshot(snapshot);
@@ -183,7 +185,7 @@ class _IntroScreenState extends State<IntroScreen> {
       if (!mounted) return;
       setState(() {
         _healthImportMessage =
-            'Apple Health took too long to respond. Please return to LifeLens and try again.';
+            '${source.label} took too long to respond. Please return to LifeLens and try again.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -417,13 +419,17 @@ class _IntroScreenState extends State<IntroScreen> {
                             });
                           },
                           onHeightPressed: _pickHeight,
-                          showAppleHealthImport:
+                          showHealthImport:
                               !kIsWeb &&
-                              defaultTargetPlatform == TargetPlatform.iOS,
+                              (defaultTargetPlatform == TargetPlatform.iOS ||
+                                  defaultTargetPlatform ==
+                                      TargetPlatform.android),
                           isImportingHealth: _importingHealth,
                           healthImportMessage: _healthImportMessage,
                           importedSource: _importedHealthSnapshot?.source,
-                          onImportAppleHealth: _importFromAppleHealth,
+                          selectedHealthImportSource:
+                              _selectedHealthImportSource,
+                          onImportHealth: _importHealthInformation,
                         ),
                         _ReviewStep(
                           weight: _safeText(_weightController.text, '-'),
@@ -437,27 +443,29 @@ class _IntroScreenState extends State<IntroScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: FilledButton(
-                      onPressed: _saving ? null : _nextPage,
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                  if (_index > 0) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: FilledButton(
+                        onPressed: _saving ? null : _nextPage,
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          _saving
+                              ? 'Saving...'
+                              : _index == 2
+                              ? 'Finish onboarding'
+                              : 'Continue',
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
-                      child: Text(
-                        _saving
-                            ? 'Saving...'
-                            : _index == 2
-                            ? 'Finish onboarding'
-                            : 'Continue',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -502,11 +510,12 @@ class _HealthFormStep extends StatelessWidget {
     required this.onWeightUnitChanged,
     required this.onHeightUnitChanged,
     required this.onHeightPressed,
-    required this.showAppleHealthImport,
+    required this.showHealthImport,
     required this.isImportingHealth,
     required this.healthImportMessage,
     required this.importedSource,
-    required this.onImportAppleHealth,
+    required this.selectedHealthImportSource,
+    required this.onImportHealth,
   });
 
   final GlobalKey<FormState> formKey;
@@ -522,14 +531,17 @@ class _HealthFormStep extends StatelessWidget {
   final ValueChanged<String> onWeightUnitChanged;
   final ValueChanged<String> onHeightUnitChanged;
   final Future<void> Function() onHeightPressed;
-  final bool showAppleHealthImport;
+  final bool showHealthImport;
   final bool isImportingHealth;
   final String? healthImportMessage;
   final String? importedSource;
-  final Future<void> Function() onImportAppleHealth;
+  final HealthImportSource? selectedHealthImportSource;
+  final Future<void> Function(HealthImportSource source) onImportHealth;
 
   @override
   Widget build(BuildContext context) {
+    final activeImportSource = selectedHealthImportSource?.label;
+
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -545,7 +557,7 @@ class _HealthFormStep extends StatelessWidget {
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
-              if (showAppleHealthImport) ...[
+              if (showHealthImport) ...[
                 const SizedBox(height: 10),
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -564,25 +576,49 @@ class _HealthFormStep extends StatelessWidget {
                           Expanded(
                             child: Text(
                               importedSource == null
-                                  ? 'Import from Apple Health'
+                                  ? 'Import health information'
                                   : 'Imported from $importedSource',
                               style: Theme.of(context).textTheme.labelLarge
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                           ),
-                          TextButton(
-                            onPressed: isImportingHealth
-                                ? null
-                                : onImportAppleHealth,
-                            child: Text(
-                              isImportingHealth ? 'Importing...' : 'Import',
+                          PopupMenuButton<HealthImportSource>(
+                            enabled: !isImportingHealth,
+                            onSelected: onImportHealth,
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: HealthImportSource.appleHealth,
+                                child: Text('Apple Health'),
+                              ),
+                              PopupMenuItem(
+                                value: HealthImportSource.androidHealth,
+                                child: Text('Android Health'),
+                              ),
+                            ],
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              child: Text(
+                                isImportingHealth ? 'Importing...' : 'Import',
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                              ),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'This can fill in your weight, height, sleep, and workout activity automatically.',
+                        activeImportSource == null
+                            ? 'Choose Apple Health or Android Health to fill in your weight, height, sleep, and workout activity automatically.'
+                            : 'Importing from $activeImportSource can fill in your weight, height, sleep, and workout activity automatically.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),

@@ -17,8 +17,13 @@ class CommunityScreen extends StatefulWidget {
 
 class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
+  final ValueNotifier<String> _searchQuery = ValueNotifier<String>('');
   static Future<void>? _bootstrapFuture;
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _spheresStream =
+      FirebaseFirestore.instance
+          .collection('spheres')
+          .orderBy('memberCount', descending: true)
+          .snapshots();
 
   static const Map<String, String> _defaultPinnedBodies = {
     'Mental Health':
@@ -241,7 +246,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             ),
                           ),
                           onChanged: (value) {
-                            setState(() => _searchQuery = value.toLowerCase());
+                            final normalized = value.trim().toLowerCase();
+                            if (_searchQuery.value == normalized) return;
+                            _searchQuery.value = normalized;
                           },
                         ),
                       ),
@@ -257,54 +264,76 @@ class _CommunityScreenState extends State<CommunityScreen> {
               ),
             ),
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('spheres')
-                    .orderBy('memberCount', descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
+              child: ValueListenableBuilder<String>(
+                valueListenable: _searchQuery,
+                builder: (context, searchQuery, _) {
+                  return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _spheresStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(child: Text('Error: ${snapshot.error}'));
+                      }
 
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                      if (!snapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                  final spheres = snapshot.data!.docs
-                      .map((doc) => Sphere.fromFirestore(doc))
-                      .where(
-                        (sphere) =>
-                            _searchQuery.isEmpty ||
-                            sphere.name.toLowerCase().contains(_searchQuery),
-                      )
-                      .toList();
+                      final spheres = snapshot.data!.docs
+                          .map((doc) => Sphere.fromFirestore(doc))
+                          .where(
+                            (sphere) =>
+                                searchQuery.isEmpty ||
+                                sphere.name.toLowerCase().contains(searchQuery),
+                          )
+                          .toList(growable: false);
 
-                  if (spheres.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off, size: 64, color: cs.outline),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No spheres found',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: cs.onSurfaceVariant,
-                            ),
+                      if (spheres.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off,
+                                size: 64,
+                                color: cs.outline,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No spheres found',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    );
-                  }
+                        );
+                      }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: spheres.length,
-                    itemBuilder: (context, index) {
-                      final sphere = spheres[index];
-                      return _buildSphereCard(context, sphere);
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: spheres.length,
+                        itemBuilder: (context, index) {
+                          final sphere = spheres[index];
+                          return _SphereCard(
+                            sphere: sphere,
+                            onJoinRequired: () =>
+                                _showNicknamePrompt(context, sphere),
+                            onOpen: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      SphereChatScreen(sphere: sphere),
+                                ),
+                              );
+                            },
+                            onDelete: sphere.isPremade
+                                ? null
+                                : () => _confirmDeleteSphere(context, sphere),
+                          );
+                        },
+                      );
                     },
                   );
                 },
@@ -316,7 +345,29 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _buildSphereCard(BuildContext context, Sphere sphere) {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchQuery.dispose();
+    super.dispose();
+  }
+}
+
+class _SphereCard extends StatelessWidget {
+  const _SphereCard({
+    required this.sphere,
+    required this.onJoinRequired,
+    required this.onOpen,
+    this.onDelete,
+  });
+
+  final Sphere sphere;
+  final VoidCallback onJoinRequired;
+  final VoidCallback onOpen;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -324,6 +375,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
     final sphereRef = FirebaseFirestore.instance
         .collection('spheres')
         .doc(sphere.id);
+    final memberStream = userId == null
+        ? null
+        : sphereRef.collection('members').doc(userId).snapshots();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -340,23 +394,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
           if (!context.mounted) return;
 
           if (!memberDoc.exists) {
-            _showNicknamePrompt(context, sphere);
+            onJoinRequired();
           } else {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => SphereChatScreen(sphere: sphere),
-              ),
-            );
+            onOpen();
           }
         },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: userId == null
-                ? null
-                : sphereRef.collection('members').doc(userId).snapshots(),
+            stream: memberStream,
             builder: (context, memberSnapshot) {
               final memberData = memberSnapshot.data?.data();
               final lastReadAt = (memberData?['lastReadAt'] as Timestamp?)
@@ -367,7 +414,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
               final isJoined = memberSnapshot.data?.exists ?? false;
               final lastActivityLabel = sphere.lastActivityAt == null
                   ? 'No recent activity'
-                  : _relativeTimeLabel(sphere.lastActivityAt!);
+                  : _communityRelativeTimeLabel(sphere.lastActivityAt!);
               final previewText =
                   sphere.lastActivityText ??
                   'Open the sphere to see the latest post.';
@@ -461,12 +508,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           ),
                         ),
                       ),
-                      if (!sphere.isPremade && sphere.creatorId == userId) ...[
+                      if (onDelete != null &&
+                          !sphere.isPremade &&
+                          sphere.creatorId == userId) ...[
                         const SizedBox(width: 4),
                         IconButton(
                           icon: Icon(Icons.delete_outline, color: cs.error),
-                          onPressed: () =>
-                              _confirmDeleteSphere(context, sphere),
+                          onPressed: onDelete,
                           tooltip: 'Delete sphere',
                         ),
                       ],
@@ -521,7 +569,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
       ),
     );
   }
+}
 
+extension on _CommunityScreenState {
   void _showNicknamePrompt(BuildContext context, Sphere sphere) {
     final nicknameController = TextEditingController();
     final cs = Theme.of(context).colorScheme;
@@ -845,21 +895,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
       }
     }
   }
+}
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  static String _relativeTimeLabel(DateTime value) {
-    final diff = DateTime.now().difference(value);
-    if (diff.inMinutes < 1) return 'Active now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return 'Earlier this week';
-  }
+String _communityRelativeTimeLabel(DateTime value) {
+  final diff = DateTime.now().difference(value);
+  if (diff.inMinutes < 1) return 'Active now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+  if (diff.inHours < 24) return '${diff.inHours}h ago';
+  if (diff.inDays < 7) return '${diff.inDays}d ago';
+  return 'Earlier this week';
 }
 
 class _InfoPill extends StatelessWidget {

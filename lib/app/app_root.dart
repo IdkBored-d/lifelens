@@ -21,6 +21,8 @@ class AppRoot extends StatefulWidget {
 class _AppRootState extends State<AppRoot> {
   late Future<bool> _initFuture;
   bool _gemmaSetupDone = false;
+  String? _cachedHomeUserName;
+  Widget? _cachedHomeScreen;
 
   @override
   void initState() {
@@ -109,8 +111,13 @@ class _AppRootState extends State<AppRoot> {
                   return const IntroScreen();
                 }
 
-                final userName = data['firstName'] ?? 'Friend';
-                return HomeScreen(userName: userName);
+                final userName = (data['firstName'] ?? 'Friend').toString();
+                if (_cachedHomeScreen == null ||
+                    _cachedHomeUserName != userName) {
+                  _cachedHomeUserName = userName;
+                  _cachedHomeScreen = HomeScreen(userName: userName);
+                }
+                return _cachedHomeScreen!;
               },
             );
           },
@@ -121,10 +128,7 @@ class _AppRootState extends State<AppRoot> {
 }
 
 class _UserProfileErrorScreen extends StatelessWidget {
-  const _UserProfileErrorScreen({
-    required this.message,
-    required this.onRetry,
-  });
+  const _UserProfileErrorScreen({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;

@@ -177,12 +177,16 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final store = context.select<AvatarStore, _AvatarCustomizationSelection>(
+      (avatarStore) => _AvatarCustomizationSelection.fromStore(avatarStore),
+    );
+    final storeActions = context.read<AvatarStore>();
 
     return Scaffold(
       appBar: AppBar(title: const Text("Customize Mini-Me")),
       body: SafeArea(
-        child: Consumer<AvatarStore>(
-          builder: (context, store, _) {
+        child: Builder(
+          builder: (context) {
             final cs = theme.colorScheme;
 
             if (_nameController.text != store.miniMeName) {
@@ -286,13 +290,14 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onSubmitted: (value) => _saveName(store, value: value),
+                        onSubmitted: (value) =>
+                            _saveName(storeActions, value: value),
                       ),
                       const SizedBox(height: 4),
                       Align(
                         alignment: Alignment.centerRight,
                         child: FilledButton.icon(
-                          onPressed: () => _saveName(store),
+                          onPressed: () => _saveName(storeActions),
                           icon: const Icon(Icons.check_rounded),
                           label: const Text('Save Name'),
                         ),
@@ -314,7 +319,7 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                   children: miniMeCompanionPresets.map((preset) {
                     final selected = preset.id == store.companionId;
                     return GestureDetector(
-                      onTap: () => store.setCompanionId(preset.id),
+                      onTap: () => storeActions.setCompanionId(preset.id),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         width: 132,
@@ -390,8 +395,8 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                       const SizedBox(width: 12),
                       FilledButton(
                         onPressed: store.isMiniMeHatched
-                            ? store.resetHatchState
-                            : store.hatchMiniMe,
+                            ? storeActions.resetHatchState
+                            : storeActions.hatchMiniMe,
                         child: Text(
                           store.isMiniMeHatched ? 'Reset Hatch' : 'Hatch',
                         ),
@@ -411,31 +416,31 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                   title: "Palette",
                   assets: bodyAssets,
                   selected: store.bodyModel,
-                  onSelected: store.setBodyModel,
+                  onSelected: storeActions.setBodyModel,
                 ),
                 const SizedBox(height: 14),
                 _BodyWidthSlider(
                   value: store.bodyWidthScale,
-                  onChanged: store.setBodyWidthScale,
+                  onChanged: storeActions.setBodyWidthScale,
                 ),
                 const SizedBox(height: 20),
                 _AssetSelector(
                   title: "Crest",
                   assets: hairAssets,
                   selected: store.hairModel,
-                  onSelected: store.setHairModel,
+                  onSelected: storeActions.setHairModel,
                 ),
                 const SizedBox(height: 20),
                 _AssetSelector(
                   title: "Accessory",
                   assets: shirtAssets,
                   selected: store.shirtModel,
-                  onSelected: store.setShirtModel,
+                  onSelected: storeActions.setShirtModel,
                 ),
                 const SizedBox(height: 20),
                 _DegradationSlider(
                   value: store.degradationLevel,
-                  onChanged: store.setDegradationLevel,
+                  onChanged: storeActions.setDegradationLevel,
                 ),
               ],
             );
@@ -444,6 +449,76 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
       ),
     );
   }
+}
+
+class _AvatarCustomizationSelection {
+  const _AvatarCustomizationSelection({
+    required this.bodyModel,
+    required this.hairModel,
+    required this.shirtModel,
+    required this.bodyWidthScale,
+    required this.effectiveBodyWidthScale,
+    required this.companionId,
+    required this.degradationLevel,
+    required this.isMiniMeHatched,
+    required this.miniMeName,
+    required this.selectedCompanion,
+  });
+
+  factory _AvatarCustomizationSelection.fromStore(AvatarStore store) {
+    return _AvatarCustomizationSelection(
+      bodyModel: store.bodyModel,
+      hairModel: store.hairModel,
+      shirtModel: store.shirtModel,
+      bodyWidthScale: store.bodyWidthScale,
+      effectiveBodyWidthScale: store.effectiveBodyWidthScale,
+      companionId: store.companionId,
+      degradationLevel: store.degradationLevel,
+      isMiniMeHatched: store.isMiniMeHatched,
+      miniMeName: store.miniMeName,
+      selectedCompanion: store.selectedCompanion,
+    );
+  }
+
+  final String bodyModel;
+  final String hairModel;
+  final String shirtModel;
+  final double bodyWidthScale;
+  final double effectiveBodyWidthScale;
+  final String companionId;
+  final double degradationLevel;
+  final bool isMiniMeHatched;
+  final String miniMeName;
+  final MiniMeCompanionPreset selectedCompanion;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _AvatarCustomizationSelection &&
+        other.bodyModel == bodyModel &&
+        other.hairModel == hairModel &&
+        other.shirtModel == shirtModel &&
+        other.bodyWidthScale == bodyWidthScale &&
+        other.effectiveBodyWidthScale == effectiveBodyWidthScale &&
+        other.companionId == companionId &&
+        other.degradationLevel == degradationLevel &&
+        other.isMiniMeHatched == isMiniMeHatched &&
+        other.miniMeName == miniMeName &&
+        other.selectedCompanion.id == selectedCompanion.id;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    bodyModel,
+    hairModel,
+    shirtModel,
+    bodyWidthScale,
+    effectiveBodyWidthScale,
+    companionId,
+    degradationLevel,
+    isMiniMeHatched,
+    miniMeName,
+    selectedCompanion.id,
+  );
 }
 
 class _AssetSelector extends StatelessWidget {

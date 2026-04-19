@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lifelens/assets/minime/minime_avatar.dart';
+import 'package:lifelens/models/mini_me_companion.dart';
 
 class MiniMeAvatarBadge extends StatelessWidget {
   const MiniMeAvatarBadge({
@@ -33,10 +34,31 @@ class MiniMeAvatarBadge extends StatelessWidget {
   final MiniMeVisualState visualState;
   final String? fallbackLabel;
 
+  MiniMeCompanionPreset? get _presetSnapshot {
+    final id = (companionId ?? '').trim();
+    if (id.isEmpty) return null;
+    return miniMePresetById(id);
+  }
+
+  String get _resolvedBodyModel => (bodyModel ?? '').trim().isNotEmpty
+      ? bodyModel!.trim()
+      : (_presetSnapshot?.bodyModel ?? '');
+
+  String get _resolvedHairModel => (hairModel ?? '').trim().isNotEmpty
+      ? hairModel!.trim()
+      : (_presetSnapshot?.hairModel ?? '');
+
+  String get _resolvedShirtModel => (shirtModel ?? '').trim().isNotEmpty
+      ? shirtModel!.trim()
+      : (_presetSnapshot?.shirtModel ?? '');
+
+  double get _resolvedBodyWidthScale =>
+      bodyWidthScale ?? _presetSnapshot?.bodyWidthScale ?? 1.0;
+
   bool get _hasMiniMeSnapshot =>
-      (bodyModel ?? '').isNotEmpty &&
-      (hairModel ?? '').isNotEmpty &&
-      (shirtModel ?? '').isNotEmpty;
+      _resolvedBodyModel.isNotEmpty &&
+      _resolvedHairModel.isNotEmpty &&
+      _resolvedShirtModel.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -67,10 +89,10 @@ class MiniMeAvatarBadge extends StatelessWidget {
                         ? SizedBox.square(
                             dimension: portraitSize,
                             child: MiniMePortraitAvatar(
-                              bodyModel: bodyModel!,
-                              hairModel: hairModel!,
-                              shirtModel: shirtModel!,
-                              bodyWidthScale: bodyWidthScale ?? 1.0,
+                              bodyModel: _resolvedBodyModel,
+                              hairModel: _resolvedHairModel,
+                              shirtModel: _resolvedShirtModel,
+                              bodyWidthScale: _resolvedBodyWidthScale,
                               companionId: companionId,
                               size: portraitSize,
                               degradationLevel: degradationLevel,
@@ -80,10 +102,10 @@ class MiniMeAvatarBadge extends StatelessWidget {
                         : SizedBox.square(
                             dimension: avatarSize,
                             child: MiniMeAvatar(
-                              bodyModel: bodyModel!,
-                              hairModel: hairModel!,
-                              shirtModel: shirtModel!,
-                              bodyWidthScale: bodyWidthScale ?? 1.0,
+                              bodyModel: _resolvedBodyModel,
+                              hairModel: _resolvedHairModel,
+                              shirtModel: _resolvedShirtModel,
+                              bodyWidthScale: _resolvedBodyWidthScale,
                               companionId: companionId,
                               size: avatarSize,
                               enableAutoRotate: false,

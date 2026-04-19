@@ -114,8 +114,9 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final canPop = Navigator.canPop(context);
-    final avatarStore = context.watch<AvatarStore>();
-    final moodStore = context.watch<MoodLogStore>();
+    final avatarSelection = context.select<AvatarStore, _MoodAvatarSelection>(
+      (avatarStore) => _MoodAvatarSelection.fromStore(avatarStore),
+    );
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -220,7 +221,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                                           rowStart + column ==
                                                           selectedMood,
                                                       faceSize: faceSize,
-                                                      avatarStore: avatarStore,
+                                                      avatarSelection:
+                                                          avatarSelection,
                                                       onTap: () {
                                                         Feedback.forTap(
                                                           context,
@@ -265,7 +267,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                             option: topRow[i],
                                             isSelected: i == selectedMood,
                                             faceSize: faceSize,
-                                            avatarStore: avatarStore,
+                                            avatarSelection: avatarSelection,
                                             onTap: () {
                                               Feedback.forTap(context);
                                               setState(() => selectedMood = i);
@@ -294,7 +296,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                             option: bottomRow[i],
                                             isSelected: i + 4 == selectedMood,
                                             faceSize: faceSize,
-                                            avatarStore: avatarStore,
+                                            avatarSelection: avatarSelection,
                                             onTap: () {
                                               Feedback.forTap(context);
                                               setState(
@@ -456,24 +458,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                       ),
                       if (_showPreviousLogs) ...[
                         const SizedBox(height: 12),
-                        if (moodStore.isLoading)
-                          const LinearProgressIndicator(minHeight: 3)
-                        else if (moodStore.items.isEmpty)
-                          Text(
-                            'No mood logs yet. Save one above and it will show up here.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                          )
-                        else
-                          ...moodStore.items
-                              .take(10)
-                              .map(
-                                (item) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _PreviousMoodLogCard(item: item),
-                                ),
-                              ),
+                        const _PreviousMoodLogsSection(),
                       ],
                     ],
                   ),
@@ -660,14 +645,14 @@ class _MoodTile extends StatelessWidget {
     required this.option,
     required this.isSelected,
     required this.faceSize,
-    required this.avatarStore,
+    required this.avatarSelection,
     required this.onTap,
   });
 
   final _MoodOption option;
   final bool isSelected;
   final double faceSize;
-  final AvatarStore avatarStore;
+  final _MoodAvatarSelection avatarSelection;
   final VoidCallback onTap;
 
   @override
@@ -704,13 +689,13 @@ class _MoodTile extends StatelessWidget {
                 height: faceSize + 10,
                 child: Center(
                   child: _AnimatedMoodMiniMeFace(
-                    bodyModel: avatarStore.bodyModel,
-                    hairModel: avatarStore.hairModel,
-                    shirtModel: avatarStore.shirtModel,
-                    bodyWidthScale: avatarStore.effectiveBodyWidthScale,
-                    companionId: avatarStore.companionId,
+                    bodyModel: avatarSelection.bodyModel,
+                    hairModel: avatarSelection.hairModel,
+                    shirtModel: avatarSelection.shirtModel,
+                    bodyWidthScale: avatarSelection.bodyWidthScale,
+                    companionId: avatarSelection.companionId,
                     moodLabel: option.label,
-                    degradationLevel: avatarStore.degradationLevel,
+                    degradationLevel: avatarSelection.degradationLevel,
                     isSelected: isSelected,
                     size: faceSize,
                   ),
@@ -731,6 +716,42 @@ class _MoodTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PreviousMoodLogsSection extends StatelessWidget {
+  const _PreviousMoodLogsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final historySelection = context
+        .select<MoodLogStore, _MoodHistorySelection>(
+          (moodStore) => _MoodHistorySelection.fromStore(moodStore),
+        );
+
+    if (historySelection.isLoading) {
+      return const LinearProgressIndicator(minHeight: 3);
+    }
+
+    if (historySelection.items.isEmpty) {
+      return Text(
+        'No mood logs yet. Save one above and it will show up here.',
+        style: theme.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+      );
+    }
+
+    return Column(
+      children: historySelection.items
+          .map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _PreviousMoodLogCard(item: item),
+            ),
+          )
+          .toList(growable: false),
     );
   }
 }
@@ -783,6 +804,93 @@ class _PreviousMoodLogCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MoodAvatarSelection {
+  const _MoodAvatarSelection({
+    required this.bodyModel,
+    required this.hairModel,
+    required this.shirtModel,
+    required this.bodyWidthScale,
+    required this.companionId,
+    required this.degradationLevel,
+  });
+
+  factory _MoodAvatarSelection.fromStore(AvatarStore avatarStore) {
+    return _MoodAvatarSelection(
+      bodyModel: avatarStore.bodyModel,
+      hairModel: avatarStore.hairModel,
+      shirtModel: avatarStore.shirtModel,
+      bodyWidthScale: avatarStore.effectiveBodyWidthScale,
+      companionId: avatarStore.companionId,
+      degradationLevel: avatarStore.degradationLevel,
+    );
+  }
+
+  final String bodyModel;
+  final String hairModel;
+  final String shirtModel;
+  final double bodyWidthScale;
+  final String companionId;
+  final double degradationLevel;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _MoodAvatarSelection &&
+        other.bodyModel == bodyModel &&
+        other.hairModel == hairModel &&
+        other.shirtModel == shirtModel &&
+        other.bodyWidthScale == bodyWidthScale &&
+        other.companionId == companionId &&
+        other.degradationLevel == degradationLevel;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    bodyModel,
+    hairModel,
+    shirtModel,
+    bodyWidthScale,
+    companionId,
+    degradationLevel,
+  );
+}
+
+class _MoodHistorySelection {
+  const _MoodHistorySelection({
+    required this.isLoading,
+    required this.items,
+    required this.signature,
+  });
+
+  factory _MoodHistorySelection.fromStore(MoodLogStore moodStore) {
+    final items = moodStore.items.take(10).toList(growable: false);
+    final signature = items
+        .map(
+          (item) =>
+              '${item.createdAt.microsecondsSinceEpoch}:${item.moodLabel}:${item.intensity}:${item.notes}',
+        )
+        .join('|');
+    return _MoodHistorySelection(
+      isLoading: moodStore.isLoading,
+      items: items,
+      signature:
+          '${moodStore.isLoading}::${moodStore.items.length}::$signature',
+    );
+  }
+
+  final bool isLoading;
+  final List<MoodCheckIn> items;
+  final String signature;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _MoodHistorySelection &&
+      other.isLoading == isLoading &&
+      other.signature == signature;
+
+  @override
+  int get hashCode => Object.hash(isLoading, signature);
 }
 
 class _AnimatedMoodMiniMeFace extends StatefulWidget {

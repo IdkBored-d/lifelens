@@ -17,6 +17,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = true;
+  String? _notificationPreferenceUserId;
 
   @override
   void initState() {
@@ -27,6 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadNotificationPreference() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
+    if (_notificationPreferenceUserId == userId) return;
 
     try {
       final doc = await FirebaseFirestore.instance
@@ -37,9 +39,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (doc.exists && mounted) {
         final enabled = doc.data()?['notificationsEnabled'] ?? true;
         await TrackingReminderService.instance.setNotificationsEnabled(enabled);
-        setState(() {
-          _notificationsEnabled = enabled;
-        });
+        _notificationPreferenceUserId = userId;
+        if (_notificationsEnabled != enabled) {
+          setState(() {
+            _notificationsEnabled = enabled;
+          });
+        }
       }
     } catch (e) {
       // Ignore error, use default value
@@ -73,7 +78,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final theme = Theme.of(context);
-    final themeController = context.watch<ThemeController>();
+    final isDarkMode = context.select<ThemeController, bool>(
+      (controller) => controller.isDarkMode,
+    );
     final username = _headerUsernameFor(user);
 
     return Scaffold(
@@ -132,7 +139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _ProfileSwitchTile(
                     icon: Icons.dark_mode_outlined,
                     label: 'Dark mode',
-                    value: themeController.isDarkMode,
+                    value: isDarkMode,
                     onChanged: (value) {
                       context.read<ThemeController>().setDarkMode(value);
                     },
@@ -610,6 +617,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       context.read<ThemeController>().setDarkMode(true);
+      await TrackingReminderService.instance.setNotificationsEnabled(true);
+      if (mounted && !_notificationsEnabled) {
+        setState(() => _notificationsEnabled = true);
+      }
       await FirebaseFirestore.instance.collection('users').doc(userId).set({
         'notificationsEnabled': true,
       }, SetOptions(merge: true));

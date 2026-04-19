@@ -99,64 +99,10 @@ class TrackHubScreen extends StatelessWidget {
               const SizedBox(height: 22),
               const SectionTitle(title: 'Recent Mood Check-Ins'),
               const SizedBox(height: 10),
-              Consumer<MoodLogStore>(
-                builder: (context, store, _) {
-                  if (store.items.isEmpty) {
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: cs.outlineVariant.withValues(alpha: 0.55),
-                        ),
-                      ),
-                      child: Text(
-                        'No check-ins yet. Start with a mood log above.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    );
-                  }
-
-                  final recent = store.items.take(3).toList();
-                  return Column(
-                    children: recent
-                        .map(
-                          (item) => Container(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: cs.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: cs.outlineVariant.withValues(alpha: 0.5),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Text(
-                                  item.emoji,
-                                  style: const TextStyle(fontSize: 20),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    '${item.moodLabel} • ${item.intensity}/5',
-                                    style: theme.textTheme.bodyMedium,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  );
-                },
+              _RecentMoodCheckins(
+                selection: context.select<MoodLogStore, _RecentMoodSelection>(
+                  (store) => _RecentMoodSelection.fromItems(store.items),
+                ),
               ),
             ],
           ),
@@ -164,4 +110,91 @@ class TrackHubScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RecentMoodCheckins extends StatelessWidget {
+  const _RecentMoodCheckins({required this.selection});
+
+  final _RecentMoodSelection selection;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    if (selection.items.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
+        ),
+        child: Text(
+          'No check-ins yet. Start with a mood log above.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: cs.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: selection.items
+          .map(
+            (item) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: cs.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Text(item.emoji, style: const TextStyle(fontSize: 20)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${item.moodLabel} • ${item.intensity}/5',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class _RecentMoodSelection {
+  const _RecentMoodSelection({required this.items, required this.signature});
+
+  factory _RecentMoodSelection.fromItems(List<MoodCheckIn> items) {
+    final visible = items.take(3).toList(growable: false);
+    final signature = visible
+        .map(
+          (item) =>
+              '${item.createdAt.microsecondsSinceEpoch}:${item.moodLabel}:${item.intensity}:${item.emoji}',
+        )
+        .join('|');
+    return _RecentMoodSelection(
+      items: visible,
+      signature: '${items.length}::$signature',
+    );
+  }
+
+  final List<MoodCheckIn> items;
+  final String signature;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _RecentMoodSelection && other.signature == signature;
+
+  @override
+  int get hashCode => signature.hashCode;
 }

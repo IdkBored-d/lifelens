@@ -27,6 +27,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   late Future<void> _future;
   List<ExerciseModel> _exercises = const <ExerciseModel>[];
   List<Map<String, String>> _history = const <Map<String, String>>[];
+  Map<String, ExerciseModel> _exerciseById = const <String, ExerciseModel>{};
+  String _lastFilterQuery = '';
+  List<ExerciseModel> _cachedFilteredExercises = const <ExerciseModel>[];
   String _searchQuery = '';
   String? _selectedExerciseId;
   bool _noExercise = false;
@@ -81,6 +84,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     if (!mounted) return;
     setState(() {
       _exercises = exercises;
+      _exerciseById = {for (final exercise in exercises) exercise.id: exercise};
+      _lastFilterQuery = '';
+      _cachedFilteredExercises = const <ExerciseModel>[];
       _history = history;
       _loggedToday = activity.isEmpty ? 0 : activity.first;
       _loggedWeek = activity.fold(0, (sum, value) => sum + value);
@@ -95,17 +101,19 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   ExerciseModel? get _selectedExercise {
-    for (final exercise in _exercises) {
-      if (exercise.id == _selectedExerciseId) return exercise;
-    }
-    return null;
+    final selectedExerciseId = _selectedExerciseId;
+    if (selectedExerciseId == null) return null;
+    return _exerciseById[selectedExerciseId];
   }
 
   List<ExerciseModel> get _filteredExercises {
     final query = _searchQuery.trim().toLowerCase();
     if (query.isEmpty) return const <ExerciseModel>[];
+    if (_lastFilterQuery == query) {
+      return _cachedFilteredExercises;
+    }
 
-    return _exercises
+    final filtered = _exercises
         .where((exercise) {
           return exercise.name.toLowerCase().contains(query) ||
               exercise.type.toLowerCase().contains(query) ||
@@ -113,6 +121,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
         })
         .take(6)
         .toList(growable: false);
+    _lastFilterQuery = query;
+    _cachedFilteredExercises = filtered;
+    return filtered;
   }
 
   Future<void> _logSelectedExercise() async {
@@ -149,6 +160,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _selectedExerciseId = null;
       _noExercise = false;
       _searchQuery = '';
+      _lastFilterQuery = '';
+      _cachedFilteredExercises = const <ExerciseModel>[];
       _searchController.clear();
       _setsController.text = '3';
       _repsController.text = '10';
@@ -174,14 +187,13 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _selectedExerciseId = exercise.id;
       _searchQuery = exercise.name;
       _noExercise = false;
+      _lastFilterQuery = '';
+      _cachedFilteredExercises = const <ExerciseModel>[];
     });
   }
 
   String _exerciseNameForId(String id) {
-    for (final exercise in _exercises) {
-      if (exercise.id == id) return exercise.name;
-    }
-    return id;
+    return _exerciseById[id]?.name ?? id;
   }
 
   @override
@@ -230,8 +242,17 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                         TextField(
                           controller: _searchController,
                           enabled: !_noExercise,
-                          onChanged: (value) =>
-                              setState(() => _searchQuery = value),
+                          onChanged: (value) {
+                            if (value == _searchQuery) return;
+                            setState(() {
+                              _searchQuery = value;
+                              if (_lastFilterQuery !=
+                                  value.trim().toLowerCase()) {
+                                _cachedFilteredExercises =
+                                    const <ExerciseModel>[];
+                              }
+                            });
+                          },
                           decoration: InputDecoration(
                             hintText: 'Search exercise',
                             prefixIcon: const Icon(Icons.search_rounded),
@@ -243,6 +264,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                       setState(() {
                                         _searchQuery = '';
                                         _selectedExerciseId = null;
+                                        _lastFilterQuery = '';
+                                        _cachedFilteredExercises =
+                                            const <ExerciseModel>[];
                                       });
                                     },
                                     icon: const Icon(Icons.close_rounded),
@@ -294,6 +318,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                         setState(() {
                                           _selectedExerciseId = null;
                                           _searchQuery = '';
+                                          _lastFilterQuery = '';
+                                          _cachedFilteredExercises =
+                                              const <ExerciseModel>[];
                                           _searchController.clear();
                                         });
                                       },
@@ -323,6 +350,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                 if (_noExercise) {
                                   _selectedExerciseId = null;
                                   _searchQuery = '';
+                                  _lastFilterQuery = '';
+                                  _cachedFilteredExercises =
+                                      const <ExerciseModel>[];
                                   _searchController.clear();
                                 }
                               });

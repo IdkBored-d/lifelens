@@ -68,6 +68,7 @@ class _HistoryCalendarScreenState extends State<HistoryCalendarScreen> {
 }
 
 class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+  final ExerciseStore _exerciseStore = ExerciseStore();
   late DateTime _selectedDate;
   late DateTime _visibleMonth;
   _HistoryDayData? _dayData;
@@ -79,24 +80,29 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
     _selectedDate = _startOfDay(widget.initialDate ?? DateTime.now());
     _visibleMonth = _monthStart(_selectedDate);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadDayData();
+      _initializeAndLoad();
     });
   }
 
-  Future<void> _loadDayData() async {
+  Future<void> _initializeAndLoad() async {
+    await AppServices.isar.init();
+    await _exerciseStore.ensureReady();
+    await _loadDayData(refreshStores: true);
+  }
+
+  Future<void> _loadDayData({bool refreshStores = false}) async {
     final moodStore = context.read<MoodLogStore>();
     final sleepStore = context.read<SleepStore>();
 
     setState(() => _isLoading = true);
 
-    await moodStore.refreshFromPersistence();
-    await sleepStore.refresh();
-    await AppServices.isar.init();
+    if (refreshStores) {
+      await moodStore.refreshFromPersistence();
+      await sleepStore.refresh();
+      await _exerciseStore.refreshFromCloud();
+    }
 
     final dateKey = _dateKey(_selectedDate);
-    final exerciseStore = ExerciseStore();
-    await exerciseStore.ensureReady();
-    await exerciseStore.refreshFromCloud();
 
     final moods = await AppServices.isar.getMoodEntriesForDate(dateKey);
     final symptoms = await AppServices.isar.getSymptomEntriesForDate(dateKey);
@@ -111,7 +117,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
             .toList(growable: false)
           ..sort((a, b) => b.wakeTime.compareTo(a.wakeTime));
 
-    final exercises = exerciseStore
+    final exercises = _exerciseStore
         .getRecentExerciseHistory(limit: 365)
         .where((item) {
           final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
@@ -266,7 +272,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadDayData,
+      onRefresh: () => _loadDayData(refreshStores: true),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
         children: content,

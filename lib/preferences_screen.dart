@@ -8,7 +8,9 @@ class PreferencesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeController = context.watch<ThemeController>();
+    final isDarkMode = context.select<ThemeController, bool>(
+      (controller) => controller.isDarkMode,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Preferences')),
@@ -35,7 +37,7 @@ class PreferencesScreen extends StatelessWidget {
                       Text('Dark Mode', style: theme.textTheme.titleMedium),
                       const Spacer(),
                       Switch(
-                        value: themeController.isDarkMode,
+                        value: isDarkMode,
                         onChanged: (value) =>
                             context.read<ThemeController>().setDarkMode(value),
                       ),

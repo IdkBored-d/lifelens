@@ -1,6 +1,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:health/health.dart';
 
+enum HealthImportSource { appleHealth, androidHealth }
+
+extension HealthImportSourceX on HealthImportSource {
+  String get label {
+    switch (this) {
+      case HealthImportSource.appleHealth:
+        return 'Apple Health';
+      case HealthImportSource.androidHealth:
+        return 'Android Health';
+    }
+  }
+}
+
 class HealthSnapshot {
   const HealthSnapshot({
     required this.source,
@@ -60,17 +73,20 @@ class HealthService {
   static const Duration _authorizationTimeout = Duration(seconds: 20);
   static const Duration _queryTimeout = Duration(seconds: 8);
 
-  Future<HealthSnapshot> fetchSnapshot() async {
+  Future<HealthSnapshot> fetchSnapshot({HealthImportSource? source}) async {
     if (kIsWeb) {
       throw Exception('This feature is not available on this device.');
     }
 
+    final resolvedSource = source ?? _defaultSourceForPlatform();
+    _ensureSourceSupportedOnPlatform(resolvedSource);
+
     await _health.configure();
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (resolvedSource == HealthImportSource.androidHealth) {
       final available = await _health.isHealthConnectAvailable();
       if (!available) {
-        throw Exception('Data import is not available on this device yet.');
+        throw Exception('Android Health is not available on this device yet.');
       }
     }
 
@@ -143,9 +159,7 @@ class HealthService {
     final workoutCount14d = _workoutCount(deduped);
 
     final snapshot = HealthSnapshot(
-      source: defaultTargetPlatform == TargetPlatform.iOS
-          ? 'Apple Health'
-          : 'Health Connect',
+      source: resolvedSource.label,
       capturedAt: now,
       heartRate: _numericValue(heartRatePoint),
       heartRateUnit: heartRatePoint?.unitString,
@@ -163,6 +177,32 @@ class HealthService {
     }
 
     return snapshot;
+  }
+
+  HealthImportSource _defaultSourceForPlatform() {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return HealthImportSource.appleHealth;
+      case TargetPlatform.android:
+        return HealthImportSource.androidHealth;
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        throw Exception('This feature is not available on this device.');
+    }
+  }
+
+  void _ensureSourceSupportedOnPlatform(HealthImportSource source) {
+    if (defaultTargetPlatform == TargetPlatform.iOS &&
+        source != HealthImportSource.appleHealth) {
+      throw Exception('Android Health is only available on Android devices.');
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        source != HealthImportSource.androidHealth) {
+      throw Exception('Apple Health is only available on iPhone devices.');
+    }
   }
 
   Future<List<HealthDataPoint>> _readType({
