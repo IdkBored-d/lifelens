@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:lifelens/app_services.dart';
+import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
@@ -17,8 +19,8 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       'miniMeSuggestionsInbox.viewedDigests';
   static const String _unreadSuggestionsKeyBase =
       'miniMeSuggestionsInbox.unreadSuggestions';
-    static const String _pendingFollowUpsKeyBase =
-      'miniMeSuggestionsInbox.pendingFollowUps';
+  static const String _deliveryStateKeyBase =
+      'miniMeSuggestionsInbox.deliveryState';
 
   SharedPreferences? _prefs;
   bool _isInitialized = false;
@@ -26,7 +28,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   String? _loadedScopeKey;
   final Set<String> _viewedDigests = <String>{};
   List<_StoredSuggestion> _unread = const <_StoredSuggestion>[];
-  List<_PendingFollowUp> _pendingFollowUps = const <_PendingFollowUp>[];
+  _SuggestionDeliveryState _deliveryState = const _SuggestionDeliveryState();
 
   bool get isReady => _isInitialized;
   bool get isRefreshing => _isRefreshing;
@@ -38,7 +40,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   String get _scopeKey => FirebaseAuth.instance.currentUser?.uid ?? 'guest';
   String get _viewedDigestsKey => '${_viewedDigestsKeyBase}_$_scopeKey';
   String get _unreadSuggestionsKey => '${_unreadSuggestionsKeyBase}_$_scopeKey';
-  String get _pendingFollowUpsKey => '${_pendingFollowUpsKeyBase}_$_scopeKey';
+  String get _deliveryStateKey => '${_deliveryStateKeyBase}_$_scopeKey';
 
   Future<void> _init() async {
     if (_isInitialized) return;
@@ -75,20 +77,14 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       }
     }
 
-    _unread = const <_StoredSuggestion>[];
-
-    final rawPending = prefs.getString(_pendingFollowUpsKey);
-    if (rawPending != null && rawPending.isNotEmpty) {
+    final rawDeliveryState = prefs.getString(_deliveryStateKey);
+    if (rawDeliveryState != null && rawDeliveryState.isNotEmpty) {
       try {
-        final decoded = jsonDecode(rawPending);
-        if (decoded is List) {
-          _pendingFollowUps = decoded
-              .whereType<Map>()
-              .map(
-                (item) =>
-                    _PendingFollowUp.fromJson(Map<String, dynamic>.from(item)),
-              )
-              .toList(growable: false);
+        final decoded = jsonDecode(rawDeliveryState);
+        if (decoded is Map) {
+          _deliveryState = _SuggestionDeliveryState.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
           return;
         }
       } catch (_) {
@@ -96,7 +92,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       }
     }
 
-    _pendingFollowUps = const <_PendingFollowUp>[];
+    _deliveryState = const _SuggestionDeliveryState();
   }
 
   Future<void> _ensureCurrentScopeLoaded() async {
@@ -115,13 +111,25 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
 
     _isRefreshing = true;
     try {
+      final cadenceDecision = await _evaluateCadenceDecision(
+        moodStore: moodStore,
+        sleepStore: sleepStore,
+      );
+      if (!cadenceDecision.shouldRequest) {
+        return;
+      }
+
       final snapshot = await DailySuggestionsService.instance.buildSnapshot(
         moodStore: moodStore,
         sleepStore: sleepStore,
+        suggestionWindow: cadenceDecision.window,
+        triggerReason: cadenceDecision.triggerReason,
+        eventOverride: cadenceDecision.eventOverride,
       );
 
       final currentSuggestions = snapshot.suggestions
           .where((item) => item.action.trim().isNotEmpty)
+          .take(1)
           .map(_StoredSuggestion.fromDailySuggestion)
           .toList(growable: false);
 
@@ -129,29 +137,18 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
           .where((item) => !_viewedDigests.contains(item.digest))
           .toList(growable: false);
 
-      final followUpSuggestions = await _buildFollowUpSuggestions(
-        moodStore: moodStore,
-        sleepStore: sleepStore,
-      );
-      if (followUpSuggestions.isNotEmpty) {
-        final existingDigests = nextUnread.map((item) => item.digest).toSet();
-        final merged = <_StoredSuggestion>[...nextUnread];
-        for (final followUp in followUpSuggestions) {
-          if (_viewedDigests.contains(followUp.digest)) continue;
-          if (existingDigests.add(followUp.digest)) {
-            merged.add(followUp);
-          }
-        }
-        nextUnread = merged;
+      if (currentSuggestions.isNotEmpty) {
+        _recordDeliveryIfRequested(cadenceDecision);
       }
 
       if (_sameDigests(_unread, nextUnread)) {
+        await _persistDeliveryState();
         return;
       }
 
       _unread = nextUnread;
       await _persistUnread();
-      await _persistPendingFollowUps();
+      await _persistDeliveryState();
       notifyListeners();
     } finally {
       _isRefreshing = false;
@@ -187,156 +184,272 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
 
     if (!changed) return;
 
-    final viewedStored = suggestions
-        .map(_StoredSuggestion.fromDailySuggestion)
-        .where((item) => item.action.trim().isNotEmpty)
-        .where((item) => item.category.toLowerCase() != 'follow-up')
-        .toList(growable: false);
-    if (viewedStored.isNotEmpty) {
-      final now = DateTime.now();
-      var pendingChanged = false;
-      final nextPending = List<_PendingFollowUp>.from(_pendingFollowUps);
-      for (final item in viewedStored) {
-        final alreadyTracked = nextPending.any(
-          (pending) => pending.originDigest == item.digest,
-        );
-        if (alreadyTracked) continue;
-        nextPending.add(
-          _PendingFollowUp(
-            originDigest: item.digest,
-            action: item.action,
-            reason: item.reason,
-            viewedAtIso: now.toIso8601String(),
-            sentCount: 0,
-            lastSentAtIso: '',
-          ),
-        );
-        pendingChanged = true;
-      }
-      if (pendingChanged) {
-        _pendingFollowUps = nextPending;
-      }
-    }
-
     await _persistViewedDigests();
     await _persistUnread();
-    await _persistPendingFollowUps();
     notifyListeners();
   }
 
-  Future<List<_StoredSuggestion>> _buildFollowUpSuggestions({
+  Future<_SuggestionCadenceDecision> _evaluateCadenceDecision({
     required MoodLogStore moodStore,
     required SleepStore sleepStore,
   }) async {
-    if (_pendingFollowUps.isEmpty) return const <_StoredSuggestion>[];
-
     final now = DateTime.now();
-    final followUps = <_StoredSuggestion>[];
-    final nextPending = <_PendingFollowUp>[];
-    final exerciseStore = ExerciseStore();
-    await exerciseStore.ensureReady();
+    final activeSymptomsCount = await _activeSymptomsCount();
+    final latestMood = moodStore.items.isEmpty ? null : moodStore.items.first;
+    final previousMood = moodStore.items.length < 2 ? null : moodStore.items[1];
+    final latestSleep = sleepStore.items.isEmpty ? null : sleepStore.items.first;
+    final latestExerciseTimestamp = await _latestExerciseTimestamp();
+    final latestLogTimestamp = _maxTimestamp(
+      <DateTime?>[
+        latestMood?.createdAt,
+        latestSleep?.wakeTime,
+        latestSleep?.date,
+        latestExerciseTimestamp,
+      ],
+    );
+    final contextSignature = _buildContextSignature(
+      latestMood: latestMood,
+      latestSleep: latestSleep,
+      latestExerciseTimestamp: latestExerciseTimestamp,
+      activeSymptomsCount: activeSymptomsCount,
+    );
 
-    for (final pending in _pendingFollowUps) {
-      final viewedAt = DateTime.tryParse(pending.viewedAtIso);
-      if (viewedAt == null) {
-        continue;
-      }
+    final lastDeliveredAt = _deliveryState.lastDeliveredAt;
+    final hasNewLogSinceLast =
+        latestLogTimestamp != null &&
+        (lastDeliveredAt == null || latestLogTimestamp.isAfter(lastDeliveredAt));
+    final contextChanged =
+      contextSignature.isNotEmpty &&
+      contextSignature != _deliveryState.lastDeliveredContextSignature;
 
-      // Stop retrying stale follow-ups.
-      if (now.difference(viewedAt) > const Duration(days: 3)) {
-        continue;
-      }
+    final strongStateShift = _hasStrongStateShift(latestMood, previousMood);
+    final majorDrop = _hasMajorDrop(latestMood, previousMood);
+    final highDistress = _isHighDistress(
+      latestMoodLabel: latestMood?.moodLabel,
+      latestMoodIntensity: latestMood?.intensity ?? 0,
+      activeSymptomsCount: activeSymptomsCount,
+    );
+    final eventOverride = highDistress || majorDrop;
 
-      // Cap retries so reminders do not become repetitive.
-      if (pending.sentCount >= 2) {
-        continue;
-      }
-
-      final hoursSinceViewed = now.difference(viewedAt).inHours;
-      if (hoursSinceViewed < 3) {
-        nextPending.add(pending);
-        continue;
-      }
-
-      final lastSentAt = DateTime.tryParse(pending.lastSentAtIso);
-      if (lastSentAt != null && _isSameDay(lastSentAt, now)) {
-        nextPending.add(pending);
-        continue;
-      }
-
-      final hasMoodAfter = moodStore.items.any(
-        (item) => item.createdAt.isAfter(viewedAt),
-      );
-      final hasSleepAfter = sleepStore.items.any(
-        (item) =>
-            item.date.isAfter(viewedAt) || item.wakeTime.isAfter(viewedAt),
-      );
-      final hasExerciseAfter = exerciseStore
-          .getRecentExerciseHistory(limit: 60)
-          .map((entry) => DateTime.tryParse(entry['timestamp'] ?? ''))
-          .whereType<DateTime>()
-          .any((timestamp) => timestamp.isAfter(viewedAt));
-
-      final anyProgressAfterViewed =
-          hasMoodAfter || hasSleepAfter || hasExerciseAfter;
-
-      final shortAction = _shortAction(pending.action);
-      final followUpDigest =
-          'followup|${pending.originDigest}|${now.year}-${now.month}-${now.day}|${pending.sentCount + 1}';
-
-      if (anyProgressAfterViewed) {
-        followUps.add(
-          _StoredSuggestion(
-            digest: followUpDigest,
-            title: 'Mini-Me follow-up',
-            reason:
-                'Nice consistency. A quick reflection helps Mini-Me adapt your next suggestions.',
-            action:
-                'If you tried "$shortAction", tell Mini-Me how it went so your next plan fits you better.',
-            category: 'Follow-up',
-            priority: 110,
-            iconCodePoint: Icons.follow_the_signs_rounded.codePoint,
-            iconFontFamily: Icons.follow_the_signs_rounded.fontFamily,
-          ),
-        );
-      } else {
-        followUps.add(
-          _StoredSuggestion(
-            digest: followUpDigest,
-            title: 'Mini-Me follow-up',
-            reason:
-                'A tiny follow-through now is better than waiting for a perfect moment.',
-            action: 'Quick reminder: try "$shortAction" now and check back in after 10-20 minutes.',
-            category: 'Follow-up',
-            priority: 110,
-            iconCodePoint: Icons.notifications_active_rounded.codePoint,
-            iconFontFamily: Icons.notifications_active_rounded.fontFamily,
-          ),
-        );
-      }
-
-      nextPending.add(
-        pending.copyWith(
-          sentCount: pending.sentCount + 1,
-          lastSentAtIso: now.toIso8601String(),
-        ),
+    if (eventOverride && _canSendEventOverride(now)) {
+      return _SuggestionCadenceDecision(
+        shouldRequest: true,
+        window: 'event_override',
+        triggerReason: highDistress
+            ? 'high distress or symptom escalation detected'
+            : 'major negative mood shift detected',
+        eventOverride: true,
+        now: now,
+        contextSignature: contextSignature,
       );
     }
 
-    _pendingFollowUps = nextPending;
-    return followUps;
+    // Any newly logged or materially changed context should trigger a fresh
+    // suggestion immediately, regardless of daypart.
+    if ((hasNewLogSinceLast || contextChanged) && _passesUpdateCooldown(now)) {
+      return _SuggestionCadenceDecision(
+        shouldRequest: true,
+        window: 'log_update',
+        triggerReason: hasNewLogSinceLast
+            ? 'new logs were added since the last delivered suggestion'
+            : 'context changed enough to justify a refreshed suggestion',
+        eventOverride: false,
+        now: now,
+        contextSignature: contextSignature,
+      );
+    }
+
+    final window = _currentWindow(now);
+    if (window == null) {
+      return _SuggestionCadenceDecision.skip();
+    }
+
+    final windowStamp = '${_dayStamp(now)}:$window';
+    if (_deliveryState.deliveredWindowStamps.contains(windowStamp)) {
+      return _SuggestionCadenceDecision.skip();
+    }
+
+    if (window == 'midday_checkin' && !hasNewLogSinceLast && !strongStateShift) {
+      return _SuggestionCadenceDecision.skip();
+    }
+
+    // Prevent repeating suggestions for effectively unchanged logs.
+    if (!contextChanged) {
+      return _SuggestionCadenceDecision.skip();
+    }
+
+    final triggerReason = switch (window) {
+      'morning_anchor' =>
+        'first morning suggestion using overnight sleep and recent mood trend',
+      'midday_checkin' => hasNewLogSinceLast
+          ? 'new logs detected since last suggestion'
+          : 'strong state shift detected since last suggestion',
+      'evening_reflection' =>
+        'evening wrap-up with review and next-day preparation context',
+      _ => 'scheduled refresh',
+    };
+
+    return _SuggestionCadenceDecision(
+      shouldRequest: true,
+      window: window,
+      triggerReason: triggerReason,
+      eventOverride: false,
+      now: now,
+      contextSignature: contextSignature,
+    );
   }
 
-  String _shortAction(String action) {
-    final normalized = action.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (normalized.length <= 90) return normalized;
-    return '${normalized.substring(0, 87).trimRight()}...';
+  Future<int> _activeSymptomsCount() async {
+    try {
+      await AppServices.isar.init();
+      final symptoms = await AppServices.isar.getActiveSymptomEntries();
+      return symptoms.length;
+    } catch (_) {
+      return 0;
+    }
   }
 
-  bool _isSameDay(DateTime left, DateTime right) {
-    return left.year == right.year &&
-        left.month == right.month &&
-        left.day == right.day;
+  Future<DateTime?> _latestExerciseTimestamp() async {
+    try {
+      final exerciseStore = ExerciseStore();
+      await exerciseStore.ensureReady();
+      final latest = exerciseStore.getRecentExerciseHistory(limit: 1);
+      if (latest.isEmpty) return null;
+      return DateTime.tryParse(latest.first['timestamp'] ?? '');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime? _maxTimestamp(List<DateTime?> values) {
+    DateTime? maxValue;
+    for (final value in values) {
+      if (value == null) continue;
+      if (maxValue == null || value.isAfter(maxValue)) {
+        maxValue = value;
+      }
+    }
+    return maxValue;
+  }
+
+  bool _hasStrongStateShift(MoodCheckIn? latest, MoodCheckIn? previous) {
+    if (latest == null || previous == null) return false;
+    final intensityShift = (latest.intensity - previous.intensity).abs() >= 2;
+    final valenceShift = _moodValence(latest.moodLabel) !=
+        _moodValence(previous.moodLabel);
+    return intensityShift || valenceShift;
+  }
+
+  bool _hasMajorDrop(MoodCheckIn? latest, MoodCheckIn? previous) {
+    if (latest == null || previous == null) return false;
+    return _moodValence(previous.moodLabel) > 0 &&
+        _moodValence(latest.moodLabel) < 0;
+  }
+
+  bool _isHighDistress({
+    required String? latestMoodLabel,
+    required int latestMoodIntensity,
+    required int activeSymptomsCount,
+  }) {
+    final mood = (latestMoodLabel ?? '').trim().toLowerCase();
+    final distressMood = const {
+      'sad',
+      'sadness',
+      'scared',
+      'fear',
+      'anxious',
+      'angry',
+      'anger',
+      'frustrated',
+    }.contains(mood);
+    return (distressMood && latestMoodIntensity >= 4) || activeSymptomsCount >= 3;
+  }
+
+  int _moodValence(String moodLabel) {
+    final mood = moodLabel.trim().toLowerCase();
+    if (const {'happy', 'joy', 'love', 'affectionate'}.contains(mood)) {
+      return 1;
+    }
+    if (const {
+      'sad',
+      'sadness',
+      'angry',
+      'anger',
+      'scared',
+      'fear',
+      'anxious',
+      'frustrated',
+    }.contains(mood)) {
+      return -1;
+    }
+    return 0;
+  }
+
+  bool _canSendEventOverride(DateTime now) {
+    final lastEventOverrideAt = _deliveryState.lastEventOverrideAt;
+    if (lastEventOverrideAt == null) return true;
+    return now.difference(lastEventOverrideAt) >= const Duration(minutes: 90);
+  }
+
+  bool _passesUpdateCooldown(DateTime now) {
+    final lastDeliveredAt = _deliveryState.lastDeliveredAt;
+    if (lastDeliveredAt == null) return true;
+    return now.difference(lastDeliveredAt) >= const Duration(minutes: 10);
+  }
+
+  String _buildContextSignature({
+    required MoodCheckIn? latestMood,
+    required Sleep? latestSleep,
+    required DateTime? latestExerciseTimestamp,
+    required int activeSymptomsCount,
+  }) {
+    final moodStamp = latestMood == null
+        ? 'mood:none'
+        : 'mood:${latestMood.createdAt.microsecondsSinceEpoch}:${latestMood.moodLabel}:${latestMood.intensity}';
+    final sleepStamp = latestSleep == null
+        ? 'sleep:none'
+        : 'sleep:${latestSleep.wakeTime.microsecondsSinceEpoch}:${latestSleep.duration.inMinutes}:${latestSleep.quality.label}';
+    final exerciseStamp = latestExerciseTimestamp == null
+        ? 'exercise:none'
+        : 'exercise:${latestExerciseTimestamp.microsecondsSinceEpoch}';
+    final symptomStamp = 'symptoms:$activeSymptomsCount';
+    return [moodStamp, sleepStamp, exerciseStamp, symptomStamp].join('|');
+  }
+
+  String? _currentWindow(DateTime now) {
+    final hour = now.hour;
+    if (hour >= 5 && hour < 11) return 'morning_anchor';
+    if (hour >= 11 && hour < 17) return 'midday_checkin';
+    if (hour >= 17 && hour < 23) return 'evening_reflection';
+    return null;
+  }
+
+  String _dayStamp(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
+  }
+
+  void _recordDeliveryIfRequested(_SuggestionCadenceDecision decision) {
+    if (!decision.shouldRequest || decision.window == null || decision.now == null) {
+      return;
+    }
+
+    final now = decision.now!;
+    final nextWindows = List<String>.from(_deliveryState.deliveredWindowStamps);
+    nextWindows.add('${_dayStamp(now)}:${decision.window!}');
+    if (nextWindows.length > 40) {
+      nextWindows.removeRange(0, nextWindows.length - 40);
+    }
+
+    _deliveryState = _deliveryState.copyWith(
+      lastDeliveredAtIso: now.toIso8601String(),
+      deliveredWindowStamps: nextWindows,
+      lastEventOverrideAtIso:
+          decision.eventOverride ? now.toIso8601String() : _deliveryState.lastEventOverrideAtIso,
+      lastDeliveredContextSignature:
+          decision.contextSignature ?? _deliveryState.lastDeliveredContextSignature,
+    );
   }
 
   bool _sameDigests(
@@ -372,13 +485,10 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     await prefs.setString(_unreadSuggestionsKey, payload);
   }
 
-  Future<void> _persistPendingFollowUps() async {
+  Future<void> _persistDeliveryState() async {
     final prefs = _prefs;
     if (prefs == null) return;
-    final payload = jsonEncode(
-      _pendingFollowUps.map((item) => item.toJson()).toList(growable: false),
-    );
-    await prefs.setString(_pendingFollowUpsKey, payload);
+    await prefs.setString(_deliveryStateKey, jsonEncode(_deliveryState.toJson()));
   }
 }
 
@@ -470,56 +580,80 @@ class _StoredSuggestion {
   }
 }
 
-class _PendingFollowUp {
-  const _PendingFollowUp({
-    required this.originDigest,
-    required this.action,
-    required this.reason,
-    required this.viewedAtIso,
-    required this.sentCount,
-    required this.lastSentAtIso,
+class _SuggestionDeliveryState {
+  const _SuggestionDeliveryState({
+    this.lastDeliveredAtIso = '',
+    this.lastEventOverrideAtIso = '',
+    this.lastDeliveredContextSignature = '',
+    this.deliveredWindowStamps = const <String>[],
   });
 
-  final String originDigest;
-  final String action;
-  final String reason;
-  final String viewedAtIso;
-  final int sentCount;
-  final String lastSentAtIso;
+  final String lastDeliveredAtIso;
+  final String lastEventOverrideAtIso;
+  final String lastDeliveredContextSignature;
+  final List<String> deliveredWindowStamps;
 
-  factory _PendingFollowUp.fromJson(Map<String, dynamic> json) {
-    return _PendingFollowUp(
-      originDigest: (json['originDigest'] ?? '').toString(),
-      action: (json['action'] ?? '').toString(),
-      reason: (json['reason'] ?? '').toString(),
-      viewedAtIso: (json['viewedAtIso'] ?? '').toString(),
-      sentCount: (json['sentCount'] as num?)?.toInt() ?? 0,
-      lastSentAtIso: (json['lastSentAtIso'] ?? '').toString(),
+  DateTime? get lastDeliveredAt => DateTime.tryParse(lastDeliveredAtIso);
+  DateTime? get lastEventOverrideAt => DateTime.tryParse(lastEventOverrideAtIso);
+
+  factory _SuggestionDeliveryState.fromJson(Map<String, dynamic> json) {
+    final rawWindows = json['deliveredWindowStamps'];
+    return _SuggestionDeliveryState(
+      lastDeliveredAtIso: (json['lastDeliveredAtIso'] ?? '').toString(),
+      lastEventOverrideAtIso: (json['lastEventOverrideAtIso'] ?? '').toString(),
+      lastDeliveredContextSignature:
+          (json['lastDeliveredContextSignature'] ?? '').toString(),
+      deliveredWindowStamps: rawWindows is List
+          ? rawWindows.map((item) => item.toString()).toList(growable: false)
+          : const <String>[],
     );
   }
 
-  _PendingFollowUp copyWith({
-    int? sentCount,
-    String? lastSentAtIso,
+  _SuggestionDeliveryState copyWith({
+    String? lastDeliveredAtIso,
+    String? lastEventOverrideAtIso,
+    String? lastDeliveredContextSignature,
+    List<String>? deliveredWindowStamps,
   }) {
-    return _PendingFollowUp(
-      originDigest: originDigest,
-      action: action,
-      reason: reason,
-      viewedAtIso: viewedAtIso,
-      sentCount: sentCount ?? this.sentCount,
-      lastSentAtIso: lastSentAtIso ?? this.lastSentAtIso,
+    return _SuggestionDeliveryState(
+      lastDeliveredAtIso: lastDeliveredAtIso ?? this.lastDeliveredAtIso,
+      lastEventOverrideAtIso:
+          lastEventOverrideAtIso ?? this.lastEventOverrideAtIso,
+      lastDeliveredContextSignature:
+          lastDeliveredContextSignature ?? this.lastDeliveredContextSignature,
+      deliveredWindowStamps:
+          deliveredWindowStamps ?? this.deliveredWindowStamps,
     );
   }
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
-      'originDigest': originDigest,
-      'action': action,
-      'reason': reason,
-      'viewedAtIso': viewedAtIso,
-      'sentCount': sentCount,
-      'lastSentAtIso': lastSentAtIso,
+      'lastDeliveredAtIso': lastDeliveredAtIso,
+      'lastEventOverrideAtIso': lastEventOverrideAtIso,
+      'lastDeliveredContextSignature': lastDeliveredContextSignature,
+      'deliveredWindowStamps': deliveredWindowStamps,
     };
   }
+}
+
+class _SuggestionCadenceDecision {
+  const _SuggestionCadenceDecision({
+    required this.shouldRequest,
+    this.window,
+    this.triggerReason,
+    this.eventOverride = false,
+    this.now,
+    this.contextSignature,
+  });
+
+  factory _SuggestionCadenceDecision.skip() {
+    return const _SuggestionCadenceDecision(shouldRequest: false);
+  }
+
+  final bool shouldRequest;
+  final String? window;
+  final String? triggerReason;
+  final bool eventOverride;
+  final DateTime? now;
+  final String? contextSignature;
 }

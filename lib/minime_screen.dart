@@ -723,23 +723,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     List<DailySuggestion> suggestions,
   ) {
     if (suggestions.isEmpty) {
-      return const <String>[
-        'I do not have a new suggestion yet, but I am still here if you want to check in.',
-      ];
+      return const <String>[];
     }
 
-    final intro = suggestions.length == 1
-        ? 'I noticed 1 new suggestion from your recent check-ins.'
-        : 'I noticed ${suggestions.length} new suggestions from your recent check-ins.';
-
-    final replies = <String>[intro];
+    final replies = <String>[];
     for (var i = 0; i < suggestions.length; i++) {
       final item = suggestions[i];
       final action = item.action.trim();
       final reason = item.reason.trim();
       if (action.isEmpty && reason.isEmpty) continue;
 
-      final buffer = StringBuffer('Suggestion ${i + 1}: ');
+      final buffer = StringBuffer();
       if (action.isNotEmpty) {
         buffer.write(action);
       }
@@ -2028,9 +2022,9 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                 ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: maxHeight),
-                  child: Center(
-                    child: isThinking
-                        ? Row(
+                  child: isThinking
+                      ? Center(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
@@ -2044,24 +2038,25 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                               const SizedBox(width: 4),
                               const _ThinkingEllipsis(),
                             ],
-                          )
-                        : Scrollbar(
-                            thumbVisibility: false,
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              child: Text(
-                                text,
-                                textAlign: TextAlign.center,
-                                softWrap: true,
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  color: cs.onSurface,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.28,
-                                ),
+                          ),
+                        )
+                      : Scrollbar(
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Text(
+                              text,
+                              textAlign: TextAlign.center,
+                              softWrap: true,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: cs.onSurface,
+                                fontWeight: FontWeight.w800,
+                                height: 1.28,
                               ),
                             ),
                           ),
-                  ),
+                        ),
                 ),
               ),
               Positioned(
@@ -2680,6 +2675,8 @@ class _ChatBubbleCard extends StatelessWidget {
   final bool isUser;
   final int? maxBodyLines;
 
+  bool get _usesCompactBody => maxBodyLines != null;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -2763,39 +2760,74 @@ class _ChatBubbleCard extends StatelessWidget {
               const SizedBox(height: 8),
               if (suggestionParts.length > 1) ...[
                 if (introText != null && introText.isNotEmpty) ...[
-                  Text(
-                    introText,
-                    maxLines: maxBodyLines,
-                    overflow: maxBodyLines == null
-                        ? TextOverflow.visible
-                        : TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: cs.onSurface,
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w500,
-                      height: 1.42,
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: _usesCompactBody ? 84 : double.infinity,
+                    ),
+                    child: Scrollbar(
+                      thumbVisibility: _usesCompactBody,
+                      child: SingleChildScrollView(
+                        physics: _usesCompactBody
+                            ? const ClampingScrollPhysics()
+                            : const NeverScrollableScrollPhysics(),
+                        child: Text(
+                          introText,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: cs.onSurface,
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w500,
+                            height: 1.42,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
                 ],
-                ...suggestionParts.map(
-                  (part) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _SuggestionDetailCard(section: part),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: _usesCompactBody ? 170 : double.infinity,
+                  ),
+                  child: Scrollbar(
+                    thumbVisibility: _usesCompactBody,
+                    child: SingleChildScrollView(
+                      physics: _usesCompactBody
+                          ? const ClampingScrollPhysics()
+                          : const NeverScrollableScrollPhysics(),
+                      child: Column(
+                        children: [
+                          ...suggestionParts.map(
+                            (part) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _SuggestionDetailCard(section: part),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ] else
-                Text(
-                  message.text,
-                  maxLines: maxBodyLines,
-                  overflow: maxBodyLines == null
-                      ? TextOverflow.visible
-                      : TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: isUser ? cs.onPrimaryContainer : cs.onSurface,
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w500,
-                    height: 1.42,
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: _usesCompactBody ? 120 : double.infinity,
+                  ),
+                  child: Scrollbar(
+                    thumbVisibility: _usesCompactBody,
+                    child: SingleChildScrollView(
+                      physics: _usesCompactBody
+                          ? const ClampingScrollPhysics()
+                          : const NeverScrollableScrollPhysics(),
+                      child: Text(
+                        message.text,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: isUser ? cs.onPrimaryContainer : cs.onSurface,
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w500,
+                          height: 1.42,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
             ],

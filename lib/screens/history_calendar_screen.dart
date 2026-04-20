@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/eod_entry.dart';
-import 'package:lifelens/database/fitness_entry.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/moodlog_store.dart';
@@ -106,9 +105,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
 
     final moods = await AppServices.isar.getMoodEntriesForDate(dateKey);
     final symptoms = await AppServices.isar.getSymptomEntriesForDate(dateKey);
-    final fitnessEntries = await AppServices.isar.getRecentFitnessEntries(
-      days: 365,
-    );
     final eod = await AppServices.isar.getEodEntry(dateKey);
 
     final sleeps =
@@ -125,14 +121,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         })
         .toList(growable: false);
 
-    final fitness =
-        fitnessEntries
-            .where((entry) => entry.date == dateKey)
-            .toList(growable: false)
-          ..sort(
-            (a, b) => b.inferenceTimestamp.compareTo(a.inferenceTimestamp),
-          );
-
     if (!mounted) return;
     setState(() {
       _dayData = _HistoryDayData(
@@ -140,7 +128,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         moods: moods,
         sleeps: sleeps,
         symptoms: symptoms,
-        fitnessEntries: fitness,
         exercises: exercises,
         eod: eod,
       );
@@ -216,8 +203,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
           ),
         )
       else if (_dayData != null) ...[
-        _OverviewGrid(data: _dayData!),
-        const SizedBox(height: 16),
         _DetailSection(
           title: 'Mood',
           emptyLabel: 'No mood logs for this day.',
@@ -240,12 +225,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
           title: 'Exercise',
           emptyLabel: 'No exercise logs for this day.',
           children: _buildExerciseTiles(_dayData!.exercises),
-        ),
-        const SizedBox(height: 16),
-        _DetailSection(
-          title: 'Fitness',
-          emptyLabel: 'No fitness score for this day.',
-          children: _buildFitnessTiles(_dayData!.fitnessEntries),
         ),
         const SizedBox(height: 16),
         _DetailSection(
@@ -344,27 +323,13 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         .toList(growable: false);
   }
 
-  List<Widget> _buildFitnessTiles(List<FitnessEntry> fitnessEntries) {
-    return fitnessEntries
-        .map(
-          (entry) => _InfoTile(
-            title: '${entry.fitnessScore.toStringAsFixed(0)}/100 fitness score',
-            subtitle:
-                '${entry.sleepHours.toStringAsFixed(1)}h sleep  •  ${entry.activityIndex.toStringAsFixed(1)} activity',
-            body:
-                'Heart rate ${entry.heartRate.toStringAsFixed(0)}  •  Nutrition ${entry.nutritionQuality.toStringAsFixed(1)}',
-          ),
-        )
-        .toList(growable: false);
-  }
-
   List<Widget> _buildEodTiles(EodEntry? eod) {
     if (eod == null) return const <Widget>[];
     return [
       _InfoTile(
         title: eod.flagged ? 'Flagged day summary' : 'Daily summary',
         subtitle:
-            '${eod.fitnessScore.toStringAsFixed(0)}/100 fitness  •  ${eod.moodEntryCount} mood entr${eod.moodEntryCount == 1 ? 'y' : 'ies'}',
+            '${eod.moodEntryCount} mood entr${eod.moodEntryCount == 1 ? 'y' : 'ies'}',
         body: eod.summaryText.trim(),
       ),
     ];
@@ -377,7 +342,6 @@ class _HistoryDayData {
     required this.moods,
     required this.sleeps,
     required this.symptoms,
-    required this.fitnessEntries,
     required this.exercises,
     required this.eod,
   });
@@ -386,7 +350,6 @@ class _HistoryDayData {
   final List<MoodEntry> moods;
   final List<Sleep> sleeps;
   final List<SymptomEntry> symptoms;
-  final List<FitnessEntry> fitnessEntries;
   final List<Map<String, String>> exercises;
   final EodEntry? eod;
 }
@@ -414,14 +377,14 @@ class _CalendarCard extends StatelessWidget {
     final cs = theme.colorScheme;
     final days = _calendarDaysForMonth(visibleMonth);
     final today = _startOfDay(DateTime.now());
-    final cardPadding = compact ? 12.0 : 16.0;
+    final cardPadding = compact ? 10.0 : 16.0;
     final headerButtonConstraints = BoxConstraints.tightFor(
-      width: compact ? 36 : 44,
-      height: compact ? 36 : 44,
+      width: compact ? 32 : 44,
+      height: compact ? 32 : 44,
     );
-    final weekdayGap = compact ? 6.0 : 8.0;
-    final dayGridAspectRatio = compact ? 1.35 : 1.0;
-    final dayCornerRadius = compact ? 12.0 : 14.0;
+    final weekdayGap = compact ? 4.0 : 8.0;
+    final dayGridAspectRatio = compact ? 1.6 : 1.0;
+    final dayCornerRadius = compact ? 10.0 : 14.0;
 
     return Container(
       padding: EdgeInsets.all(cardPadding),
@@ -463,7 +426,7 @@ class _CalendarCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: compact ? 6 : 10),
+          SizedBox(height: compact ? 4 : 10),
           Row(
             children: const [
               _WeekLabel('Sun'),
@@ -519,7 +482,7 @@ class _CalendarCard extends StatelessWidget {
                     child: Text(
                       '${day.day}',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: compact ? 13 : null,
+                        fontSize: compact ? 12 : null,
                         fontWeight: isSelected || isToday
                             ? FontWeight.w800
                             : FontWeight.w600,
@@ -556,121 +519,6 @@ class _WeekLabel extends StatelessWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _OverviewGrid extends StatelessWidget {
-  const _OverviewGrid({required this.data});
-
-  final _HistoryDayData data;
-
-  @override
-  Widget build(BuildContext context) {
-    final fitness = data.fitnessEntries.isEmpty
-        ? null
-        : data.fitnessEntries.first.fitnessScore.toStringAsFixed(0);
-
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.8,
-      children: [
-        _OverviewTile(
-          icon: Icons.emoji_emotions_outlined,
-          label: 'Mood',
-          value: '${data.moods.length}',
-        ),
-        _OverviewTile(
-          icon: Icons.nightlight_round,
-          label: 'Sleep',
-          value: '${data.sleeps.length}',
-        ),
-        _OverviewTile(
-          icon: Icons.healing_outlined,
-          label: 'Symptoms',
-          value: '${data.symptoms.length}',
-        ),
-        _OverviewTile(
-          icon: Icons.fitness_center_outlined,
-          label: 'Exercise',
-          value: '${data.exercises.length}',
-        ),
-        _OverviewTile(
-          icon: Icons.monitor_heart_outlined,
-          label: 'Fitness',
-          value: fitness == null ? '—' : '$fitness/100',
-        ),
-        _OverviewTile(
-          icon: Icons.notes_rounded,
-          label: 'Summary',
-          value: data.eod == null ? '—' : 'Saved',
-        ),
-      ],
-    );
-  }
-}
-
-class _OverviewTile extends StatelessWidget {
-  const _OverviewTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 18, color: cs.onPrimaryContainer),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

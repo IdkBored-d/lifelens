@@ -469,6 +469,39 @@ def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str
     recent_logs = suggestion_input.recent_logs or []
     active_symptoms = suggestion_input.active_symptoms or []
     summary_context = (suggestion_input.summary_context or '').strip() or 'No summary context available.'
+    suggestion_window = (suggestion_input.suggestion_window or '').strip().lower()
+    trigger_reason = (suggestion_input.trigger_reason or '').strip() or 'regular refresh'
+    event_override = suggestion_input.event_override
+    window_label = suggestion_window or 'unspecified'
+    target_count = 1 if suggestion_window in {
+        'morning_anchor',
+        'midday_checkin',
+        'evening_reflection',
+        'event_override',
+        'log_update',
+    } else 3
+
+    window_instruction = {
+        'morning_anchor': (
+            'Morning anchor mode: return 1 primary suggestion grounded in overnight sleep and recent mood trend. '
+            'Keep it actionable for the next 2-4 hours.'
+        ),
+        'midday_checkin': (
+            'Midday check-in mode: return 1 suggestion only if new logs or strong state shifts are present in context. '
+            'If context change is weak, return a conservative continuation step instead of a brand-new plan.'
+        ),
+        'evening_reflection': (
+            'Evening reflection mode: return 1 wrap-up suggestion focused on review, wind-down, or tomorrow prep.'
+        ),
+        'event_override': (
+            'Event override mode: return 1 supportive high-priority suggestion for immediate stabilization. '
+            'Use calm language and the lowest-friction next step.'
+        ),
+        'log_update': (
+            'Log-update mode: return 1 updated suggestion that explicitly reflects the newest logged changes. '
+            'Do not repeat previous wording if context did not materially change.'
+        ),
+    }.get(suggestion_window, 'General mode: return up to 3 varied suggestions.')
 
     history_lines = []
     for item in suggestion_input.chat_history[-12:]:
@@ -481,7 +514,7 @@ def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str
 
     return f"""You are Mini-Me, a supportive wellness coach in the LifeLens app.
 
-Write 3 UNIQUE daily suggestions for this specific user based on ALL available context.
+Write {target_count} UNIQUE daily suggestion{'s' if target_count != 1 else ''} for this specific user based on ALL available context.
 
 Requirements:
 - Each suggestion must feel freshly written for this user's context.
@@ -494,6 +527,7 @@ Requirements:
 - Avoid medical claims or diagnosis.
 - Do not use markdown.
 - Return valid JSON only.
+{window_instruction}
 
 Return exactly this JSON shape:
 {{
@@ -505,6 +539,9 @@ Return exactly this JSON shape:
 }}
 
 Current context:
+- Delivery window: {window_label}
+- Trigger reason: {trigger_reason}
+- Event override active: {'yes' if event_override else 'no'}
 - Summary context (primary source): {summary_context}
 - Latest mood: {latest_mood}
 - Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
@@ -523,76 +560,7 @@ Mini-Me conversation history:
 def _build_suggestions_fallback(
     suggestion_input: MiniMeSuggestionsRequest,
 ) -> MiniMeSuggestionsResponse:
-    mood = (suggestion_input.latest_mood_label or 'neutral').lower()
-    summary_context = (suggestion_input.summary_context or '').lower()
-    recent_logs = [item.strip().lower() for item in suggestion_input.recent_logs if item.strip()]
-    active_symptoms = [item.strip() for item in suggestion_input.active_symptoms if item.strip()]
-
-    mood_log_count = sum(1 for item in recent_logs if 'mood log:' in item)
-    sleep_log_count = sum(1 for item in recent_logs if 'sleep log:' in item)
-    exercise_log_count = sum(1 for item in recent_logs if 'exercise log:' in item)
-    symptom_log_count = sum(1 for item in recent_logs if 'symptom log:' in item)
-    chat_log_count = sum(1 for item in recent_logs if 'mini-me chat:' in item)
-
-    symptoms = ''
-    for line in summary_context.split('\n'):
-        trimmed = line.strip()
-        if trimmed.lower().startswith('symptom summary:'):
-            symptoms = trimmed[len('Symptom summary:'):].strip()
-            break
-
-    if not symptoms and active_symptoms:
-        symptoms = ', '.join(active_symptoms[:4]).lower()
-
-    low_sleep_signal = any('under 7 hours' in item or ('sleep log:' in item and (' 5.' in item or ' 6.' in item)) for item in recent_logs)
-    high_strain_signal = any(token in item for item in recent_logs for token in ['overwhelm', 'anxious', 'stress', 'tired', 'fatigue'])
-
-    whole_picture = (
-        f"Across {len(recent_logs)} recent logs"
-        if recent_logs
-        else "Across your recent tracked history"
-    )
-    signal_mix = (
-        f"(mood {mood_log_count}, sleep {sleep_log_count}, exercise {exercise_log_count}, symptoms {symptom_log_count}, chat {chat_log_count})"
-        if recent_logs
-        else ""
-    )
-
-    suggestions = [
-        MiniMeSuggestionItem(
-            action=(
-                "Use a low-pressure plan today: one short movement block plus an earlier wind-down tonight."
-                if low_sleep_signal
-                else f"Keep today simple and repeat one small routine that supports your {mood} baseline."
-            ),
-            reason=(
-                f"{whole_picture} {signal_mix} the pattern suggests consistency will help more than a big push."
-            ).strip(),
-        ),
-        MiniMeSuggestionItem(
-            action=(
-                "When your stress or symptoms rise, switch to the easiest version of your next task for 20 minutes."
-                if high_strain_signal or symptoms
-                else "Notice what happens right before your next mood shift and log one short trigger detail."
-            ),
-            reason=(
-                "Cross-log patterns are easier to act on when you capture both trigger and response in the same window."
-            ),
-        ),
-        MiniMeSuggestionItem(
-            action=(
-                "After your next check-in, add one sentence on what drained you and one on what helped."
-                if not symptoms
-                else f"Work around your current symptoms ({symptoms}) with one low-effort reset and one clear stop-point today."
-            ),
-            reason="Using mood, symptom, and routine notes together makes the next Mini-Me suggestions more pattern-based and precise.",
-        ),
-    ]
-
-    return MiniMeSuggestionsResponse(
-        suggestions=suggestions,
-        source='fallback',
-    )
+    raise RuntimeError('Hardcoded Mini-Me suggestion fallback is disabled')
 
 
 def _build_exercise_recommendations_prompt(
@@ -862,8 +830,11 @@ async def minime_suggestions(
             source='gemini',
         )
     except Exception as e:
-        logger.warning(f"Mini-Me suggestions fallback used: {e}")
-        return _build_suggestions_fallback(suggestion_input)
+        logger.error(f"Mini-Me suggestions generation failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Mini-Me suggestions are temporarily unavailable.",
+        )
 
 
 @app.post(

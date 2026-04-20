@@ -196,7 +196,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
-        title: const Text('Symptoms'),
+        title: const Text('Symptoms Log'),
       ),
       body: SafeArea(
         child: GestureDetector(

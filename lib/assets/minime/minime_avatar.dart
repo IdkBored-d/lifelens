@@ -251,7 +251,7 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
   );
   late final AnimationController _hatchController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1150),
+    duration: const Duration(milliseconds: 1550),
   );
 
   _MiniMeReaction _reaction = _MiniMeReaction.none;
@@ -446,6 +446,17 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
               final hatchProgress = widget.isHatched
                   ? 1.0
                   : Curves.easeInOutCubic.transform(_hatchController.value);
+              final hatchCharge = ((hatchProgress - 0.08) / 0.44).clamp(
+                0.0,
+                1.0,
+              );
+              final hatchBurst = ((hatchProgress - 0.52) / 0.42).clamp(
+                0.0,
+                1.0,
+              );
+              final revealFlash = (1.0 -
+                      ((hatchProgress - 0.66).abs() / 0.18).clamp(0.0, 1.0))
+                  .clamp(0.0, 1.0);
               final eggOpacity = (1 - (hatchProgress * 1.5)).clamp(0.0, 1.0);
               final mascotOpacity = ((hatchProgress - 0.28) / 0.72).clamp(
                 0.0,
@@ -486,6 +497,19 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                       visualState: widget.visualState,
                     ),
                   ),
+                  if (!widget.isHatched || hatchBurst < 1)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: _HatchLevelUpFx(
+                          size: clampedSize,
+                          color: widget.glow ?? palette.primary,
+                          chargeProgress: hatchCharge,
+                          burstProgress: hatchBurst,
+                          flashProgress: revealFlash,
+                          pulseT: _idleController.value,
+                        ),
+                      ),
+                    ),
                   Positioned(
                     bottom: clampedSize * 0.1,
                     child: Transform.scale(
@@ -939,6 +963,135 @@ class _EggCrackPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _EggCrackPainter oldDelegate) {
     return oldDelegate.color != color || oldDelegate.progress != progress;
+  }
+}
+
+class _HatchLevelUpFx extends StatelessWidget {
+  const _HatchLevelUpFx({
+    required this.size,
+    required this.color,
+    required this.chargeProgress,
+    required this.burstProgress,
+    required this.flashProgress,
+    required this.pulseT,
+  });
+
+  final double size;
+  final Color color;
+  final double chargeProgress;
+  final double burstProgress;
+  final double flashProgress;
+  final double pulseT;
+
+  @override
+  Widget build(BuildContext context) {
+    final pulse = (math.sin(pulseT * math.pi * 2) * 0.5 + 0.5).clamp(0.0, 1.0);
+    final glowSize = size * (0.44 + chargeProgress * 0.34 + pulse * 0.02);
+    final coreOpacity = (0.16 + chargeProgress * 0.22 + flashProgress * 0.18)
+        .clamp(0.0, 0.7)
+        .toDouble();
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: glowSize,
+          height: glowSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                color.withValues(alpha: coreOpacity),
+                color.withValues(alpha: 0.02),
+              ],
+            ),
+          ),
+        ),
+        CustomPaint(
+          size: Size(size, size),
+          painter: _HatchLevelUpPainter(
+            color: color,
+            chargeProgress: chargeProgress,
+            burstProgress: burstProgress,
+            flashProgress: flashProgress,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HatchLevelUpPainter extends CustomPainter {
+  const _HatchLevelUpPainter({
+    required this.color,
+    required this.chargeProgress,
+    required this.burstProgress,
+    required this.flashProgress,
+  });
+
+  final Color color;
+  final double chargeProgress;
+  final double burstProgress;
+  final double flashProgress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final baseRadius = size.shortestSide * 0.22;
+
+    final ring1 = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.6
+      ..color = color.withValues(alpha: (0.06 + chargeProgress * 0.2).clamp(0.0, 0.35));
+    final ring2 = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..color = color.withValues(alpha: (0.04 + burstProgress * 0.34).clamp(0.0, 0.45));
+
+    canvas.drawCircle(center, baseRadius + chargeProgress * size.shortestSide * 0.06, ring1);
+    if (burstProgress > 0) {
+      canvas.drawCircle(
+        center,
+        baseRadius + size.shortestSide * (0.07 + burstProgress * 0.22),
+        ring2,
+      );
+    }
+
+    final particleCount = 14;
+    for (var i = 0; i < particleCount; i++) {
+      final t = i / particleCount;
+      final angle = t * math.pi * 2 + burstProgress * 1.6;
+      final spread = size.shortestSide * (0.12 + burstProgress * 0.32);
+      final offset = Offset(math.cos(angle) * spread, math.sin(angle) * spread);
+      final particleRadius = (size.shortestSide * 0.008 + burstProgress * 1.8)
+          .clamp(1.0, 3.4)
+          .toDouble();
+      final alpha = (0.08 + burstProgress * 0.45 - t * 0.06).clamp(0.0, 0.48);
+      canvas.drawCircle(
+        center + offset,
+        particleRadius,
+        Paint()..color = color.withValues(alpha: alpha),
+      );
+    }
+
+    if (flashProgress > 0) {
+      final flashPaint = Paint()
+        ..color = Colors.white.withValues(alpha: (flashProgress * 0.28).clamp(0.0, 0.28))
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+        center,
+        size.shortestSide * (0.12 + flashProgress * 0.24),
+        flashPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HatchLevelUpPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.chargeProgress != chargeProgress ||
+        oldDelegate.burstProgress != burstProgress ||
+        oldDelegate.flashProgress != flashProgress;
   }
 }
 
@@ -2291,17 +2444,6 @@ MiniMeFacePalette _resolvePalette(
 }
 
 String _resolveExpression(String? moodLabel, String? animationState) {
-  switch ((animationState ?? '').trim().toLowerCase()) {
-    case 'alert_pulse':
-      return 'angry';
-    case 'recover_rise':
-      return 'happy';
-    case 'decline_fade':
-      return 'sad';
-    case 'steady_idle':
-      return 'calm';
-  }
-
   switch ((moodLabel ?? '').trim().toLowerCase()) {
     case 'affectionate':
     case 'love':
@@ -2329,6 +2471,18 @@ String _resolveExpression(String? moodLabel, String? animationState) {
     case 'anger':
     case 'frustrated':
       return 'angry';
+  }
+
+  // Only fall back to animation hints when no explicit mood can be resolved.
+  switch ((animationState ?? '').trim().toLowerCase()) {
+    case 'alert_pulse':
+      return 'angry';
+    case 'recover_rise':
+      return 'happy';
+    case 'decline_fade':
+      return 'sad';
+    case 'steady_idle':
+      return 'calm';
     default:
       return 'neutral';
   }

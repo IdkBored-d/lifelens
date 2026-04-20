@@ -84,9 +84,11 @@ class HealthService {
     await _health.configure();
 
     if (resolvedSource == HealthImportSource.androidHealth) {
-      final available = await _health.isHealthConnectAvailable();
+      final available = await _ensureAndroidHealthConnectAvailable();
       if (!available) {
-        throw Exception('Android Health is not available on this device yet.');
+        throw Exception(
+          'Android Health Connect is not available. Install or update Health Connect and try again.',
+        );
       }
     }
 
@@ -110,7 +112,9 @@ class HealthService {
         .timeout(_authorizationTimeout);
 
     if (!granted) {
-      throw Exception('Permission is needed to import data.');
+      throw Exception(
+        'Permission was not granted. Allow health permissions to import your data.',
+      );
     }
 
     final now = DateTime.now();
@@ -177,6 +181,24 @@ class HealthService {
     }
 
     return snapshot;
+  }
+
+  Future<bool> _ensureAndroidHealthConnectAvailable() async {
+    final available = await _health.isHealthConnectAvailable();
+    if (available) {
+      return true;
+    }
+
+    // Attempt to open install/update flow when supported by the plugin.
+    try {
+      final dynamic healthDynamic = _health;
+      await healthDynamic.installHealthConnect();
+    } catch (_) {
+      // Keep fallback behavior below.
+    }
+
+    final afterAttempt = await _health.isHealthConnectAvailable();
+    return afterAttempt;
   }
 
   HealthImportSource _defaultSourceForPlatform() {

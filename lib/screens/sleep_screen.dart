@@ -38,8 +38,6 @@ class _SleepScreenState extends State<SleepScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
     final canPop = Navigator.canPop(context);
     final sleepSelection = context.select<SleepStore, _SleepScreenSelection>(
       (sleepStore) => _SleepScreenSelection.fromItems(sleepStore.items),
@@ -48,13 +46,7 @@ class _SleepScreenState extends State<SleepScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
-        title: Text(
-          'Sleep Tracking',
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: cs.onSurface,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        title: const Text('Sleep Log'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),

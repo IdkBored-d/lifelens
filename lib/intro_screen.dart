@@ -46,6 +46,15 @@ class _IntroScreenState extends State<IntroScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AvatarStore>().resetHatchState();
+    });
+  }
+
+  @override
   void dispose() {
     _pageController.dispose();
     _weightController.dispose();
@@ -193,17 +202,35 @@ class _IntroScreenState extends State<IntroScreen> {
         _importedHealthSnapshot = snapshot;
         _healthImportMessage = 'Imported data from ${snapshot.source}.';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Imported health data from ${snapshot.source}.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } on TimeoutException {
       if (!mounted) return;
       setState(() {
         _healthImportMessage =
             '${source.label} took too long to respond. Please return to LifeLens and try again.';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_healthImportMessage!),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _healthImportMessage = e.toString().replaceFirst('Exception: ', '');
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_healthImportMessage!),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _importingHealth = false);
@@ -441,6 +468,8 @@ class _IntroScreenState extends State<IntroScreen> {
                           importedSource: _importedHealthSnapshot?.source,
                           selectedHealthImportSource:
                               _selectedHealthImportSource,
+                            availableHealthImportSources:
+                              _availableHealthImportSources(),
                           onImportHealth: _importHealthInformation,
                         ),
                         _ReviewStep(
@@ -486,6 +515,21 @@ class _IntroScreenState extends State<IntroScreen> {
       ),
     );
   }
+
+  List<HealthImportSource> _availableHealthImportSources() {
+    if (kIsWeb) return const <HealthImportSource>[];
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return const [HealthImportSource.appleHealth];
+      case TargetPlatform.android:
+        return const [HealthImportSource.androidHealth];
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        return const <HealthImportSource>[];
+    }
+  }
 }
 
 class _OnboardingMiniMeBaseline {
@@ -504,17 +548,8 @@ class _OnboardingMiniMeBaseline {
     required double sleepHours,
     required String workoutFrequency,
   }) {
-    // Seed onboarding body shape from BMI (height-aware), with a slight weight
-    // nudge so high-weight inputs still read visually as heavier.
-    final bmiFactor = (1.0 + (bmi - 24.0) * 0.017).clamp(0.86, 1.2).toDouble();
-    final weightNudge = ((weightKg - 72.0) / 85.0 * 0.04).clamp(-0.04, 0.05);
-    final bodyFactor = (bmiFactor + weightNudge).clamp(0.88, 1.16).toDouble();
-    final adjustedBodyWidthScale = (baseBodyWidthScale * bodyFactor)
-        .clamp(0.78, 1.28)
-        .toDouble();
-    final autoBodyWidthScale = (adjustedBodyWidthScale / baseBodyWidthScale)
-        .clamp(0.82, 1.22)
-        .toDouble();
+    // Seed onboarding body shape from BMI (height-aware), weight, and
+    // activity context so initial Mini-Me reflects entered metrics.
     final workoutLevel = switch (workoutFrequency) {
       'Daily' => 1.0,
       '5-6 times per week' => 0.82,
@@ -523,6 +558,33 @@ class _OnboardingMiniMeBaseline {
       'Rarely or never' => 0.14,
       _ => 0.24,
     };
+
+    final bmiFactor = (1.0 + (bmi - 23.0) * 0.021).clamp(0.84, 1.25).toDouble();
+    final weightNudge = ((weightKg - 72.0) / 80.0 * 0.06).clamp(-0.05, 0.08);
+
+    // Additional boosts for clearly higher BMI bands, amplified when activity
+    // is low so onboarding visuals align with sedentary + overweight input.
+    final bmiBandBoost = switch (bmi) {
+      >= 40.0 => 0.11,
+      >= 35.0 => 0.085,
+      >= 30.0 => 0.06,
+      >= 27.0 => 0.035,
+      _ => 0.0,
+    };
+    final inactivityBoost = ((1.0 - workoutLevel) * 0.06).clamp(0.0, 0.06);
+
+    final bodyFactor =
+        (bmiFactor + weightNudge + bmiBandBoost + inactivityBoost)
+            .clamp(0.86, 1.22)
+            .toDouble();
+
+    final adjustedBodyWidthScale = (baseBodyWidthScale * bodyFactor)
+        .clamp(0.78, 1.28)
+        .toDouble();
+    final autoBodyWidthScale = (adjustedBodyWidthScale / baseBodyWidthScale)
+        .clamp(0.82, 1.22)
+        .toDouble();
+
     final sleepPenalty = switch (sleepHours) {
       >= 8.0 => 0.02,
       >= 7.0 => 0.07,
@@ -582,6 +644,7 @@ class _HealthFormStep extends StatelessWidget {
     required this.healthImportMessage,
     required this.importedSource,
     required this.selectedHealthImportSource,
+    required this.availableHealthImportSources,
     required this.onImportHealth,
   });
 
@@ -603,6 +666,7 @@ class _HealthFormStep extends StatelessWidget {
   final String? healthImportMessage;
   final String? importedSource;
   final HealthImportSource? selectedHealthImportSource;
+  final List<HealthImportSource> availableHealthImportSources;
   final Future<void> Function(HealthImportSource source) onImportHealth;
 
   @override
@@ -650,25 +714,30 @@ class _HealthFormStep extends StatelessWidget {
                             ),
                           ),
                           PopupMenuButton<HealthImportSource>(
-                            enabled: !isImportingHealth,
+                            enabled:
+                                !isImportingHealth &&
+                                availableHealthImportSources.isNotEmpty,
                             onSelected: onImportHealth,
-                            itemBuilder: (context) => const [
-                              PopupMenuItem(
-                                value: HealthImportSource.appleHealth,
-                                child: Text('Apple Health'),
-                              ),
-                              PopupMenuItem(
-                                value: HealthImportSource.androidHealth,
-                                child: Text('Android Health'),
-                              ),
-                            ],
+                            itemBuilder: (context) =>
+                                availableHealthImportSources
+                                    .map(
+                                      (source) => PopupMenuItem(
+                                        value: source,
+                                        child: Text(source.label),
+                                      ),
+                                    )
+                                    .toList(growable: false),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
                                 vertical: 8,
                               ),
                               child: Text(
-                                isImportingHealth ? 'Importing...' : 'Import',
+                                isImportingHealth
+                                    ? 'Importing...'
+                                    : availableHealthImportSources.isEmpty
+                                    ? 'Unavailable'
+                                    : 'Import',
                                 style: Theme.of(context).textTheme.labelLarge
                                     ?.copyWith(
                                       color: Theme.of(

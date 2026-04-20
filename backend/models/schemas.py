@@ -24,6 +24,14 @@ CANONICAL_MOOD_LABELS = {
     'surprise',
 }
 
+SUGGESTION_WINDOWS = {
+    'morning_anchor',
+    'midday_checkin',
+    'evening_reflection',
+    'event_override',
+    'log_update',
+}
+
 
 def _normalize_canonical_mood_label(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -232,6 +240,9 @@ class MiniMeSuggestionsRequest(BaseModel):
     recent_logs: List[str] = Field(default_factory=list, max_items=28)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
+    suggestion_window: Optional[str] = Field(None, max_length=60)
+    trigger_reason: Optional[str] = Field(None, max_length=240)
+    event_override: bool = False
     user_id_hash: Optional[str] = Field(None, max_length=128)
 
     @validator('recent_moods', each_item=True)
@@ -256,6 +267,22 @@ class MiniMeSuggestionsRequest(BaseModel):
     @validator('active_symptoms', each_item=True)
     def validate_suggestion_active_symptom_item(cls, v):
         return v.strip()
+
+    @validator('suggestion_window')
+    def validate_suggestion_window(cls, v):
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if not normalized:
+            return None
+        if normalized not in SUGGESTION_WINDOWS:
+            allowed = ', '.join(sorted(SUGGESTION_WINDOWS))
+            raise ValueError(f"suggestion_window must be one of: {allowed}")
+        return normalized
+
+    @validator('trigger_reason')
+    def validate_trigger_reason(cls, v):
+        return v.strip() if v is not None else None
 
 
 class MiniMeSuggestionsResponse(BaseModel):

@@ -206,7 +206,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       backgroundColor: cs.surface,
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
-        title: const Text('Exercise'),
+        title: const Text('Exercise Log'),
       ),
       body: SafeArea(
         child: RefreshIndicator(

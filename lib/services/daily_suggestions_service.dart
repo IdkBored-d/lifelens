@@ -5,7 +5,6 @@ import 'package:lifelens/database/fitness_entry.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/exercise_store.dart';
-import 'package:lifelens/services/mini_me_suggestion_aggregator.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/sleep_store.dart';
 
@@ -73,6 +72,9 @@ class DailySuggestionsService {
   Future<DailySuggestionsSnapshot> buildSnapshot({
     required MoodLogStore moodStore,
     required SleepStore sleepStore,
+    String? suggestionWindow,
+    String? triggerReason,
+    bool eventOverride = false,
   }) async {
     await AppServices.isar.init();
 
@@ -142,22 +144,9 @@ class DailySuggestionsService {
     }
 
     if (!requiredLogStatus.hasAllRequiredLogsToday) {
-      final missingAction =
-          'Log your ${_joinLogLabels(requiredLogStatus.missingRequiredLogs)} as well.';
       return DailySuggestionsSnapshot(
         generatedAt: DateTime.now(),
-        suggestions: [
-          DailySuggestion(
-            title: 'Finish Today\'s Logging',
-            reason:
-                'You already started logging today, but mood, sleep, and exercise should all be logged for a complete daily picture.',
-            action: missingAction,
-            icon: Icons.playlist_add_check_circle_outlined,
-            category: 'Logging',
-            priority: 120,
-            sourceSignals: const ['required daily logs'],
-          ),
-        ],
+        suggestions: const <DailySuggestion>[],
         summary: _buildSummary(
           latestMoodLabel: latestMood?.moodLabel ?? 'No recent mood',
           latestSleepHours: latestSleep == null
@@ -188,20 +177,12 @@ class DailySuggestionsService {
       backendHistory: backendHistory,
       recentChatMessages: recentChatMessages,
       todayExerciseCount: todayExerciseCount,
+      suggestionWindow: suggestionWindow,
+      triggerReason: triggerReason,
+      eventOverride: eventOverride,
     );
 
-    final suggestions = holisticSuggestions.isEmpty
-        ? await _fallbackSuggestions(
-            moodStore: moodStore,
-            sleepStore: sleepStore,
-            activeSymptoms: activeSymptoms,
-            recentFitness: recentFitness,
-            recentEod: recentEod,
-            exerciseStore: exerciseStore,
-            recentChatMessages: recentChatMessages,
-            todayExerciseCount: todayExerciseCount,
-          )
-        : holisticSuggestions;
+    final suggestions = holisticSuggestions;
 
     final visibleSuggestions = suggestions
         .where((item) => item.action.trim().isNotEmpty)
@@ -210,19 +191,7 @@ class DailySuggestionsService {
 
     return DailySuggestionsSnapshot(
       generatedAt: DateTime.now(),
-      suggestions: visibleSuggestions.isEmpty
-          ? [
-              _buildGuaranteedFallbackSuggestion(
-                latestMoodLabel: latestMood?.moodLabel ?? '',
-                latestSleepHours: latestSleep == null
-                    ? null
-                    : latestSleep.duration.inMinutes / 60.0,
-                activeSymptoms: _flattenSymptoms(activeSymptoms),
-                latestFitnessScore: latestFitness?.fitnessScore,
-                todayExerciseCount: todayExerciseCount,
-              ),
-            ]
-          : visibleSuggestions,
+      suggestions: visibleSuggestions,
       summary: _buildSummary(
         latestMoodLabel: latestMood?.moodLabel ?? 'No recent mood',
         latestSleepHours: latestSleep == null
@@ -271,17 +240,6 @@ class DailySuggestionsService {
     );
   }
 
-  String _joinLogLabels(List<String> labels) {
-    if (labels.length == 1) {
-      return labels.first;
-    }
-    if (labels.length == 2) {
-      return '${labels[0]} and ${labels[1]}';
-    }
-    final head = labels.sublist(0, labels.length - 1).join(', ');
-    return '$head, and ${labels.last}';
-  }
-
   Future<List<DailySuggestion>> _generateHolisticSuggestions({
     required MoodLogStore moodStore,
     required SleepStore sleepStore,
@@ -293,6 +251,9 @@ class DailySuggestionsService {
     required List<MiniMeChatTurn> backendHistory,
     required List<String> recentChatMessages,
     required int todayExerciseCount,
+    String? suggestionWindow,
+    String? triggerReason,
+    bool eventOverride = false,
   }) async {
     final summaryContext = await _buildHolisticSummaryContext(
       moodStore: moodStore,
@@ -304,6 +265,9 @@ class DailySuggestionsService {
       exerciseStore: exerciseStore,
       recentChatMessages: recentChatMessages,
       todayExerciseCount: todayExerciseCount,
+      suggestionWindow: suggestionWindow,
+      triggerReason: triggerReason,
+      eventOverride: eventOverride,
     );
 
     final latestMood = moodStore.items.isEmpty ? null : moodStore.items.first;
@@ -351,160 +315,10 @@ class DailySuggestionsService {
         return suggestions;
       }
     } catch (_) {
-      // Fall through to intelligence path and then local fallback.
-    }
-
-    try {
-      final intelligence = await MiniMeBackendService.instance
-          .analyzeIntelligence(
-            sleep: _sleepSeries(sleepStore.items),
-            mood: _moodSeries(moodStore.items),
-            exercise: _exerciseSeries(exerciseStore),
-            symptomCount: _symptomCountSeries(recentSymptoms),
-          );
-
-      final combined = <DailySuggestion>[];
-      for (var i = 0; i < intelligence.selectedActions.length; i++) {
-        final action = intelligence.selectedActions[i].trim();
-        if (action.isEmpty) continue;
-        final reason = i < intelligence.insights.length
-            ? intelligence.insights[i].trim()
-            : intelligence.message.trim();
-        combined.add(
-          DailySuggestion(
-            title: _titleFromAction(action),
-            action: action,
-            reason: reason,
-            icon: _iconForAction(action),
-            category: _categoryForSuggestion(action, reason),
-            priority: 90 - i,
-            sourceSignals: const ['pattern analysis'],
-          ),
-        );
-      }
-
-      if (combined.isNotEmpty) {
-        return combined;
-      }
-    } catch (_) {
-      // Fall through to fallback.
+      // Suggestions stay empty when backend generation is unavailable.
     }
 
     return const [];
-  }
-
-  Future<List<DailySuggestion>> _fallbackSuggestions({
-    required MoodLogStore moodStore,
-    required SleepStore sleepStore,
-    required List<SymptomEntry> activeSymptoms,
-    required List<FitnessEntry> recentFitness,
-    required List<EodEntry> recentEod,
-    required ExerciseStore exerciseStore,
-    required List<String> recentChatMessages,
-    required int todayExerciseCount,
-  }) async {
-    final aggregated =
-        await MiniMeSuggestionAggregator.generateDailySuggestions(days: 14);
-    if (aggregated.isNotEmpty) {
-      return aggregated
-          .map(
-            (item) => DailySuggestion(
-              title: item.title.trim().isEmpty
-                  ? _titleFromAction(item.action)
-                  : item.title,
-              action: item.action,
-              reason: item.reason,
-              icon: _iconForAction(item.action),
-              category: _categoryForSuggestion(item.action, item.reason),
-              priority: 70,
-              sourceSignals: const ['combined recent history'],
-            ),
-          )
-          .toList(growable: false);
-    }
-
-    final latestMood = moodStore.items.isEmpty ? null : moodStore.items.first;
-    final latestSleep = sleepStore.items.isEmpty
-        ? null
-        : sleepStore.items.first;
-    final latestFitness = recentFitness.isEmpty ? null : recentFitness.first;
-    final latestSummary = recentEod.isEmpty ? null : recentEod.first;
-    final latestChat = recentChatMessages.isEmpty
-        ? ''
-        : recentChatMessages.last;
-    final activeSymptomLabels = _flattenSymptoms(activeSymptoms);
-
-    final action = _buildHolisticFallbackAction(
-      latestMoodLabel: latestMood?.moodLabel ?? '',
-      latestSleepHours: latestSleep == null
-          ? null
-          : latestSleep.duration.inMinutes / 60.0,
-      latestFitnessScore: latestFitness?.fitnessScore,
-      todayExerciseCount: todayExerciseCount,
-      activeSymptoms: activeSymptomLabels,
-      latestChat: latestChat,
-      latestSummary: latestSummary?.summaryText ?? '',
-    );
-
-    final reason = _buildHolisticFallbackReason(
-      latestMoodLabel: latestMood?.moodLabel ?? '',
-      latestSleepHours: latestSleep == null
-          ? null
-          : latestSleep.duration.inMinutes / 60.0,
-      latestFitnessScore: latestFitness?.fitnessScore,
-      todayExerciseCount: todayExerciseCount,
-      activeSymptoms: activeSymptomLabels,
-      latestSummary: latestSummary?.summaryText ?? '',
-    );
-
-    return [
-      DailySuggestion(
-        title: _titleFromAction(action),
-        action: action,
-        reason: reason,
-        icon: _iconForAction(action),
-        category: _categoryForSuggestion(action, reason),
-        priority: 60,
-        sourceSignals: const ['recent whole-picture context'],
-      ),
-    ];
-  }
-
-  DailySuggestion _buildGuaranteedFallbackSuggestion({
-    required String latestMoodLabel,
-    required double? latestSleepHours,
-    required List<String> activeSymptoms,
-    required double? latestFitnessScore,
-    required int todayExerciseCount,
-  }) {
-    final action = _buildHolisticFallbackAction(
-      latestMoodLabel: latestMoodLabel,
-      latestSleepHours: latestSleepHours,
-      latestFitnessScore: latestFitnessScore,
-      todayExerciseCount: todayExerciseCount,
-      activeSymptoms: activeSymptoms,
-      latestChat: '',
-      latestSummary: '',
-    );
-
-    final reason = _buildHolisticFallbackReason(
-      latestMoodLabel: latestMoodLabel,
-      latestSleepHours: latestSleepHours,
-      latestFitnessScore: latestFitnessScore,
-      todayExerciseCount: todayExerciseCount,
-      activeSymptoms: activeSymptoms,
-      latestSummary: '',
-    );
-
-    return DailySuggestion(
-      title: _titleFromAction(action),
-      action: action,
-      reason: reason,
-      icon: _iconForAction(action),
-      category: _categoryForSuggestion(action, reason),
-      priority: 1,
-      sourceSignals: const ['guaranteed fallback'],
-    );
   }
 
   Future<String> _buildHolisticSummaryContext({
@@ -517,6 +331,9 @@ class DailySuggestionsService {
     required ExerciseStore exerciseStore,
     required List<String> recentChatMessages,
     required int todayExerciseCount,
+    String? suggestionWindow,
+    String? triggerReason,
+    bool eventOverride = false,
   }) async {
     final moodSummary = _buildMoodContext(moodStore.items);
     final sleepSummary = _buildSleepContext(sleepStore.items);
@@ -541,6 +358,14 @@ class DailySuggestionsService {
         : 'Recent Mini-Me chat themes: ${recentChatMessages.take(4).map(_trimShort).join(' | ')}';
     final backendGuidance =
         'Use all available logs together to find cross-category patterns, likely triggers, repeated combinations, and small next steps that fit the user\'s real energy.';
+    final deliveryGuidance = [
+      if ((suggestionWindow ?? '').trim().isNotEmpty)
+        'Suggestion delivery window: ${suggestionWindow!.trim()}.',
+      if ((triggerReason ?? '').trim().isNotEmpty)
+        'Suggestion trigger reason: ${triggerReason!.trim()}.',
+      if (eventOverride)
+        'Event override is active: prioritize a supportive, immediate, low-friction action.',
+    ].join(' ');
 
     return [
       moodSummary,
@@ -552,6 +377,7 @@ class DailySuggestionsService {
       crossSignalSummary,
       chatSummary,
       backendGuidance,
+      deliveryGuidance,
     ].where((part) => part.trim().isNotEmpty).join('\n\n');
   }
 
@@ -895,44 +721,6 @@ class DailySuggestionsService {
     return values.toList(growable: false);
   }
 
-  List<int> _sleepSeries(List<Sleep> sleepLogs) {
-    return sleepLogs
-        .take(7)
-        .map((item) => (item.duration.inMinutes / 60.0).round().clamp(0, 12))
-        .toList(growable: false)
-        .reversed
-        .toList(growable: false);
-  }
-
-  List<int> _moodSeries(List<MoodCheckIn> moodLogs) {
-    return moodLogs
-        .take(7)
-        .map((item) => _moodScoreForLabel(item.moodLabel))
-        .toList(growable: false)
-        .reversed
-        .toList(growable: false);
-  }
-
-  List<int> _exerciseSeries(ExerciseStore exerciseStore) {
-    return exerciseStore
-        .getRecentExerciseActivity(days: 7)
-        .reversed
-        .toList(growable: false);
-  }
-
-  List<int> _symptomCountSeries(List<SymptomEntry> recentSymptoms) {
-    final now = DateTime.now();
-    final counts = <int>[];
-    for (var offset = 6; offset >= 0; offset--) {
-      final day = DateTime(now.year, now.month, now.day - offset);
-      final count = recentSymptoms
-          .where((entry) => _isSameDay(entry.timestamp, day))
-          .length;
-      counts.add(count);
-    }
-    return counts;
-  }
-
   int _todayExerciseCount(ExerciseStore exerciseStore) {
     final history = exerciseStore.getRecentExerciseHistory(limit: 40);
     final today = DateTime.now();
@@ -970,75 +758,6 @@ class DailySuggestionsService {
       default:
         return 3;
     }
-  }
-
-  String _buildHolisticFallbackAction({
-    required String latestMoodLabel,
-    required double? latestSleepHours,
-    required double? latestFitnessScore,
-    required int todayExerciseCount,
-    required List<String> activeSymptoms,
-    required String latestChat,
-    required String latestSummary,
-  }) {
-    final summary = latestSummary.toLowerCase();
-    final mood = latestMoodLabel.toLowerCase();
-
-    if (activeSymptoms.isNotEmpty && (latestSleepHours ?? 7) < 7) {
-      return 'Because your recent logs point to both symptoms and low recovery, keep today lighter than usual and protect your rest tonight.';
-    }
-    if ((latestFitnessScore ?? 60) < 55 && todayExerciseCount == 0) {
-      return 'Your recent pattern suggests lower reserve, so focus on essentials first and choose only one realistic health-support action for today.';
-    }
-    if (mood.contains('sad') ||
-        mood.contains('scared') ||
-        mood.contains('angry')) {
-      return 'Your recent logs suggest more strain than steadiness, so make today smaller, reduce pressure where you can, and pick one calming action that is easy to follow through on.';
-    }
-    if (latestSleepHours != null && latestSleepHours < 6.5) {
-      return 'Your logs point to sleep as an important pressure point right now, so shape the day around your energy and make tonight easier to wind down into.';
-    }
-    if (latestChat.trim().isNotEmpty) {
-      return 'There is enough recent context across your logs and chat to avoid starting from scratch, so pick up the last helpful direction and take the smallest version of it today.';
-    }
-    if (summary.isNotEmpty) {
-      return 'Your recent summaries suggest there is a pattern worth responding to, so repeat the small routine that has been helping most and keep the rest of the day simple.';
-    }
-    return 'Your recent logs suggest that consistency matters more than intensity right now, so choose one small action you can actually repeat today.';
-  }
-
-  String _buildHolisticFallbackReason({
-    required String latestMoodLabel,
-    required double? latestSleepHours,
-    required double? latestFitnessScore,
-    required int todayExerciseCount,
-    required List<String> activeSymptoms,
-    required String latestSummary,
-  }) {
-    final pieces = <String>[];
-    if (latestMoodLabel.trim().isNotEmpty) {
-      pieces.add('latest mood $latestMoodLabel');
-    }
-    if (latestSleepHours != null) {
-      pieces.add('sleep ${latestSleepHours.toStringAsFixed(1)}h');
-    }
-    if (latestFitnessScore != null) {
-      pieces.add('fitness ${latestFitnessScore.toStringAsFixed(0)}/100');
-    }
-    if (todayExerciseCount > 0) {
-      pieces.add(
-        '$todayExerciseCount exercise session${todayExerciseCount == 1 ? '' : 's'} today',
-      );
-    }
-    if (activeSymptoms.isNotEmpty) {
-      pieces.add('active symptoms ${activeSymptoms.join(', ')}');
-    }
-    if (pieces.isEmpty) {
-      return latestSummary.trim().isEmpty
-          ? 'This suggestion uses the full set of recent logs that are currently available.'
-          : _trimShort(latestSummary);
-    }
-    return 'This draws on your combined recent picture: ${pieces.join(' • ')}.';
   }
 
   String _buildSummary({

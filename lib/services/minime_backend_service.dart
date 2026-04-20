@@ -607,6 +607,9 @@ class MiniMeBackendService {
     required List<String> activeSymptoms,
     required List<MiniMeChatTurn> history,
     String? summaryContext,
+    String? suggestionWindow,
+    String? triggerReason,
+    bool eventOverride = false,
   }) async {
     final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
     final canonicalMoodLabel = _resolveLatestCanonicalMood(
@@ -641,6 +644,13 @@ class MiniMeBackendService {
     if (sanitizedSummaryContext != null && sanitizedSummaryContext.isNotEmpty) {
       payload['summary_context'] = sanitizedSummaryContext;
     }
+    if (suggestionWindow != null && suggestionWindow.trim().isNotEmpty) {
+      payload['suggestion_window'] = suggestionWindow.trim();
+    }
+    if (triggerReason != null && triggerReason.trim().isNotEmpty) {
+      payload['trigger_reason'] = _truncateText(triggerReason, 240);
+    }
+    payload['event_override'] = eventOverride;
 
     Object? lastError;
     for (final baseUrl in _prioritizedBaseUrls()) {

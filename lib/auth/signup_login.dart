@@ -639,7 +639,7 @@ class _IdentityCard extends StatelessWidget {
                   child: _AuthField(
                     controller: firstNameController,
                     label: 'First name',
-                    hint: 'Alex',
+                    hint: 'First name',
                     icon: Icons.badge_outlined,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.givenName],
@@ -657,7 +657,7 @@ class _IdentityCard extends StatelessWidget {
                   child: _AuthField(
                     controller: lastNameController,
                     label: 'Last name',
-                    hint: 'Brown',
+                    hint: 'Last name',
                     icon: Icons.badge_outlined,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.familyName],
