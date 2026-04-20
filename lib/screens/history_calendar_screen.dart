@@ -207,12 +207,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
       ),
       const SizedBox(height: 16),
       if (!widget.showDetails)
-        Text(
-          'Choose a day to view that day\'s logs.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        )
+        const SizedBox.shrink()
       else if (_isLoading)
         const Center(
           child: Padding(

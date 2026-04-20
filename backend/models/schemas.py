@@ -229,7 +229,7 @@ class MiniMeSuggestionsRequest(BaseModel):
     latest_mood_notes: Optional[str] = Field(None, max_length=1000)
     summary_context: Optional[str] = Field(None, max_length=8000)
     recent_moods: List[str] = Field(default_factory=list, max_items=10)
-    recent_logs: List[str] = Field(default_factory=list, max_items=12)
+    recent_logs: List[str] = Field(default_factory=list, max_items=28)
     active_symptoms: List[str] = Field(default_factory=list, max_items=20)
     chat_history: List[MiniMeChatHistoryItem] = Field(default_factory=list, max_items=20)
     user_id_hash: Optional[str] = Field(None, max_length=128)

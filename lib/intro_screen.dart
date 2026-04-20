@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:lifelens/app_services.dart';
+import 'package:lifelens/avatar_store.dart';
 import 'package:lifelens/database/fitness_entry.dart';
 import 'package:lifelens/onboarding_screen.dart';
 import 'package:lifelens/services/health_service.dart';
+import 'package:provider/provider.dart';
 
 class IntroScreen extends StatefulWidget {
   const IntroScreen({super.key});
@@ -87,6 +89,7 @@ class _IntroScreenState extends State<IntroScreen> {
     final height = double.tryParse(_heightController.text.trim());
     final sleepHours = double.tryParse(_sleepController.text.trim());
     final workoutInfo = _selectedWorkoutFrequency;
+    final avatarStore = context.read<AvatarStore>();
 
     if (weight == null ||
         height == null ||
@@ -126,6 +129,13 @@ class _IntroScreenState extends State<IntroScreen> {
       final bmi = weightKg / (heightM * heightM);
       final activityIndex = activityMap[workoutInfo] ?? 0.25;
       final now = DateTime.now();
+      final miniMeBaseline = _OnboardingMiniMeBaseline.fromInputs(
+        baseBodyWidthScale: avatarStore.bodyWidthScale,
+        bmi: bmi,
+        weightKg: weightKg,
+        sleepHours: sleepHours,
+        workoutFrequency: workoutInfo,
+      );
       final snapshot = FitnessEntry()
         ..date = now.toIso8601String().split('T').first
         ..fitnessScore = 0.0
@@ -145,6 +155,8 @@ class _IntroScreenState extends State<IntroScreen> {
         ..healthDataTimestamp = _importedHealthSnapshot?.capturedAt ?? now
         ..inferenceTimestamp = now;
       await AppServices.isar.writeFitnessEntry(snapshot);
+      avatarStore.setAutoBodyWidthScale(miniMeBaseline.autoBodyWidthScale);
+      avatarStore.setDegradationLevel(miniMeBaseline.degradationLevel);
 
       if (_importedHealthSnapshot != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -472,6 +484,61 @@ class _IntroScreenState extends State<IntroScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OnboardingMiniMeBaseline {
+  const _OnboardingMiniMeBaseline({
+    required this.autoBodyWidthScale,
+    required this.degradationLevel,
+  });
+
+  final double autoBodyWidthScale;
+  final double degradationLevel;
+
+  factory _OnboardingMiniMeBaseline.fromInputs({
+    required double baseBodyWidthScale,
+    required double bmi,
+    required double weightKg,
+    required double sleepHours,
+    required String workoutFrequency,
+  }) {
+    // Seed onboarding body shape from BMI (height-aware), with a slight weight
+    // nudge so high-weight inputs still read visually as heavier.
+    final bmiFactor = (1.0 + (bmi - 24.0) * 0.017).clamp(0.86, 1.2).toDouble();
+    final weightNudge = ((weightKg - 72.0) / 85.0 * 0.04).clamp(-0.04, 0.05);
+    final bodyFactor = (bmiFactor + weightNudge).clamp(0.88, 1.16).toDouble();
+    final adjustedBodyWidthScale = (baseBodyWidthScale * bodyFactor)
+        .clamp(0.78, 1.28)
+        .toDouble();
+    final autoBodyWidthScale = (adjustedBodyWidthScale / baseBodyWidthScale)
+        .clamp(0.82, 1.22)
+        .toDouble();
+    final workoutLevel = switch (workoutFrequency) {
+      'Daily' => 1.0,
+      '5-6 times per week' => 0.82,
+      '3-4 times per week' => 0.62,
+      '1-2 times per week' => 0.38,
+      'Rarely or never' => 0.14,
+      _ => 0.24,
+    };
+    final sleepPenalty = switch (sleepHours) {
+      >= 8.0 => 0.02,
+      >= 7.0 => 0.07,
+      >= 6.0 => 0.17,
+      >= 5.0 => 0.29,
+      _ => 0.4,
+    };
+    final workoutPenalty = (1.0 - workoutLevel) * 0.32;
+    final wearLevel = (sleepPenalty * 0.72 + workoutPenalty * 0.28).clamp(
+      0.0,
+      0.55,
+    );
+
+    return _OnboardingMiniMeBaseline(
+      autoBodyWidthScale: autoBodyWidthScale,
+      degradationLevel: wearLevel.toDouble(),
     );
   }
 }

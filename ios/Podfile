@@ -40,4 +40,35 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+
+end
+
+post_integrate do |_installer|
+  # flutter_gemma 0.12.6 currently resolves TensorFlowLiteSelectTfOps to a
+  # device-only XCFramework slice (ios-arm64). Keep it linked for iphoneos,
+  # but strip it from simulator linking so iOS simulators can build.
+  pods_runner_support = File.join(__dir__, 'Pods', 'Target Support Files', 'Pods-Runner')
+  %w[debug release profile].each do |config|
+    xcconfig = File.join(pods_runner_support, "Pods-Runner.#{config}.xcconfig")
+    next unless File.exist?(xcconfig)
+
+    text = File.read(xcconfig)
+    next unless text.include?('TensorFlowLiteSelectTfOps')
+
+    text = text.gsub(' -framework "TensorFlowLiteSelectTfOps"', '')
+
+    if text =~ /^OTHER_LDFLAGS\[sdk=iphoneos\*\]\s*=\s*(.*)$/
+      existing = Regexp.last_match(1)
+      unless existing.include?('TensorFlowLiteSelectTfOps')
+        text = text.sub(
+          /^OTHER_LDFLAGS\[sdk=iphoneos\*\]\s*=\s*.*$/,
+          "OTHER_LDFLAGS[sdk=iphoneos*] = #{existing} -framework \"TensorFlowLiteSelectTfOps\""
+        )
+      end
+    else
+      text << "\nOTHER_LDFLAGS[sdk=iphoneos*] = $(inherited) -framework \"TensorFlowLiteSelectTfOps\"\n"
+    end
+
+    File.write(xcconfig, text)
+  end
 end

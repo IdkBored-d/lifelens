@@ -466,6 +466,8 @@ def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str
     intensity = suggestion_input.latest_mood_intensity
     mood_notes = suggestion_input.latest_mood_notes or 'None'
     recent_moods = suggestion_input.recent_moods or ['No recent mood logs']
+    recent_logs = suggestion_input.recent_logs or []
+    active_symptoms = suggestion_input.active_symptoms or []
     summary_context = (suggestion_input.summary_context or '').strip() or 'No summary context available.'
 
     history_lines = []
@@ -474,12 +476,18 @@ def _build_suggestions_prompt(suggestion_input: MiniMeSuggestionsRequest) -> str
         history_lines.append(f"{speaker}: {item.text}")
     history_text = '\n'.join(history_lines) if history_lines else 'No previous messages.'
 
+    recent_logs_text = '\n'.join(f"- {item}" for item in recent_logs[:28]) if recent_logs else '- No recent log timeline provided.'
+    symptoms_text = ', '.join(active_symptoms[:20]) if active_symptoms else 'None reported currently'
+
     return f"""You are Mini-Me, a supportive wellness coach in the LifeLens app.
 
-Write 3 UNIQUE daily suggestions for this specific user based on their summarized context and chat history.
+Write 3 UNIQUE daily suggestions for this specific user based on ALL available context.
 
 Requirements:
 - Each suggestion must feel freshly written for this user's context.
+- Each suggestion must be based on whole-picture patterns, not a single log entry.
+- Every suggestion should combine at least two signal types when available (for example mood + sleep, or symptoms + exercise, or chat + trend summary).
+- Across the 3 suggestions, cover different pattern angles (stabilize, investigate trigger, practical next step).
 - Do not repeat or quote prior Mini-Me replies verbatim.
 - Use clear, casual, easy-to-understand language.
 - Each suggestion should be practical, specific, and warm.
@@ -502,6 +510,10 @@ Current context:
 - Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
 - Mood notes: {mood_notes}
 - Recent moods: {' | '.join(recent_moods)}
+- Active symptoms: {symptoms_text}
+
+Recent multi-log timeline (use this as evidence for cross-log patterns):
+{recent_logs_text}
 
 Mini-Me conversation history:
 {history_text}
@@ -513,6 +525,15 @@ def _build_suggestions_fallback(
 ) -> MiniMeSuggestionsResponse:
     mood = (suggestion_input.latest_mood_label or 'neutral').lower()
     summary_context = (suggestion_input.summary_context or '').lower()
+    recent_logs = [item.strip().lower() for item in suggestion_input.recent_logs if item.strip()]
+    active_symptoms = [item.strip() for item in suggestion_input.active_symptoms if item.strip()]
+
+    mood_log_count = sum(1 for item in recent_logs if 'mood log:' in item)
+    sleep_log_count = sum(1 for item in recent_logs if 'sleep log:' in item)
+    exercise_log_count = sum(1 for item in recent_logs if 'exercise log:' in item)
+    symptom_log_count = sum(1 for item in recent_logs if 'symptom log:' in item)
+    chat_log_count = sum(1 for item in recent_logs if 'mini-me chat:' in item)
+
     symptoms = ''
     for line in summary_context.split('\n'):
         trimmed = line.strip()
@@ -520,22 +541,51 @@ def _build_suggestions_fallback(
             symptoms = trimmed[len('Symptom summary:'):].strip()
             break
 
+    if not symptoms and active_symptoms:
+        symptoms = ', '.join(active_symptoms[:4]).lower()
+
+    low_sleep_signal = any('under 7 hours' in item or ('sleep log:' in item and (' 5.' in item or ' 6.' in item)) for item in recent_logs)
+    high_strain_signal = any(token in item for item in recent_logs for token in ['overwhelm', 'anxious', 'stress', 'tired', 'fatigue'])
+
+    whole_picture = (
+        f"Across {len(recent_logs)} recent logs"
+        if recent_logs
+        else "Across your recent tracked history"
+    )
+    signal_mix = (
+        f"(mood {mood_log_count}, sleep {sleep_log_count}, exercise {exercise_log_count}, symptoms {symptom_log_count}, chat {chat_log_count})"
+        if recent_logs
+        else ""
+    )
+
     suggestions = [
         MiniMeSuggestionItem(
-            action=f"Keep today simple and choose one small habit that supports your {mood} baseline.",
-            reason="Your recent logs suggest consistency will help more than doing a lot at once.",
-        ),
-        MiniMeSuggestionItem(
-            action="Notice what happens right before your next mood shift and log one short detail.",
-            reason="A clearer trigger makes Mini-Me's next suggestion more personal.",
+            action=(
+                "Use a low-pressure plan today: one short movement block plus an earlier wind-down tonight."
+                if low_sleep_signal
+                else f"Keep today simple and repeat one small routine that supports your {mood} baseline."
+            ),
+            reason=(
+                f"{whole_picture} {signal_mix} the pattern suggests consistency will help more than a big push."
+            ).strip(),
         ),
         MiniMeSuggestionItem(
             action=(
-                "Give yourself one short reset block today."
-                if not symptoms
-                else f"Work around your current symptoms ({symptoms}) with one low-effort reset today."
+                "When your stress or symptoms rise, switch to the easiest version of your next task for 20 minutes."
+                if high_strain_signal or symptoms
+                else "Notice what happens right before your next mood shift and log one short trigger detail."
             ),
-            reason="Recent context suggests a gentle next step is more useful than a big plan.",
+            reason=(
+                "Cross-log patterns are easier to act on when you capture both trigger and response in the same window."
+            ),
+        ),
+        MiniMeSuggestionItem(
+            action=(
+                "After your next check-in, add one sentence on what drained you and one on what helped."
+                if not symptoms
+                else f"Work around your current symptoms ({symptoms}) with one low-effort reset and one clear stop-point today."
+            ),
+            reason="Using mood, symptom, and routine notes together makes the next Mini-Me suggestions more pattern-based and precise.",
         ),
     ]
 

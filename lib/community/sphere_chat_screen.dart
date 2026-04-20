@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 import 'package:lifelens/shared_widgets/mini_me_avatar_badge.dart';
 import 'package:provider/provider.dart';
 
@@ -17,11 +21,19 @@ class SphereChatScreen extends StatefulWidget {
   State<SphereChatScreen> createState() => _SphereChatScreenState();
 }
 
-class _SphereChatScreenState extends State<SphereChatScreen> {
+class _SphereChatScreenState extends State<SphereChatScreen>
+    with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _composerController = TextEditingController();
+  final FocusNode _composerFocusNode = FocusNode();
 
   String? _userNickname;
   bool _isBootstrapping = true;
+  bool _isSendingPost = false;
+  _ReplyTarget? _composerReplyTarget;
+  static const double _maxTimeRevealOffset = 76.0;
+  double _timeRevealOffset = 0.0;
+  late final AnimationController _timeRevealController;
 
   DocumentReference<Map<String, dynamic>> get _sphereRef =>
       FirebaseFirestore.instance.collection('spheres').doc(widget.sphere.id);
@@ -41,6 +53,16 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
   @override
   void initState() {
     super.initState();
+    _timeRevealController = AnimationController.unbounded(vsync: this)
+      ..addListener(() {
+        final next = _timeRevealController.value
+            .clamp(0.0, _maxTimeRevealOffset)
+            .toDouble();
+        if (next == _timeRevealOffset || !mounted) return;
+        setState(() {
+          _timeRevealOffset = next;
+        });
+      });
     _bootstrapSphere();
   }
 
@@ -63,6 +85,37 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     setState(() {
       _userNickname = memberDoc.data()?['nickname'] as String?;
     });
+  }
+
+  void _handleTimelineRevealDragUpdate(DragUpdateDetails details) {
+    final delta = details.delta.dx;
+    if (delta == 0) return;
+
+    if (_timeRevealController.isAnimating) {
+      _timeRevealController.stop();
+    }
+
+    final adjustment = -delta;
+    final next = (_timeRevealOffset + adjustment).clamp(
+      0.0,
+      _maxTimeRevealOffset,
+    );
+    if (next == _timeRevealOffset) return;
+    _timeRevealController.value = next;
+  }
+
+  void _resetTimelineReveal() {
+    if (_timeRevealOffset == 0.0) return;
+    if (_timeRevealController.isAnimating) {
+      _timeRevealController.stop();
+    }
+    final spring = SpringSimulation(
+      const SpringDescription(mass: 1.0, stiffness: 320.0, damping: 28.0),
+      _timeRevealOffset,
+      0.0,
+      -6.0,
+    );
+    _timeRevealController.animateWith(spring);
   }
 
   Future<void> _ensureSphereStarterContent() async {
@@ -140,7 +193,11 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     }, SetOptions(merge: true));
   }
 
-  Future<void> _createPost({required String type, required String text}) async {
+  Future<void> _createPost({
+    required String type,
+    required String text,
+    _ReplyTarget? replyTarget,
+  }) async {
     final userId = _userId;
     final nickname = _userNickname;
     final avatarStore = context.read<AvatarStore>();
@@ -169,6 +226,12 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
       'replyCount': 0,
       'reactionCounts': <String, int>{},
       'isPinned': false,
+      if (replyTarget != null) ...{
+        'replyToPostId': replyTarget.postId,
+        'replyToUserId': replyTarget.userId,
+        'replyToUserName': replyTarget.userName,
+        'replyToText': _trimForReplyPreview(replyTarget.text),
+      },
     });
 
     await _sphereRef.set({
@@ -181,6 +244,43 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Post shared with the sphere')),
     );
+  }
+
+  void _focusInlineComposer() {
+    if (!mounted) return;
+    FocusScope.of(context).requestFocus(_composerFocusNode);
+  }
+
+  Future<void> _submitInlinePost() async {
+    if (_isSendingPost) return;
+
+    final message = _composerController.text.trim();
+    if (message.isEmpty) return;
+
+    if (_userNickname == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Join with a nickname to post.')),
+      );
+      return;
+    }
+
+    setState(() => _isSendingPost = true);
+    try {
+      await _createPost(
+        type: 'check_in',
+        text: message,
+        replyTarget: _composerReplyTarget,
+      );
+      if (!mounted) return;
+      setState(() {
+        _composerController.clear();
+        _composerReplyTarget = null;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingPost = false);
+      }
+    }
   }
 
   Future<void> _reportPost({
@@ -318,99 +418,6 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
     } catch (e) {
       debugPrint('Error kicking user: $e');
     }
-  }
-
-  void _showCreatePostSheet() {
-    final controller = TextEditingController();
-    String selectedType = 'check_in';
-    final cs = Theme.of(context).colorScheme;
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Share with ${widget.sphere.name}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _postTypes.entries.map((entry) {
-                        final selected = selectedType == entry.key;
-                        return ChoiceChip(
-                          label: Text(entry.value.label),
-                          selected: selected,
-                          onSelected: (_) {
-                            setModalState(() => selectedType = entry.key);
-                          },
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: controller,
-                      maxLines: 6,
-                      minLines: 4,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: _postTypes[selectedType]!.hint,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Keep posts practical, kind, and privacy-safe.',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
-                          onPressed: () async {
-                            final text = controller.text.trim();
-                            if (text.isEmpty) return;
-                            Navigator.pop(sheetContext);
-                            await _createPost(type: selectedType, text: text);
-                          },
-                          icon: const Icon(Icons.send_rounded),
-                          label: const Text('Post'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   void _showReportDialog({required String postId, required String text}) {
@@ -716,9 +723,14 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
           : Column(
               children: [
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _postsStream,
-                    builder: (context, snapshot) {
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: _handleTimelineRevealDragUpdate,
+                    onHorizontalDragEnd: (_) => _resetTimelineReveal(),
+                    onHorizontalDragCancel: _resetTimelineReveal,
+                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: _postsStream,
+                      builder: (context, snapshot) {
                       if (snapshot.hasError) {
                         return Center(child: Text('Error: ${snapshot.error}'));
                       }
@@ -733,7 +745,7 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
                           child: _EmptyCommunityState(
                             sphereName: widget.sphere.name,
-                            onCreatePost: _showCreatePostSheet,
+                            onCreatePost: _focusInlineComposer,
                           ),
                         );
                       }
@@ -745,11 +757,44 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                         itemCount: posts.length,
                         itemBuilder: (context, index) {
                           final postDoc = posts[index];
+                          final postData = postDoc.data();
+                          final postType =
+                              (postData['type'] ?? 'check_in').toString();
+
+                          if (postType == 'system_join') {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _SystemEventNotice(
+                                text: (postData['text'] ?? '').toString(),
+                              ),
+                            );
+                          }
+
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: _ChatMessageTile(
                               postDoc: postDoc,
                               currentUserId: _userId,
+                              timeRevealOffset: _timeRevealOffset,
+                              onReply: () {
+                                final postData = postDoc.data();
+                                final replyTargetName =
+                                    (postData['nickname'] ??
+                                            postData['miniMeName'] ??
+                                            'friend')
+                                        .toString();
+                                final replyTarget = _ReplyTarget(
+                                  postId: postDoc.id,
+                                  userId:
+                                      (postData['userId'] ?? '').toString(),
+                                  userName: replyTargetName,
+                                  text: (postData['text'] ?? '').toString(),
+                                );
+                                setState(
+                                  () => _composerReplyTarget = replyTarget,
+                                );
+                                _focusInlineComposer();
+                              },
                               onReport: () => _showReportDialog(
                                 postId: postDoc.id,
                                 text: postDoc.data()['text'] ?? '',
@@ -761,10 +806,19 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
                       );
                     },
                   ),
+                  ),
                 ),
                 _ComposerDock(
                   userNickname: _userNickname,
-                  onTap: _showCreatePostSheet,
+                  controller: _composerController,
+                  focusNode: _composerFocusNode,
+                  replyTarget: _composerReplyTarget,
+                  isSending: _isSendingPost,
+                  onChanged: (_) => setState(() {}),
+                  onSend: _submitInlinePost,
+                  onCancelReply: () {
+                    setState(() => _composerReplyTarget = null);
+                  },
                 ),
               ],
             ),
@@ -773,7 +827,10 @@ class _SphereChatScreenState extends State<SphereChatScreen> {
 
   @override
   void dispose() {
+    _timeRevealController.dispose();
     _scrollController.dispose();
+    _composerController.dispose();
+    _composerFocusNode.dispose();
     super.dispose();
   }
 }
@@ -828,14 +885,31 @@ class _EmptyCommunityState extends StatelessWidget {
 }
 
 class _ComposerDock extends StatelessWidget {
-  const _ComposerDock({required this.userNickname, required this.onTap});
+  const _ComposerDock({
+    required this.userNickname,
+    required this.controller,
+    required this.focusNode,
+    required this.replyTarget,
+    required this.isSending,
+    required this.onChanged,
+    required this.onSend,
+    required this.onCancelReply,
+  });
 
   final String? userNickname;
-  final VoidCallback onTap;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final _ReplyTarget? replyTarget;
+  final bool isSending;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onSend;
+  final VoidCallback onCancelReply;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final canType = userNickname != null;
+    final hasText = controller.text.trim().isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
@@ -852,32 +926,97 @@ class _ComposerDock extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(18),
-              child: Ink(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 13,
-                ),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.edit_rounded, color: cs.primary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        userNickname == null
-                            ? 'Join with a nickname to post'
-                            : 'Write a message...',
-                        style: TextStyle(color: cs.onSurfaceVariant),
-                      ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (replyTarget != null) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _ReplyReferenceSnippet(
+                            title: 'Replying to ${replyTarget!.userName}',
+                            text: _trimForReplyPreview(replyTarget!.text),
+                            lineColor: cs.primary,
+                            compact: true,
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          splashRadius: 16,
+                          icon: Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          onPressed: onCancelReply,
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 6),
                   ],
-                ),
+                  Row(
+                    children: [
+                      Icon(Icons.edit_rounded, color: cs.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          enabled: canType && !isSending,
+                          minLines: 1,
+                          maxLines: 4,
+                          onChanged: onChanged,
+                          textInputAction: TextInputAction.newline,
+                          decoration: InputDecoration(
+                            hintText: canType
+                                ? 'Write a message...'
+                                : 'Join with a nickname to post',
+                            border: InputBorder.none,
+                            isDense: true,
+                            hintStyle: TextStyle(color: cs.onSurfaceVariant),
+                          ),
+                          style: TextStyle(color: cs.onSurface),
+                        ),
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 170),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        transitionBuilder: (child, animation) => ScaleTransition(
+                          scale: animation,
+                          child: child,
+                        ),
+                        child: hasText
+                            ? IconButton.filled(
+                                key: const ValueKey('send_button'),
+                                visualDensity: VisualDensity.compact,
+                                onPressed:
+                                    (isSending || !canType) ? null : onSend,
+                                icon: isSending
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.send_rounded, size: 18),
+                              )
+                            : const SizedBox(
+                                key: ValueKey('send_placeholder'),
+                                width: 8,
+                              ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -887,24 +1026,335 @@ class _ComposerDock extends StatelessWidget {
   }
 }
 
+class _SystemEventNotice extends StatelessWidget {
+  const _SystemEventNotice({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 320),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withValues(alpha: 0.36),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: cs.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.1,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ChatMessageTile extends StatelessWidget {
   const _ChatMessageTile({
     required this.postDoc,
     required this.currentUserId,
+    required this.timeRevealOffset,
+    required this.onReply,
     required this.onReport,
     required this.onDelete,
   });
 
   final QueryDocumentSnapshot<Map<String, dynamic>> postDoc;
   final String? currentUserId;
+  final double timeRevealOffset;
+  final VoidCallback onReply;
   final VoidCallback onReport;
   final VoidCallback onDelete;
+
+  static const List<String> _quickReactionEmojis = <String>[
+    '❤️',
+    '👍',
+    '👏',
+    '🙏',
+    '💪',
+    '🔥',
+    '😊',
+    '😮',
+    '😢',
+    '🤝',
+  ];
+
+  Future<void> _showMessageActions(
+    BuildContext context, {
+    required bool isMine,
+    required String text,
+  }) async {
+    final action = await showModalBottomSheet<_MessageAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.reply_rounded),
+                title: const Text('Reply'),
+                onTap: () => Navigator.of(context).pop(_MessageAction.reply),
+              ),
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: const Text('Copy'),
+                onTap: () => Navigator.of(context).pop(_MessageAction.copy),
+              ),
+              if (isMine)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded),
+                  title: const Text('Delete'),
+                  onTap: () =>
+                      Navigator.of(context).pop(_MessageAction.delete),
+                ),
+              if (!isMine)
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined),
+                  title: const Text('Report'),
+                  onTap: () =>
+                      Navigator.of(context).pop(_MessageAction.report),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (action == null) return;
+
+    switch (action) {
+      case _MessageAction.reply:
+        onReply();
+      case _MessageAction.copy:
+        await Clipboard.setData(ClipboardData(text: text));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Message copied')),
+          );
+        }
+      case _MessageAction.delete:
+        onDelete();
+      case _MessageAction.report:
+        onReport();
+    }
+  }
+
+  Future<void> _showReactionPicker(
+    BuildContext context, {
+    required String? activeEmoji,
+  }) async {
+    final emoji = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        final platform = Theme.of(context).platform;
+        final isApple =
+            platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
+
+        final categoryIcons = isApple
+            ? const CategoryIcons(
+                recentIcon: CupertinoIcons.clock,
+                smileyIcon: CupertinoIcons.smiley,
+                animalIcon: CupertinoIcons.paw,
+                foodIcon: CupertinoIcons.flame,
+                activityIcon: CupertinoIcons.sportscourt,
+                travelIcon: CupertinoIcons.car_detailed,
+                objectIcon: CupertinoIcons.lightbulb,
+                symbolIcon: CupertinoIcons.number,
+                flagIcon: CupertinoIcons.flag,
+              )
+            : const CategoryIcons();
+
+        return SafeArea(
+          child: FractionallySizedBox(
+            heightFactor: 0.9,
+            child: Container(
+              color: cs.surface,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.max,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'React with an emoji',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Browse all emojis or tap a quick reaction.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: _quickReactionEmojis.map((emoji) {
+                          final selected = emoji == activeEmoji;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => Navigator.of(context).pop(emoji),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: selected
+                                      ? cs.primaryContainer.withValues(alpha: 0.7)
+                                      : cs.surfaceContainerHighest.withValues(
+                                          alpha: 0.55,
+                                        ),
+                                ),
+                                child: Text(
+                                  emoji,
+                                  style: const TextStyle(fontSize: 22),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(growable: false),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: EmojiPicker(
+                        onEmojiSelected: (_, selected) {
+                          Navigator.of(context).pop(selected.emoji);
+                        },
+                        config: Config(
+                          checkPlatformCompatibility: true,
+                          emojiViewConfig: EmojiViewConfig(
+                            columns: 7,
+                            emojiSizeMax: 28,
+                            backgroundColor: cs.surface,
+                            noRecents: Text(
+                              'No recents',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          ),
+                          categoryViewConfig: CategoryViewConfig(
+                            backgroundColor: cs.surface,
+                            indicatorColor: cs.primary,
+                            iconColor: cs.onSurfaceVariant,
+                            iconColorSelected: cs.primary,
+                            backspaceColor: cs.primary,
+                            categoryIcons: categoryIcons,
+                          ),
+                          searchViewConfig: SearchViewConfig(
+                            backgroundColor: cs.surface,
+                            buttonIconColor: cs.onSurfaceVariant,
+                            hintTextStyle: TextStyle(
+                              color: cs.onSurfaceVariant,
+                            ),
+                            inputTextStyle: TextStyle(color: cs.onSurface),
+                          ),
+                          bottomActionBarConfig: BottomActionBarConfig(
+                            backgroundColor: cs.surface,
+                            buttonColor: cs.surfaceContainerHighest,
+                            buttonIconColor: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (emoji == null || currentUserId == null) return;
+
+    final postRef = postDoc.reference;
+    final reactionRef = postRef.collection('reactions').doc(currentUserId);
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final postSnapshot = await tx.get(postRef);
+        final reactionSnapshot = await tx.get(reactionRef);
+
+        if (!postSnapshot.exists) return;
+
+        final postData = postSnapshot.data() ?? <String, dynamic>{};
+        final rawCounts = Map<String, dynamic>.from(
+          postData['reactionCounts'] as Map? ?? {},
+        );
+        final counts = rawCounts.map(
+          (key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0),
+        );
+
+        final previousEmoji =
+            (reactionSnapshot.data()?['emoji'] as String?)?.trim();
+
+        if (previousEmoji == emoji) {
+          tx.delete(reactionRef);
+          final previousCount = (counts[emoji] ?? 0) - 1;
+          if (previousCount <= 0) {
+            counts.remove(emoji);
+          } else {
+            counts[emoji] = previousCount;
+          }
+        } else {
+          tx.set(reactionRef, {
+            'emoji': emoji,
+            'userId': currentUserId,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
+          if (previousEmoji != null && previousEmoji.isNotEmpty) {
+            final previousCount = (counts[previousEmoji] ?? 0) - 1;
+            if (previousCount <= 0) {
+              counts.remove(previousEmoji);
+            } else {
+              counts[previousEmoji] = previousCount;
+            }
+          }
+
+          counts[emoji] = (counts[emoji] ?? 0) + 1;
+        }
+
+        tx.update(postRef, {
+          'reactionCounts': counts,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'latestActivityAt': FieldValue.serverTimestamp(),
+        });
+      });
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update reaction right now')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final maxBubbleWidth = MediaQuery.of(context).size.width * 0.68;
+    final maxBubbleWidth = MediaQuery.of(context).size.width * 0.7;
     final data = postDoc.data();
     final isMine = data['userId'] == currentUserId;
     final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
@@ -912,134 +1362,332 @@ class _ChatMessageTile extends StatelessWidget {
         .toString();
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
     final text = (data['text'] ?? '').toString();
+    final replyToUserName = (data['replyToUserName'] ?? '').toString().trim();
+    final replyToText = (data['replyToText'] ?? '').toString().trim();
+    final reactionCounts = Map<String, int>.fromEntries(
+      Map<String, dynamic>.from(data['reactionCounts'] as Map? ?? {}).entries
+          .map(
+            (entry) => MapEntry(entry.key, (entry.value as num?)?.toInt() ?? 0),
+          )
+          .where((entry) => entry.value > 0),
+    );
 
-    final bubble = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: isMine
-            ? cs.primaryContainer
-            : cs.surfaceContainerHighest.withValues(alpha: 0.5),
+    final bubble = Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(20),
           topRight: const Radius.circular(20),
           bottomLeft: Radius.circular(isMine ? 20 : 8),
           bottomRight: Radius.circular(isMine ? 8 : 20),
         ),
-        border: Border.all(
-          color: isMine
-              ? cs.primary.withValues(alpha: 0.16)
-              : cs.outlineVariant.withValues(alpha: 0.35),
+        onLongPress: () => _showMessageActions(
+          context,
+          isMine: isMine,
+          text: text,
         ),
-      ),
-      child: Text(
-        text,
-        style: theme.textTheme.bodyLarge?.copyWith(
-          height: 1.3,
-          color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: isMine
+                ? cs.primaryContainer
+                : cs.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(20),
+              topRight: const Radius.circular(20),
+              bottomLeft: Radius.circular(isMine ? 20 : 8),
+              bottomRight: Radius.circular(isMine ? 8 : 20),
+            ),
+            border: Border.all(
+              color: isMine
+                  ? cs.primary.withValues(alpha: 0.16)
+                  : cs.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (replyToText.isNotEmpty)
+                _ReplyReferenceSnippet(
+                  title: replyToUserName.isEmpty
+                      ? 'Reply'
+                      : 'Reply to $replyToUserName',
+                  text: replyToText,
+                  lineColor: isMine
+                      ? cs.primary.withValues(alpha: 0.8)
+                      : cs.tertiary.withValues(alpha: 0.75),
+                  compact: true,
+                ),
+              if (replyToText.isNotEmpty) const SizedBox(height: 8),
+              Text(
+                text,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  height: 1.3,
+                  color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
 
-    final metaRow = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          _timeLabel(createdAt),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: cs.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(width: 2),
-        PopupMenuButton<String>(
-          padding: EdgeInsets.zero,
-          icon: Icon(
-            Icons.more_horiz_rounded,
-            size: 18,
-            color: cs.onSurfaceVariant,
-          ),
-          onSelected: (value) {
-            if (value == 'report') {
-              onReport();
-            } else if (value == 'delete') {
-              onDelete();
-            }
-          },
-          itemBuilder: (context) => [
-            if (!isMine)
-              const PopupMenuItem(value: 'report', child: Text('Report')),
-            if (isMine)
-              const PopupMenuItem(value: 'delete', child: Text('Delete')),
-          ],
-        ),
-      ],
-    );
+    final reactionsRow = reactionCounts.isEmpty
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: reactionCounts.entries
+                  .map(
+                    (entry) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: cs.outlineVariant.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Text('${entry.key} ${entry.value}'),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          );
 
-    if (isMine) {
-      return SizedBox(
-        width: double.infinity,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+    final metaRow = StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: currentUserId == null
+          ? null
+          : postDoc.reference
+                .collection('reactions')
+                .doc(currentUserId)
+                .snapshots(),
+      builder: (context, snapshot) {
+        final selectedEmoji =
+            (snapshot.data?.data()?['emoji'] as String?)?.trim();
+        final hasActiveReaction =
+            selectedEmoji != null && selectedEmoji.isNotEmpty;
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Spacer(),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [bubble, const SizedBox(height: 4), metaRow],
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              splashRadius: 18,
+              padding: EdgeInsets.zero,
+              tooltip: 'React',
+              icon: Icon(
+                hasActiveReaction
+                    ? Icons.emoji_emotions_rounded
+                    : Icons.add_reaction_outlined,
+                size: 18,
+                color: hasActiveReaction ? cs.primary : cs.onSurfaceVariant,
+              ),
+              onPressed: () => _showReactionPicker(
+                context,
+                activeEmoji: selectedEmoji,
               ),
             ),
           ],
-        ),
-      );
-    }
+        );
+      },
+    );
 
-    return SizedBox(
-      width: double.infinity,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          MiniMeAvatarBadge(
-            size: 64,
-            padding: 4,
-            backgroundColor: cs.primaryContainer,
-            borderColor: cs.outlineVariant.withValues(alpha: 0.35),
-            bodyModel: miniMe['bodyModel'] as String?,
-            hairModel: miniMe['hairModel'] as String?,
-            shirtModel: miniMe['shirtModel'] as String?,
-            bodyWidthScale: (miniMe['bodyWidthScale'] as num?)?.toDouble(),
-            companionId: miniMe['companionId'] as String?,
-            isHatched: miniMe['isHatched'] as bool? ?? true,
-            degradationLevel:
-                (miniMe['degradationLevel'] as num?)?.toDouble() ?? 0,
-            fallbackLabel: displayName,
-          ),
-          const SizedBox(width: 14),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-            child: Column(
+    final messageContent = isMine
+        ? SizedBox(
+            width: double.infinity,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Spacer(),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      bubble,
+                      reactionsRow,
+                      const SizedBox(height: 2),
+                      metaRow,
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        : SizedBox(
+            width: double.infinity,
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 4),
+                  padding: const EdgeInsets.only(top: 2),
+                  child: MiniMeAvatarBadge(
+                    size: 46,
+                    padding: 3,
+                    backgroundColor: cs.primaryContainer,
+                    borderColor: cs.outlineVariant.withValues(alpha: 0.35),
+                    bodyModel: miniMe['bodyModel'] as String?,
+                    hairModel: miniMe['hairModel'] as String?,
+                    shirtModel: miniMe['shirtModel'] as String?,
+                    bodyWidthScale:
+                        (miniMe['bodyWidthScale'] as num?)?.toDouble(),
+                    companionId: miniMe['companionId'] as String?,
+                    isHatched: miniMe['isHatched'] as bool? ?? true,
+                    degradationLevel:
+                        (miniMe['degradationLevel'] as num?)?.toDouble() ?? 0,
+                    fallbackLabel: displayName,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(left: 2, bottom: 3),
+                        child: Text(
+                          displayName,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      bubble,
+                      reactionsRow,
+                      const SizedBox(height: 2),
+                      metaRow,
+                    ],
+                  ),
+                ),
+                const Spacer(),
+              ],
+            ),
+          );
+
+    final revealOpacity = (timeRevealOffset / 48).clamp(0.0, 1.0);
+
+    return ClipRect(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Opacity(
+                  opacity: revealOpacity,
                   child: Text(
-                    displayName,
-                    style: theme.textTheme.labelMedium?.copyWith(
+                    _timeLabel(createdAt),
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: cs.onSurfaceVariant,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                bubble,
-                const SizedBox(height: 4),
-                metaRow,
-              ],
+              ),
             ),
           ),
-          const Spacer(),
+          Transform.translate(
+            offset: Offset(-timeRevealOffset, 0),
+            child: messageContent,
+          ),
         ],
       ),
     );
   }
+}
+
+enum _MessageAction { reply, copy, delete, report }
+
+class _ReplyTarget {
+  const _ReplyTarget({
+    required this.postId,
+    required this.userId,
+    required this.userName,
+    required this.text,
+  });
+
+  final String postId;
+  final String userId;
+  final String userName;
+  final String text;
+}
+
+class _ReplyReferenceSnippet extends StatelessWidget {
+  const _ReplyReferenceSnippet({
+    required this.title,
+    required this.text,
+    required this.lineColor,
+    required this.compact,
+  });
+
+  final String title;
+  final String text;
+  final Color lineColor;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(left: compact ? 1 : 2, right: compact ? 1 : 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 3,
+            margin: const EdgeInsets.only(top: 1, right: 8),
+            height: compact ? 30 : 38,
+            decoration: BoxDecoration(
+              color: lineColor,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface.withValues(alpha: 0.92),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  text,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.95),
+                    height: 1.22,
+                  ),
+                  maxLines: compact ? 2 : 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _trimForReplyPreview(String text) {
+  final normalized = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.length <= 180) return normalized;
+  return '${normalized.substring(0, 180)}...';
 }
 
 String _timeLabel(DateTime? time) {
@@ -1051,33 +1699,3 @@ String _timeLabel(DateTime? time) {
   if (diff.inDays < 7) return '${diff.inDays}d ago';
   return '${time.month}/${time.day}/${time.year}';
 }
-
-class _PostTypeMeta {
-  const _PostTypeMeta({required this.label, required this.hint});
-
-  final String label;
-  final String hint;
-}
-
-final Map<String, _PostTypeMeta> _postTypes = {
-  'check_in': const _PostTypeMeta(
-    label: 'Check-in',
-    hint: 'Share a quick update on how you are doing.',
-  ),
-  'question': const _PostTypeMeta(
-    label: 'Question',
-    hint: 'Ask the sphere something simple and specific.',
-  ),
-  'win': const _PostTypeMeta(
-    label: 'Win',
-    hint: 'Share a small win from today or this week.',
-  ),
-  'tip': const _PostTypeMeta(
-    label: 'Tip',
-    hint: 'Share something that helped you.',
-  ),
-  'support': const _PostTypeMeta(
-    label: 'Support',
-    hint: 'Tell the sphere what support you need.',
-  ),
-};

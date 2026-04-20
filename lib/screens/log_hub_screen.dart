@@ -182,8 +182,6 @@ class _LogHubScreenState extends State<LogHubScreen> {
                 onDateSelected: _openSelectedDayLogs,
               ),
               const SizedBox(height: 18),
-              const _SectionHeader(title: 'Trackers'),
-              const SizedBox(height: 12),
               _TrackersDropdownCard(
                 isExpanded: _isTrackersExpanded,
                 onToggle: () {

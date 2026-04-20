@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   bool _isSurfacingUnreadSuggestions = false;
   bool _isCoachExpanded = false;
   bool _isReplying = false;
+  bool _isSuggestionBubbleThinking = false;
   bool _isIntelligenceLoading = false;
   String? _dailyLoggingPromptText;
   final List<_MiniMeChatMessage> _messages = [];
@@ -47,6 +49,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   MiniMeIntelligenceReply? _intelligence;
   final ExerciseStore _exerciseStore = ExerciseStore();
   int _activeSymptomCount = 0;
+  String? _lastIntelligenceInputSignature;
   String? _derivedUiSignature;
   _MiniMeDerivedUiState? _derivedUiState;
 
@@ -55,6 +58,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   int _messageSequence = 0;
   int _avatarWaveToken = 1;
   late final ChatSessionService _chatSessionService;
+  MoodLogStore? _moodStoreSource;
+  SleepStore? _sleepStoreSource;
+  Timer? _promptRefreshDebounce;
 
   @override
   void initState() {
@@ -64,6 +70,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       AppServices.gemma,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _attachPromptRefreshListeners();
+
       // Intelligence loads first — drives opening message + avatar mood.
       // 3-second timeout so a slow/offline backend doesn't block the screen.
       await _refreshIntelligence().timeout(
@@ -86,6 +94,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   @override
   void dispose() {
+    _moodStoreSource?.removeListener(_onTrackedLogsChanged);
+    _sleepStoreSource?.removeListener(_onTrackedLogsChanged);
+    _promptRefreshDebounce?.cancel();
     if (_sessionId != null) _chatSessionService.endSession(_sessionId!);
     _chatController.dispose();
     _scrollController.dispose();
@@ -100,9 +111,40 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       setState(() => _avatarWaveToken += 1);
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
+        await _refreshStartLoggingPromptState();
+        if (!mounted) return;
         await _syncUnreadSuggestions(forceRefresh: true);
       });
     }
+  }
+
+  void _attachPromptRefreshListeners() {
+    final moodStore = context.read<MoodLogStore>();
+    final sleepStore = context.read<SleepStore>();
+
+    if (!identical(_moodStoreSource, moodStore)) {
+      _moodStoreSource?.removeListener(_onTrackedLogsChanged);
+      _moodStoreSource = moodStore;
+      _moodStoreSource?.addListener(_onTrackedLogsChanged);
+    }
+
+    if (!identical(_sleepStoreSource, sleepStore)) {
+      _sleepStoreSource?.removeListener(_onTrackedLogsChanged);
+      _sleepStoreSource = sleepStore;
+      _sleepStoreSource?.addListener(_onTrackedLogsChanged);
+    }
+  }
+
+  void _onTrackedLogsChanged() {
+    _schedulePromptRefresh();
+  }
+
+  void _schedulePromptRefresh() {
+    _promptRefreshDebounce?.cancel();
+    _promptRefreshDebounce = Timer(const Duration(milliseconds: 200), () async {
+      if (!mounted) return;
+      await _refreshStartLoggingPromptState();
+    });
   }
 
   void _appendMessage(_MiniMeChatMessage message) {
@@ -437,6 +479,23 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           ? const [0, 0, 0]
           : symptomCount;
 
+      // Guard: Mini-Me condition should only evolve when underlying logs evolve.
+      final nextSignature = [
+        payloadMood.join(','),
+        payloadSleep.join(','),
+        payloadExercise.join(','),
+        payloadSymptoms.join(','),
+      ].join('|');
+
+      if (_intelligence != null && _lastIntelligenceInputSignature == nextSignature) {
+        if (mounted) {
+          setState(() {
+            _activeSymptomCount = activeSymptoms.length;
+          });
+        }
+        return;
+      }
+
       final response = await MiniMeBackendService.instance.analyzeIntelligence(
         sleep: payloadSleep,
         mood: payloadMood,
@@ -448,6 +507,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       setState(() {
         _intelligence = response;
         _activeSymptomCount = activeSymptoms.length;
+        _lastIntelligenceInputSignature = nextSignature;
       });
     } catch (_) {
       // Keep UI functional even if backend is unavailable.
@@ -489,7 +549,15 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final baselineDelta = latestBmi - baselineBmi;
     final combinedDelta = trendDelta * 0.6 + baselineDelta * 0.4;
 
-    return (1.0 + (combinedDelta * 0.026)).clamp(0.82, 1.22).toDouble();
+    // Include absolute BMI so first-time onboarding snapshots keep a meaningful
+    // starting body shape before enough trend data exists.
+    final absoluteBmiOffset = latestBmi - 23.5;
+    final absoluteAdjustment = absoluteBmiOffset * 0.015;
+    final trendAdjustment = combinedDelta * 0.018;
+
+    return (1.0 + absoluteAdjustment + trendAdjustment)
+      .clamp(0.82, 1.22)
+      .toDouble();
   }
 
   int _estimatedSleepHoursFromMood(String moodLabel) {
@@ -509,6 +577,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   String? _avatarMoodFromIntelligence(String? baseMoodLabel) {
+    final normalizedBaseMood = baseMoodLabel?.trim();
+    if (normalizedBaseMood != null && normalizedBaseMood.isNotEmpty) {
+      return normalizedBaseMood;
+    }
+
     final linkage = _intelligence?.miniMeLinkage;
     final visualState = (linkage?['avatar_visual_state'] as String?)?.trim();
     if (visualState != null && visualState.isNotEmpty) {
@@ -525,12 +598,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         'uncertain': 'neutral',
         'neutral': 'neutral',
       };
-      return visualToMood[visualState] ?? baseMoodLabel;
+      return visualToMood[visualState] ?? normalizedBaseMood;
     }
 
     final state = _intelligence?.state;
     if (state == null) {
-      return baseMoodLabel;
+      return normalizedBaseMood;
     }
     if (state['low_sleep'] == true) {
       return 'tired';
@@ -538,7 +611,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (state['low_mood'] == true) {
       return 'sad';
     }
-    return baseMoodLabel;
+    return normalizedBaseMood;
   }
 
   Future<void> _bootstrapMiniMe() async {
@@ -696,21 +769,35 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return (900 + readingMs + pacingMs).clamp(1300, 5200).toInt();
   }
 
+  int _assistantVisiblePauseMs(String reply) {
+    final sentences = RegExp(r'[.!?]+').allMatches(reply).length.clamp(1, 5);
+    final readingMs = reply.length * 24;
+    final pacingMs = sentences * 420;
+    return (1600 + readingMs + pacingMs).clamp(2200, 5600).toInt();
+  }
+
   Future<void> _appendAssistantReplyInChunks(String reply) async {
     final normalizedReply = _normalizeAssistantReply(reply);
     if (normalizedReply.isEmpty) {
       if (mounted) {
-        setState(() => _isReplying = false);
+        setState(() {
+          _isReplying = false;
+          _isSuggestionBubbleThinking = false;
+        });
       }
       return;
     }
 
+    if (mounted) {
+      setState(() => _isSuggestionBubbleThinking = true);
+    }
     await Future<void>.delayed(
       Duration(milliseconds: _assistantRevealDelayMs(normalizedReply)),
     );
 
     if (!mounted) return;
     setState(() {
+      _isSuggestionBubbleThinking = false;
       _appendMessage(
         _MiniMeChatMessage(role: _ChatRole.assistant, text: normalizedReply),
       );
@@ -731,19 +818,26 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     if (normalizedReplies.isEmpty) {
       if (mounted) {
-        setState(() => _isReplying = false);
+        setState(() {
+          _isReplying = false;
+          _isSuggestionBubbleThinking = false;
+        });
       }
       return;
     }
 
     for (var i = 0; i < normalizedReplies.length; i++) {
       final reply = normalizedReplies[i];
+      if (mounted) {
+        setState(() => _isSuggestionBubbleThinking = true);
+      }
       await Future<void>.delayed(
         Duration(milliseconds: _assistantRevealDelayMs(reply)),
       );
 
       if (!mounted) return;
       setState(() {
+        _isSuggestionBubbleThinking = false;
         _appendMessage(
           _MiniMeChatMessage(role: _ChatRole.assistant, text: reply),
         );
@@ -752,12 +846,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       await _persistMessages();
 
       if (i < normalizedReplies.length - 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 420));
+        await Future<void>.delayed(
+          Duration(milliseconds: _assistantVisiblePauseMs(reply)),
+        );
       }
     }
 
     if (mounted) {
-      setState(() => _isReplying = false);
+      setState(() {
+        _isReplying = false;
+        _isSuggestionBubbleThinking = false;
+      });
     }
   }
 
@@ -765,6 +864,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _MiniMeFullChatSheet(
         miniMeName: context.read<AvatarStore>().miniMeName,
@@ -1505,6 +1605,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   chatController: _chatController,
                   chatFocusNode: _chatFocusNode,
                   isReplying: _isReplying,
+                  isSuggestionBubbleThinking: _isSuggestionBubbleThinking,
                   isCoachExpanded: _isCoachExpanded,
                   messages: _messages,
                   scrollController: _scrollController,
@@ -1535,6 +1636,7 @@ class _MiniMePanelContent extends StatelessWidget {
     required this.chatController,
     required this.chatFocusNode,
     required this.isReplying,
+    required this.isSuggestionBubbleThinking,
     required this.isCoachExpanded,
     required this.messages,
     required this.scrollController,
@@ -1560,6 +1662,7 @@ class _MiniMePanelContent extends StatelessWidget {
   final TextEditingController chatController;
   final FocusNode chatFocusNode;
   final bool isReplying;
+  final bool isSuggestionBubbleThinking;
   final bool isCoachExpanded;
   final List<_MiniMeChatMessage> messages;
   final ScrollController scrollController;
@@ -1616,6 +1719,7 @@ class _MiniMePanelContent extends StatelessWidget {
       chatController: chatController,
       chatFocusNode: chatFocusNode,
       isReplying: isReplying,
+      isSuggestionBubbleThinking: isSuggestionBubbleThinking,
       isCoachExpanded: isCoachExpanded,
       messages: messages,
       scrollController: scrollController,
@@ -1649,6 +1753,7 @@ class _AvatarPanel extends StatelessWidget {
     required this.chatController,
     required this.chatFocusNode,
     required this.isReplying,
+    required this.isSuggestionBubbleThinking,
     required this.isCoachExpanded,
     required this.messages,
     required this.scrollController,
@@ -1678,6 +1783,7 @@ class _AvatarPanel extends StatelessWidget {
   final TextEditingController chatController;
   final FocusNode chatFocusNode;
   final bool isReplying;
+  final bool isSuggestionBubbleThinking;
   final bool isCoachExpanded;
   final List<_MiniMeChatMessage> messages;
   final ScrollController scrollController;
@@ -1688,111 +1794,118 @@ class _AvatarPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const chatDockHeight = 112.0;
-        const collapsedBottomInset = 16.0;
-        final showPromptBubble =
-            messages.isEmpty || (latestAssistantText?.isNotEmpty ?? false);
-        final promptBubbleText = dailyLoggingPromptText != null
-            ? dailyLoggingPromptText!
-            : messages.isEmpty
-            ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
-            : _bubblePreviewText(
-                latestAssistantText ??
-                    'What do you want to work on today, ${_displayFirstName(userName)}?',
-              );
-        final headTiltBias = isReplying ? -0.12 : 0.0;
-        final bubbleMaxHeight = math.min(constraints.maxHeight * 0.18, 118.0);
-        const suggestionBubbleReserve = 108.0;
-        final availableAvatarHeight =
-            constraints.maxHeight -
-            chatDockHeight -
-            collapsedBottomInset -
-            suggestionBubbleReserve;
-        final avatarSize = math.max(
-          320.0,
-          math.min(
-            constraints.biggest.shortestSide * 1.3,
-            availableAvatarHeight * 1.02,
-          ),
-        );
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const chatDockHeight = 112.0;
+          const collapsedBottomInset = 16.0;
+          final showPromptBubble =
+              isSuggestionBubbleThinking ||
+              messages.isEmpty ||
+              (latestAssistantText?.isNotEmpty ?? false);
+          final promptBubbleText = dailyLoggingPromptText != null
+              ? dailyLoggingPromptText!
+              : messages.isEmpty
+              ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
+              : _bubblePreviewText(
+                  latestAssistantText ??
+                      'What do you want to work on today, ${_displayFirstName(userName)}?',
+                );
+          final headTiltBias = isReplying ? -0.12 : 0.0;
+          final bubbleMaxHeight = math.min(constraints.maxHeight * 0.18, 118.0);
+          const suggestionBubbleReserve = 108.0;
+          final availableAvatarHeight =
+              constraints.maxHeight -
+              chatDockHeight -
+              collapsedBottomInset -
+              suggestionBubbleReserve;
+          final avatarSize = math.max(
+            320.0,
+            math.min(
+              constraints.biggest.shortestSide * 1.3,
+              availableAvatarHeight * 1.02,
+            ),
+          );
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                if (showPromptBubble)
-                  Positioned(
-                    top: 10,
-                    left: 18,
-                    right: 18,
-                    child: _AvatarSuggestionBubble(
-                      text: promptBubbleText,
-                      maxHeight: bubbleMaxHeight,
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  if (showPromptBubble)
+                    Positioned(
+                      top: 10,
+                      left: 18,
+                      right: 18,
+                      child: _AvatarSuggestionBubble(
+                        text: promptBubbleText,
+                        maxHeight: bubbleMaxHeight,
+                        isThinking: isSuggestionBubbleThinking,
+                      ),
                     ),
-                  ),
-                Positioned.fill(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      4,
-                      suggestionBubbleReserve - 8,
-                      4,
-                      chatDockHeight + collapsedBottomInset - 18,
-                    ),
-                    child: Align(
-                      alignment: const Alignment(0, -0.2),
-                      child: Transform.translate(
-                        offset: const Offset(0, -62),
-                        child: RepaintBoundary(
-                          child: MiniMeAvatar(
-                            bodyModel: avatarSelection.bodyModel,
-                            hairModel: avatarSelection.hairModel,
-                            shirtModel: avatarSelection.shirtModel,
-                            bodyWidthScale: avatarSelection.bodyWidthScale,
-                            companionId: avatarSelection.companionId,
-                            moodLabel: moodLabel,
-                            moodEmoji: moodEmoji,
-                            animationState: avatarAnimationState,
-                            glow: glow,
-                            size: avatarSize,
-                            degradationLevel: visualState.wearLevel,
-                            isHatched: avatarSelection.isMiniMeHatched,
-                            visualState: visualState,
-                            onHatchComplete: avatarSelection.onHatchComplete,
-                            autoWaveToken: avatarWaveToken,
-                            lockScreenPosition: true,
-                            headTiltBias: headTiltBias,
-                            celebrateOnOpen: celebrateOnOpen,
+                  Positioned.fill(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        4,
+                        suggestionBubbleReserve - 8,
+                        4,
+                        chatDockHeight + collapsedBottomInset - 18,
+                      ),
+                      child: Align(
+                        alignment: const Alignment(0, -0.2),
+                        child: Transform.translate(
+                          offset: const Offset(0, -62),
+                          child: RepaintBoundary(
+                            child: MiniMeAvatar(
+                              bodyModel: avatarSelection.bodyModel,
+                              hairModel: avatarSelection.hairModel,
+                              shirtModel: avatarSelection.shirtModel,
+                              bodyWidthScale: avatarSelection.bodyWidthScale,
+                              companionId: avatarSelection.companionId,
+                              moodLabel: moodLabel,
+                              moodEmoji: moodEmoji,
+                              animationState: avatarAnimationState,
+                              glow: glow,
+                              size: avatarSize,
+                              degradationLevel: visualState.wearLevel,
+                              isHatched: avatarSelection.isMiniMeHatched,
+                              visualState: visualState,
+                              onHatchComplete: avatarSelection.onHatchComplete,
+                              autoWaveToken: avatarWaveToken,
+                              lockScreenPosition: true,
+                              headTiltBias: headTiltBias,
+                              celebrateOnOpen: celebrateOnOpen,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 12,
-              child: RepaintBoundary(
-                child: _CoachComposerCard(
-                  miniMeName: miniMeName,
-                  chatController: chatController,
-                  chatFocusNode: chatFocusNode,
-                  isReplying: isReplying,
-                  onExpandCoach: onExpandCoach,
-                  onOpenFullChat: onOpenFullChat,
-                  onSend: onSend,
+                ],
+              ),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 12,
+                child: RepaintBoundary(
+                  child: _CoachComposerCard(
+                    miniMeName: miniMeName,
+                    chatController: chatController,
+                    chatFocusNode: chatFocusNode,
+                    isReplying: isReplying,
+                    onExpandCoach: onExpandCoach,
+                    onOpenFullChat: onOpenFullChat,
+                    onSend: onSend,
+                  ),
                 ),
               ),
-            ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -1868,10 +1981,15 @@ class _MainTypingBubble extends StatelessWidget {
 }
 
 class _AvatarSuggestionBubble extends StatelessWidget {
-  const _AvatarSuggestionBubble({required this.text, required this.maxHeight});
+  const _AvatarSuggestionBubble({
+    required this.text,
+    required this.maxHeight,
+    this.isThinking = false,
+  });
 
   final String text;
   final double maxHeight;
+  final bool isThinking;
 
   @override
   Widget build(BuildContext context) {
@@ -1910,21 +2028,39 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                 ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: maxHeight),
-                  child: Scrollbar(
-                    thumbVisibility: false,
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Text(
-                        text,
-                        textAlign: TextAlign.center,
-                        softWrap: true,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: cs.onSurface,
-                          fontWeight: FontWeight.w800,
-                          height: 1.28,
-                        ),
-                      ),
-                    ),
+                  child: Center(
+                    child: isThinking
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Thinking',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: cs.onSurface,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.28,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const _ThinkingEllipsis(),
+                            ],
+                          )
+                        : Scrollbar(
+                            thumbVisibility: false,
+                            child: SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              child: Text(
+                                text,
+                                textAlign: TextAlign.center,
+                                softWrap: true,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: cs.onSurface,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.28,
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -1944,6 +2080,44 @@ class _AvatarSuggestionBubble extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ThinkingEllipsis extends StatefulWidget {
+  const _ThinkingEllipsis();
+
+  @override
+  State<_ThinkingEllipsis> createState() => _ThinkingEllipsisState();
+}
+
+class _ThinkingEllipsisState extends State<_ThinkingEllipsis>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.titleSmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurface,
+      fontWeight: FontWeight.w800,
+      height: 1.28,
+    );
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final dotCount = ((_controller.value * 3).floor() % 3) + 1;
+        return Text('.' * dotCount, style: style);
+      },
     );
   }
 }
@@ -2291,6 +2465,8 @@ class _InlineCoachPanel extends StatelessWidget {
                     : ListView.builder(
                         reverse: true,
                         controller: scrollController,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
                         itemCount:
                             previewMessages.length + (isReplying ? 1 : 0),
@@ -2376,6 +2552,7 @@ class _CoachComposerCard extends StatelessWidget {
                 child: TextField(
                   controller: chatController,
                   focusNode: chatFocusNode,
+                  onTapOutside: (_) => chatFocusNode.unfocus(),
                   keyboardType: TextInputType.multiline,
                   textInputAction: TextInputAction.newline,
                   minLines: 1,
@@ -2507,6 +2684,7 @@ class _ChatBubbleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final maxWidth = math.min(MediaQuery.of(context).size.width * 0.82, 420.0);
     final suggestionParts = isUser
         ? const <_SuggestionSection>[]
         : message.suggestionSections;
@@ -2518,7 +2696,7 @@ class _ChatBubbleCard extends StatelessWidget {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 320),
+        constraints: BoxConstraints(maxWidth: maxWidth),
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -2537,6 +2715,11 @@ class _ChatBubbleCard extends StatelessWidget {
                 offset: const Offset(0, 4),
               ),
             ],
+            border: Border.all(
+              color: isUser
+                  ? cs.primary.withValues(alpha: 0.14)
+                  : cs.outlineVariant.withValues(alpha: 0.35),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2793,41 +2976,109 @@ class _MiniMeFullChatSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final media = MediaQuery.of(context);
+    final isCompactWidth = media.size.width < 370;
+    final topInset = media.viewPadding.top;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: SafeArea(
-        top: false,
+    return Material(
+      color: cs.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.only(top: topInset > 0 ? 8 : 12),
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              padding: const EdgeInsets.only(top: 8, bottom: 2),
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, isCompactWidth ? 6 : 8, 8, 8),
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      'Full chat',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Full chat',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        if (!isCompactWidth)
+                          Text(
+                            'Your ongoing conversation with $miniMeName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Close chat',
+                      visualDensity: VisualDensity.compact,
+                      splashRadius: 20,
+                    ),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 14),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _CoachStatusPill(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label:
+                        '${messages.length} message${messages.length == 1 ? '' : 's'}',
+                    background: cs.surface,
+                    foreground: cs.onSurfaceVariant,
+                  ),
+                  if (isReplying)
+                    _CoachStatusPill(
+                      icon: Icons.auto_awesome_rounded,
+                      label: '$miniMeName is replying',
+                      background: cs.primary.withValues(alpha: 0.12),
+                      foreground: cs.primary,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
             Expanded(
               child: ListView.builder(
                 reverse: true,
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 itemCount: messages.length + (isReplying ? 1 : 0),
                 itemBuilder: (context, index) {
                   if (isReplying && index == 0) {

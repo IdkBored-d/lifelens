@@ -11,22 +11,77 @@ const Set<String> _canonicalMoodLabels = {
   'surprise',
 };
 
-String _sanitizeMoodLabel(String raw) {
+const Map<String, String> _moodAliasToCanonical = {
+  'sadness': 'sadness',
+  'sad': 'sadness',
+  'down': 'sadness',
+  'low': 'sadness',
+  'joy': 'joy',
+  'happy': 'joy',
+  'glad': 'joy',
+  'love': 'love',
+  'affectionate': 'love',
+  'affection': 'love',
+  'anger': 'anger',
+  'angry': 'anger',
+  'mad': 'anger',
+  'frustrated': 'anger',
+  'fear': 'fear',
+  'scared': 'fear',
+  'afraid': 'fear',
+  'anxious': 'fear',
+  'surprise': 'surprise',
+  'surprised': 'surprise',
+  'shocked': 'surprise',
+  'startled': 'surprise',
+};
+
+String _sanitizeMoodLabel(String raw, {String fallback = ''}) {
   final lowered = raw.trim().toLowerCase();
+  if (lowered.isEmpty) {
+    return fallback;
+  }
+
   if (_canonicalMoodLabels.contains(lowered)) {
     return lowered;
   }
-  // Fallback to a neutral canonical class when upstream sources are noisy.
-  return 'surprise';
+
+  // Direct alias match from app-facing mood labels.
+  final directAlias = _moodAliasToCanonical[lowered];
+  if (directAlias != null) {
+    return directAlias;
+  }
+
+  // Extract candidate words from noisy labels like "Scared (4/5)".
+  final normalized = lowered
+      .replaceAll(RegExp(r'\(.*?\)'), ' ')
+      .replaceAll(RegExp(r'[^a-z\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  for (final token in normalized.split(' ')) {
+    final alias = _moodAliasToCanonical[token];
+    if (alias != null) {
+      return alias;
+    }
+  }
+
+  // No reliable mapping found.
+  return fallback;
 }
 
 List<String> _sanitizeRecentMoods(List<String> rawItems) {
   final seen = <String>{};
   final normalized = <String>[];
   for (final item in rawItems) {
-    final match = RegExp(r'(sadness|joy|love|anger|fear|surprise)', caseSensitive: false)
-        .firstMatch(item);
+    final match = RegExp(
+      r'(sadness|sad|joy|happy|love|affectionate|anger|angry|fear|scared|surprise|surprised|anxious|afraid)',
+      caseSensitive: false,
+    ).firstMatch(item);
     final candidate = _sanitizeMoodLabel(match?.group(1) ?? item);
+    if (candidate.isEmpty) {
+      continue;
+    }
     if (seen.add(candidate)) {
       normalized.add(candidate);
     }
@@ -35,6 +90,23 @@ List<String> _sanitizeRecentMoods(List<String> rawItems) {
     }
   }
   return normalized;
+}
+
+String _resolveLatestCanonicalMood(
+  String rawLatest,
+  List<String> canonicalRecentMoods,
+) {
+  final direct = _sanitizeMoodLabel(rawLatest);
+  if (direct.isNotEmpty) {
+    return direct;
+  }
+
+  if (canonicalRecentMoods.isNotEmpty) {
+    return canonicalRecentMoods.first;
+  }
+
+  // Safer neutral fallback than forcing surprise.
+  return 'sadness';
 }
 
 String _truncateText(String value, int maxLength) {
@@ -342,7 +414,9 @@ class MiniMeIntelligenceReply {
       return raw.map((key, value) => MapEntry(key, value.toString().trim()));
     }
     if (raw is Map) {
-      return raw.map((key, value) => MapEntry(key.toString(), value.toString().trim()));
+      return raw.map(
+        (key, value) => MapEntry(key.toString(), value.toString().trim()),
+      );
     }
     return const <String, String>{};
   }
@@ -366,9 +440,10 @@ class MiniMeIntelligenceReply {
       state: rawState is Map<String, dynamic>
           ? rawState
           : (rawState is Map ? Map<String, dynamic>.from(rawState) : const {}),
-        healthStateVector: _toDoubleList(json['health_state_vector']),
-        healthStateVectorLabels:
-          _toStringList(json['health_state_vector_labels']),
+      healthStateVector: _toDoubleList(json['health_state_vector']),
+      healthStateVectorLabels: _toStringList(
+        json['health_state_vector_labels'],
+      ),
       features: _toDoubleMap(json['features']),
       riskScore: (json['risk_score'] as num?)?.toDouble() ?? 0.0,
       confidenceScore: (json['confidence_score'] as num?)?.toDouble() ?? 0.0,
@@ -418,6 +493,7 @@ class MiniMeBackendService {
     }
 
     urls.addAll(const [
+      'http://192.168.1.166:8000',
       'http://127.0.0.1:8000',
       'http://localhost:8000',
       'http://10.0.2.2:8000',
@@ -450,8 +526,11 @@ class MiniMeBackendService {
     String? summaryContext,
     MiniMeIntelligenceReply? intelligence,
   }) async {
-    final canonicalMoodLabel = _sanitizeMoodLabel(moodLabel);
     final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+    final canonicalMoodLabel = _resolveLatestCanonicalMood(
+      moodLabel,
+      canonicalRecentMoods,
+    );
     final sanitizedHistory = _truncateHistory(history);
     final sanitizedSymptoms = _truncateListItems(
       activeSymptoms,
@@ -529,11 +608,14 @@ class MiniMeBackendService {
     required List<MiniMeChatTurn> history,
     String? summaryContext,
   }) async {
-    final canonicalMoodLabel = _sanitizeMoodLabel(latestMoodLabel);
     final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+    final canonicalMoodLabel = _resolveLatestCanonicalMood(
+      latestMoodLabel,
+      canonicalRecentMoods,
+    );
     final sanitizedRecentLogs = _truncateListItems(
       recentLogs,
-      maxItems: 12,
+      maxItems: 28,
       maxItemLength: 1000,
     );
     final sanitizedSymptoms = _truncateListItems(
@@ -601,8 +683,11 @@ class MiniMeBackendService {
     required List<MiniMeExerciseCandidate> exercises,
     String? summaryContext,
   }) async {
-    final canonicalMoodLabel = _sanitizeMoodLabel(latestMoodLabel);
     final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
+    final canonicalMoodLabel = _resolveLatestCanonicalMood(
+      latestMoodLabel,
+      canonicalRecentMoods,
+    );
     final sanitizedRecentLogs = _truncateListItems(
       recentLogs,
       maxItems: 12,
