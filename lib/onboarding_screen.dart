@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lifelens/assets/minime/minime_avatar.dart';
 import 'package:lifelens/avatar_store.dart';
 import 'package:lifelens/models/mini_me_companion.dart';
 import 'package:provider/provider.dart';
@@ -111,15 +110,8 @@ class _MiniMePreviewPanel extends StatelessWidget {
         companionId: store.companionId,
         companionName: store.selectedCompanion.name,
         accentColor: store.selectedCompanion.accentColor,
-        isMiniMeHatched: store.isMiniMeHatched,
-        bodyModel: store.bodyModel,
-        hairModel: store.hairModel,
-        shirtModel: store.shirtModel,
-        bodyWidthScale: store.effectiveBodyWidthScale,
-        degradationLevel: store.degradationLevel,
       ),
       builder: (context, data, _) {
-        final avatarStore = context.read<AvatarStore>();
         final theme = Theme.of(context);
         return RepaintBoundary(
           child: Container(
@@ -138,9 +130,7 @@ class _MiniMePreviewPanel extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        data.isMiniMeHatched
-                            ? '${data.companionName} is ready'
-                            : 'Hatch ${data.companionName}',
+                        'Hatch ${data.companionName}',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -150,35 +140,15 @@ class _MiniMePreviewPanel extends StatelessWidget {
                     SizedBox(
                       width: 120,
                       height: 120,
-                      child: data.isMiniMeHatched
-                          ? MiniMePortraitAvatar(
-                              bodyModel: data.bodyModel,
-                              hairModel: data.hairModel,
-                              shirtModel: data.shirtModel,
-                              bodyWidthScale: data.bodyWidthScale,
-                              companionId: data.companionId,
-                              size: 118,
-                              degradationLevel: data.degradationLevel,
-                            )
-                          : _EggPreview(accentColor: data.accentColor),
+                      child: _EggPreview(accentColor: data.accentColor),
                     ),
                   ],
                 ),
                 const SizedBox(height: 14),
                 OutlinedButton.icon(
-                  onPressed: data.isMiniMeHatched
-                      ? avatarStore.resetHatchState
-                      : avatarStore.hatchMiniMe,
-                  icon: Icon(
-                    data.isMiniMeHatched
-                        ? Icons.refresh_rounded
-                        : Icons.egg_alt_rounded,
-                  ),
-                  label: Text(
-                    data.isMiniMeHatched
-                        ? 'Preview hatch again'
-                        : 'Create this Mini-Me',
-                  ),
+                  onPressed: null,
+                  icon: const Icon(Icons.egg_alt_rounded),
+                  label: const Text('Hatches after setup'),
                 ),
               ],
             ),
@@ -194,50 +164,22 @@ class _MiniMePreviewData {
     required this.companionId,
     required this.companionName,
     required this.accentColor,
-    required this.isMiniMeHatched,
-    required this.bodyModel,
-    required this.hairModel,
-    required this.shirtModel,
-    required this.bodyWidthScale,
-    required this.degradationLevel,
   });
 
   final String companionId;
   final String companionName;
   final Color accentColor;
-  final bool isMiniMeHatched;
-  final String bodyModel;
-  final String hairModel;
-  final String shirtModel;
-  final double bodyWidthScale;
-  final double degradationLevel;
 
   @override
   bool operator ==(Object other) {
     return other is _MiniMePreviewData &&
         other.companionId == companionId &&
         other.companionName == companionName &&
-        other.accentColor == accentColor &&
-        other.isMiniMeHatched == isMiniMeHatched &&
-        other.bodyModel == bodyModel &&
-        other.hairModel == hairModel &&
-        other.shirtModel == shirtModel &&
-        other.bodyWidthScale == bodyWidthScale &&
-        other.degradationLevel == degradationLevel;
+        other.accentColor == accentColor;
   }
 
   @override
-  int get hashCode => Object.hash(
-    companionId,
-    companionName,
-    accentColor,
-    isMiniMeHatched,
-    bodyModel,
-    hairModel,
-    shirtModel,
-    bodyWidthScale,
-    degradationLevel,
-  );
+  int get hashCode => Object.hash(companionId, companionName, accentColor);
 }
 
 class _CompanionCard extends StatelessWidget {

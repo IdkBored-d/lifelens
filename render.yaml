@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: lifelens-backend
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: 10000
+      - key: API_RELOAD
+        value: false
