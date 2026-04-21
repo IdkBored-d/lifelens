@@ -593,6 +593,71 @@ def _sanitize_summary_for_chat(text: str, max_words: int = 80) -> str:
     return sanitized
 
 
+def _expected_summary_bucket(
+    state: Dict[str, bool],
+    tier: str,
+    trend_classification: Dict[str, str],
+    features: Dict[str, float],
+    trends: Dict[str, Any],
+) -> str:
+    if state.get("low_sleep") and not state.get("low_mood"):
+        return "low_sleep"
+    if state.get("low_mood") and not state.get("low_sleep"):
+        return "low_mood"
+
+    dominant_trend = trend_classification.get("overall", "stable")
+    if dominant_trend == "improving":
+        return "improving"
+    if dominant_trend == "declining":
+        return "declining"
+    if trend_classification.get("sleep") == "declining" or trend_classification.get("mood") == "declining":
+        return "declining"
+
+    # High symptom load with rising symptoms should remain explicitly risk-forward.
+    if float(features.get("symptom_avg_3", 0.0)) >= 2.5 and float(trends.get("symptom_count_trend_rate", 0.0)) > 0.15:
+        return "high_risk"
+    if tier == "high":
+        return "high_risk"
+
+    # Highly volatile mood patterns are treated as fragile decline for messaging.
+    if float(features.get("mood_variance_7", 0.0)) >= 2.5:
+        return "declining"
+
+    return "stable"
+
+
+def _ensure_bucket_phrase(summary: str, expected_bucket: str) -> str:
+    lowered = summary.lower()
+
+    bucket_keywords = {
+        "declining": ("declin", "worsen"),
+        "improving": ("improv", "recover"),
+        "stable": ("stable", "steady"),
+        "low_sleep": ("sleep",),
+        "low_mood": ("mood",),
+        "high_risk": ("risk", "high"),
+    }
+    anchor_text = {
+        "declining": "Overall trend is declining.",
+        "improving": "Overall trend is improving.",
+        "stable": "Overall trend is stable.",
+        "low_sleep": "Low sleep remains the main concern.",
+        "low_mood": "Low mood remains the main concern.",
+        "high_risk": "Multiple indicators suggest elevated short-term risk.",
+    }
+
+    required = bucket_keywords.get(expected_bucket, tuple())
+    if required and any(token in lowered for token in required):
+        return summary
+
+    anchor = anchor_text.get(expected_bucket, "")
+    if not anchor:
+        return summary
+    if not summary:
+        return anchor
+    return f"{anchor} {summary}".strip()
+
+
 def _fallback_message(
     selected_actions: List[str],
     confidence_score: float,
@@ -1211,6 +1276,16 @@ def analyze_logs(
             next_day=forecast.get("next_day", {}),
         )
         summary_message = _sanitize_summary_for_chat(summary_message, max_words=80)
+
+    expected_bucket = _expected_summary_bucket(
+        state=state,
+        tier=tier,
+        trend_classification=trend_classification,
+        features=features,
+        trends=trends,
+    )
+    summary_message = _ensure_bucket_phrase(summary_message, expected_bucket)
+    summary_message = _sanitize_summary_for_chat(summary_message, max_words=80)
     logger.info(f"[Summarization Output] {summary_message}")
 
     return IntelligenceAnalyzeResponse(

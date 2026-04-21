@@ -1,0 +1,2402 @@
+[
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.063 mood_slope=0.199 risk=54.00 trend=0.131",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.043 mood_slope=0.203 risk=54.00 trend=0.080",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.042 mood_slope=0.186 risk=54.00 trend=0.072",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.143 mood_slope=-0.037 risk=54.00 trend=0.053",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.023 mood_slope=0.142 risk=54.00 trend=0.083",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.072 mood_slope=-0.023 risk=54.00 trend=0.024",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.128 mood_slope=0.224 risk=54.00 trend=0.176",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.024 mood_slope=0.127 risk=54.00 trend=0.076",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.043 mood_slope=0.074 risk=54.00 trend=0.058",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.006 mood_slope=0.017 risk=54.00 trend=0.011",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.067 mood_slope=0.058 risk=54.00 trend=0.062",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.087 mood_slope=0.165 risk=54.00 trend=0.126",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.040 mood_slope=0.149 risk=54.00 trend=0.055",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.022 mood_slope=-0.013 risk=54.00 trend=0.004",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.232 mood_slope=0.195 risk=54.00 trend=0.213",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.020 mood_slope=0.138 risk=54.00 trend=0.079",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.242 mood_slope=0.172 risk=54.00 trend=0.207",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.076 mood_slope=-0.032 risk=54.00 trend=0.022",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.148 mood_slope=0.242 risk=54.00 trend=0.195",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.026 mood_slope=-0.042 risk=54.00 trend=-0.008",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.026 mood_slope=0.010 risk=54.00 trend=0.018",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.022 mood_slope=0.262 risk=54.00 trend=0.142",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.202 mood_slope=0.101 risk=54.00 trend=0.152",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.161 mood_slope=0.005 risk=54.00 trend=0.083",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.118 mood_slope=0.147 risk=54.00 trend=0.132",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.023 mood_slope=-0.015 risk=54.00 trend=-0.019",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.248 mood_slope=0.154 risk=54.00 trend=0.201",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.281 mood_slope=0.257 risk=54.00 trend=0.269",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.106 mood_slope=0.190 risk=54.00 trend=0.148",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.016 mood_slope=0.071 risk=54.00 trend=0.028",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.290 mood_slope=0.195 risk=54.00 trend=0.242",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.023 mood_slope=0.088 risk=54.00 trend=0.032",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.054 mood_slope=-0.038 risk=54.00 trend=0.008",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.056 mood_slope=0.037 risk=54.00 trend=0.046",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.008 mood_slope=0.160 risk=54.00 trend=0.076",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.258 mood_slope=0.258 risk=54.00 trend=0.258",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.045 mood_slope=-0.022 risk=54.00 trend=-0.033",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.109 mood_slope=0.243 risk=54.00 trend=0.176",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.045 mood_slope=0.182 risk=54.00 trend=0.113",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.028 mood_slope=0.178 risk=54.00 trend=0.075",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.027 mood_slope=0.174 risk=54.00 trend=0.073",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.037 mood_slope=0.093 risk=54.00 trend=0.028",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.094 mood_slope=0.271 risk=54.00 trend=0.183",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.180 mood_slope=0.267 risk=54.00 trend=0.223",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.198 mood_slope=0.187 risk=54.00 trend=0.193",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.231 mood_slope=-0.042 risk=54.00 trend=0.094",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.287 mood_slope=0.012 risk=54.00 trend=0.150",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.234 mood_slope=0.279 risk=54.00 trend=0.256",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.256 mood_slope=0.226 risk=54.00 trend=0.241",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.146 mood_slope=0.182 risk=54.00 trend=0.164",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.200 mood_slope=0.195 risk=54.00 trend=0.198",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.077 mood_slope=0.147 risk=54.00 trend=0.112",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.237 mood_slope=0.130 risk=54.00 trend=0.183",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.181 mood_slope=0.073 risk=54.00 trend=0.127",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.062 mood_slope=0.161 risk=54.00 trend=0.112",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.011 mood_slope=0.083 risk=54.00 trend=0.047",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.294 mood_slope=0.203 risk=54.00 trend=0.249",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.235 mood_slope=0.198 risk=54.00 trend=0.217",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.186 mood_slope=0.085 risk=54.00 trend=0.136",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.020 mood_slope=0.034 risk=54.00 trend=0.007",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.066 mood_slope=0.068 risk=54.00 trend=0.067",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.108 mood_slope=0.128 risk=54.00 trend=0.118",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.261 mood_slope=0.063 risk=54.00 trend=0.162",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.160 mood_slope=0.128 risk=54.00 trend=0.144",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.248 mood_slope=0.139 risk=54.00 trend=0.194",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.239 mood_slope=0.081 risk=54.00 trend=0.160",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.258 mood_slope=0.277 risk=54.00 trend=0.268",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.132 mood_slope=0.140 risk=54.00 trend=0.136",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.277 mood_slope=0.169 risk=54.00 trend=0.223",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.209 mood_slope=0.176 risk=54.00 trend=0.192",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.121 mood_slope=0.057 risk=54.00 trend=0.089",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.142 mood_slope=0.080 risk=54.00 trend=0.111",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.027 mood_slope=0.066 risk=54.00 trend=0.046",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.191 mood_slope=0.276 risk=54.00 trend=0.233",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.174 mood_slope=0.100 risk=54.00 trend=0.137",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.201 mood_slope=0.245 risk=54.00 trend=0.223",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.123 mood_slope=0.252 risk=54.00 trend=0.188",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.035 mood_slope=0.084 risk=54.00 trend=0.059",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.140 mood_slope=-0.018 risk=54.00 trend=0.061",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.042 mood_slope=-0.040 risk=54.00 trend=-0.041",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.022 mood_slope=0.223 risk=54.00 trend=0.123",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.027 mood_slope=0.099 risk=54.00 trend=0.036",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.098 mood_slope=0.068 risk=54.00 trend=0.083",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.046 mood_slope=0.147 risk=54.00 trend=0.050",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.086 mood_slope=0.019 risk=54.00 trend=0.052",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.167 mood_slope=0.253 risk=54.00 trend=0.210",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.188 mood_slope=0.272 risk=54.00 trend=0.230",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.062 mood_slope=-0.040 risk=54.00 trend=0.011",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.251 mood_slope=0.077 risk=54.00 trend=0.164",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.098 mood_slope=0.144 risk=54.00 trend=0.121",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.282 mood_slope=0.176 risk=54.00 trend=0.229",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.083 mood_slope=0.268 risk=54.00 trend=0.175",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.116 mood_slope=0.129 risk=54.00 trend=0.123",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.036 mood_slope=0.224 risk=54.00 trend=0.130",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.109 mood_slope=0.197 risk=54.00 trend=0.153",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.161 mood_slope=0.105 risk=54.00 trend=0.133",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.058 mood_slope=0.206 risk=54.00 trend=0.132",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.026 mood_slope=0.086 risk=54.00 trend=0.056",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.189 mood_slope=0.146 risk=54.00 trend=0.168",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.277 mood_slope=0.097 risk=54.00 trend=0.187",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.112 mood_slope=0.180 risk=54.00 trend=0.146",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.230 mood_slope=0.127 risk=54.00 trend=0.179",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.039 mood_slope=-0.011 risk=54.00 trend=0.014",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.011 mood_slope=0.099 risk=54.00 trend=0.055",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.036 mood_slope=0.148 risk=54.00 trend=0.056",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.012 mood_slope=0.001 risk=54.00 trend=-0.005",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.020 mood_slope=0.110 risk=54.00 trend=0.065",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.086 mood_slope=0.196 risk=54.00 trend=0.141",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.220 mood_slope=-0.036 risk=54.00 trend=0.092",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.028 mood_slope=0.236 risk=54.00 trend=0.132",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.030 mood_slope=0.097 risk=54.00 trend=0.063",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.014 mood_slope=-0.004 risk=54.00 trend=-0.009",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.103 mood_slope=0.071 risk=54.00 trend=0.087",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.043 mood_slope=0.123 risk=54.00 trend=0.040",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.172 mood_slope=-0.015 risk=54.00 trend=0.079",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.038 mood_slope=0.094 risk=54.00 trend=0.028",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.027 mood_slope=-0.021 risk=54.00 trend=-0.024",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.116 mood_slope=0.117 risk=54.00 trend=0.117",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.267 mood_slope=0.239 risk=54.00 trend=0.253",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.042 mood_slope=-0.021 risk=54.00 trend=-0.032",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.183 mood_slope=0.097 risk=54.00 trend=0.140",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.145 mood_slope=0.108 risk=54.00 trend=0.126",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.154 mood_slope=-0.012 risk=54.00 trend=0.071",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.031 mood_slope=-0.001 risk=54.00 trend=0.015",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.211 mood_slope=0.079 risk=54.00 trend=0.145",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.029 mood_slope=0.210 risk=54.00 trend=0.091",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.134 mood_slope=0.038 risk=54.00 trend=0.086",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.056 mood_slope=0.218 risk=54.00 trend=0.137",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.272 mood_slope=0.234 risk=54.00 trend=0.253",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.016 mood_slope=0.107 risk=54.00 trend=0.061",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.025 mood_slope=0.007 risk=54.00 trend=0.016",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.001 mood_slope=-0.008 risk=54.00 trend=-0.003",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.251 mood_slope=-0.028 risk=54.00 trend=0.112",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.148 mood_slope=0.032 risk=54.00 trend=0.090",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.244 mood_slope=0.069 risk=54.00 trend=0.157",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.240 mood_slope=0.084 risk=54.00 trend=0.162",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.035 mood_slope=0.056 risk=54.00 trend=0.010",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.040 mood_slope=0.172 risk=54.00 trend=0.066",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.087 mood_slope=0.150 risk=54.00 trend=0.118",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.212 mood_slope=-0.008 risk=54.00 trend=0.102",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.176 mood_slope=0.199 risk=54.00 trend=0.188",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.034 mood_slope=0.122 risk=54.00 trend=0.078",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.221 mood_slope=0.093 risk=54.00 trend=0.157",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.096 mood_slope=0.135 risk=54.00 trend=0.116",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.221 mood_slope=-0.037 risk=54.00 trend=0.092",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.088 mood_slope=0.103 risk=54.00 trend=0.095",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.056 mood_slope=0.127 risk=54.00 trend=0.091",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.272 mood_slope=0.232 risk=54.00 trend=0.252",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.129 mood_slope=0.077 risk=54.00 trend=0.103",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.114 mood_slope=-0.020 risk=54.00 trend=0.047",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.291 mood_slope=0.126 risk=54.00 trend=0.209",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.038 mood_slope=0.039 risk=54.00 trend=0.038",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.256 mood_slope=0.146 risk=54.00 trend=0.201",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.060 mood_slope=0.249 risk=54.00 trend=0.154",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.148 mood_slope=0.065 risk=54.00 trend=0.107",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.017 mood_slope=0.061 risk=54.00 trend=0.039",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.047 mood_slope=0.147 risk=54.00 trend=0.097",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.219 mood_slope=0.244 risk=54.00 trend=0.231",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.231 mood_slope=0.177 risk=54.00 trend=0.204",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.190 mood_slope=0.069 risk=54.00 trend=0.130",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.022 mood_slope=0.103 risk=54.00 trend=0.062",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.009 mood_slope=0.189 risk=54.00 trend=0.090",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.174 mood_slope=0.018 risk=54.00 trend=0.096",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.014 mood_slope=0.164 risk=54.00 trend=0.089",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.081 mood_slope=0.079 risk=54.00 trend=0.080",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.276 mood_slope=0.101 risk=54.00 trend=0.189",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.001 mood_slope=0.150 risk=54.00 trend=0.076",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.006 mood_slope=0.074 risk=54.00 trend=0.034",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.049 mood_slope=0.012 risk=54.00 trend=-0.018",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.275 mood_slope=0.100 risk=54.00 trend=0.187",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.129 mood_slope=0.089 risk=54.00 trend=0.109",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.032 mood_slope=0.091 risk=54.00 trend=0.029",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.158 mood_slope=0.107 risk=54.00 trend=0.133",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.060 mood_slope=-0.004 risk=54.00 trend=0.028",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.076 mood_slope=0.214 risk=54.00 trend=0.145",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.036 mood_slope=-0.027 risk=54.00 trend=-0.031",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.142 mood_slope=0.039 risk=54.00 trend=0.090",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.274 mood_slope=0.177 risk=54.00 trend=0.225",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.036 mood_slope=0.168 risk=54.00 trend=0.066",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.047 mood_slope=0.061 risk=54.00 trend=0.007",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.049 mood_slope=0.029 risk=54.00 trend=0.039",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.166 mood_slope=0.138 risk=54.00 trend=0.152",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.275 mood_slope=0.067 risk=54.00 trend=0.171",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.003 mood_slope=0.133 risk=54.00 trend=0.068",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.217 mood_slope=0.007 risk=54.00 trend=0.112",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.021 mood_slope=0.153 risk=54.00 trend=0.087",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.018 mood_slope=0.194 risk=54.00 trend=0.088",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.233 mood_slope=-0.009 risk=54.00 trend=0.112",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.246 mood_slope=0.023 risk=54.00 trend=0.134",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.163 mood_slope=0.244 risk=54.00 trend=0.204",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.048 mood_slope=-0.049 risk=54.00 trend=-0.001",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.102 mood_slope=0.234 risk=54.00 trend=0.168",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.106 mood_slope=0.027 risk=54.00 trend=0.066",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.093 mood_slope=0.097 risk=54.00 trend=0.095",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.209 mood_slope=0.077 risk=54.00 trend=0.143",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.042 mood_slope=0.202 risk=54.00 trend=0.080",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.259 mood_slope=0.112 risk=54.00 trend=0.185",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.063 mood_slope=0.115 risk=54.00 trend=0.089",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.243 mood_slope=0.150 risk=54.00 trend=0.197",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.001 mood_slope=-0.024 risk=54.00 trend=-0.012",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.009 mood_slope=0.083 risk=54.00 trend=0.046",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.060 mood_slope=0.084 risk=54.00 trend=0.072",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.200 mood_slope=0.246 risk=54.00 trend=0.223",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.160 mood_slope=0.105 risk=54.00 trend=0.133",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.190 mood_slope=0.136 risk=54.00 trend=0.163",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.108 mood_slope=0.214 risk=54.00 trend=0.161",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.150 mood_slope=0.069 risk=54.00 trend=0.109",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.122 mood_slope=0.189 risk=54.00 trend=0.155",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.019 mood_slope=0.034 risk=54.00 trend=0.008",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.044 mood_slope=0.251 risk=54.00 trend=0.148",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.117 mood_slope=0.006 risk=54.00 trend=0.062",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.246 mood_slope=0.273 risk=54.00 trend=0.260",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.033 mood_slope=0.025 risk=54.00 trend=-0.004",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.018 mood_slope=0.179 risk=54.00 trend=0.081",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.038 mood_slope=0.123 risk=54.00 trend=0.080",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.109 mood_slope=0.047 risk=54.00 trend=0.078",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.047 mood_slope=0.252 risk=54.00 trend=0.150",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.093 mood_slope=0.005 risk=54.00 trend=0.049",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.031 mood_slope=-0.020 risk=54.00 trend=0.006",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.150 mood_slope=0.208 risk=54.00 trend=0.179",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.051 mood_slope=0.105 risk=54.00 trend=0.078",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.263 mood_slope=0.028 risk=54.00 trend=0.146",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.161 mood_slope=-0.025 risk=54.00 trend=0.068",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.044 mood_slope=0.208 risk=54.00 trend=0.126",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.223 mood_slope=0.133 risk=54.00 trend=0.178",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.203 mood_slope=0.000 risk=54.00 trend=0.102",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.036 mood_slope=-0.047 risk=54.00 trend=-0.006",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.218 mood_slope=0.119 risk=54.00 trend=0.169",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.125 mood_slope=0.245 risk=54.00 trend=0.185",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.003 mood_slope=-0.034 risk=54.00 trend=-0.018",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.246 mood_slope=0.030 risk=54.00 trend=0.138",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.151 mood_slope=0.042 risk=54.00 trend=0.097",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.109 mood_slope=0.184 risk=54.00 trend=0.147",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.007 mood_slope=0.150 risk=54.00 trend=0.078",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.027 mood_slope=0.075 risk=54.00 trend=0.024",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.051 mood_slope=0.125 risk=54.00 trend=0.088",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.187 mood_slope=0.080 risk=54.00 trend=0.134",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.261 mood_slope=0.104 risk=54.00 trend=0.183",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.225 mood_slope=0.141 risk=54.00 trend=0.183",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.213 mood_slope=0.123 risk=54.00 trend=0.168",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.008 mood_slope=0.233 risk=54.00 trend=0.121",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.232 mood_slope=0.018 risk=54.00 trend=0.125",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.245 mood_slope=-0.012 risk=54.00 trend=0.116",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.084 mood_slope=0.049 risk=54.00 trend=0.066",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.060 mood_slope=0.016 risk=54.00 trend=0.038",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.025 mood_slope=0.206 risk=54.00 trend=0.116",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.107 mood_slope=0.145 risk=54.00 trend=0.126",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.177 mood_slope=0.050 risk=54.00 trend=0.113",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.000 mood_slope=0.247 risk=54.00 trend=0.123",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.039 mood_slope=0.082 risk=54.00 trend=0.060",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.080 mood_slope=0.018 risk=54.00 trend=0.049",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.096 mood_slope=-0.033 risk=54.00 trend=0.031",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.264 mood_slope=0.255 risk=54.00 trend=0.259",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.081 mood_slope=0.066 risk=54.00 trend=0.073",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.260 mood_slope=0.238 risk=54.00 trend=0.249",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.159 mood_slope=0.067 risk=54.00 trend=0.113",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.036 mood_slope=0.274 risk=54.00 trend=0.119",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.026 mood_slope=0.059 risk=54.00 trend=0.017",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.273 mood_slope=0.005 risk=54.00 trend=0.139",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.001 mood_slope=0.185 risk=54.00 trend=0.093",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.029 mood_slope=0.118 risk=54.00 trend=0.045",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.042 mood_slope=0.083 risk=54.00 trend=0.021",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.071 mood_slope=0.058 risk=54.00 trend=0.065",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.032 mood_slope=0.121 risk=54.00 trend=0.044",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.259 mood_slope=0.200 risk=54.00 trend=0.230",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.217 mood_slope=-0.038 risk=54.00 trend=0.090",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.300 mood_slope=0.001 risk=54.00 trend=0.150",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.066 mood_slope=0.186 risk=54.00 trend=0.126",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.000 mood_slope=0.201 risk=54.00 trend=0.101",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.017 mood_slope=0.077 risk=54.00 trend=0.030",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.027 mood_slope=-0.035 risk=54.00 trend=-0.004",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.284 mood_slope=0.014 risk=54.00 trend=0.149",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.096 mood_slope=0.223 risk=54.00 trend=0.159",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.099 mood_slope=0.138 risk=54.00 trend=0.118",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.050 mood_slope=-0.028 risk=54.00 trend=-0.039",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.043 mood_slope=0.109 risk=54.00 trend=0.076",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.027 mood_slope=0.252 risk=54.00 trend=0.139",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.274 mood_slope=0.113 risk=54.00 trend=0.193",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.184 mood_slope=0.218 risk=54.00 trend=0.201",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.166 mood_slope=0.273 risk=54.00 trend=0.220",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.284 mood_slope=0.035 risk=54.00 trend=0.160",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.171 mood_slope=0.058 risk=54.00 trend=0.114",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.184 mood_slope=0.226 risk=54.00 trend=0.205",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.232 mood_slope=0.207 risk=54.00 trend=0.220",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.029 mood_slope=-0.043 risk=54.00 trend=-0.007",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.045 mood_slope=0.260 risk=54.00 trend=0.153",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.125 mood_slope=0.189 risk=54.00 trend=0.157",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.032 mood_slope=0.145 risk=54.00 trend=0.057",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.013 mood_slope=-0.001 risk=54.00 trend=-0.007",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.246 mood_slope=0.022 risk=54.00 trend=0.134",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.113 mood_slope=0.001 risk=54.00 trend=0.057",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.194 mood_slope=0.117 risk=54.00 trend=0.156",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.210 mood_slope=0.088 risk=54.00 trend=0.149",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.055 mood_slope=0.030 risk=54.00 trend=0.042",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.282 mood_slope=0.169 risk=54.00 trend=0.225",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.274 mood_slope=-0.031 risk=54.00 trend=0.121",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.235 mood_slope=0.001 risk=54.00 trend=0.118",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.292 mood_slope=0.060 risk=54.00 trend=0.176",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.009 mood_slope=0.028 risk=54.00 trend=0.010",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.275 mood_slope=0.081 risk=54.00 trend=0.178",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.092 mood_slope=0.230 risk=54.00 trend=0.161",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.035 mood_slope=0.215 risk=54.00 trend=0.125",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.006 mood_slope=0.058 risk=54.00 trend=0.032",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.249 mood_slope=-0.017 risk=54.00 trend=0.116",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.229 mood_slope=-0.047 risk=54.00 trend=0.091",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.122 mood_slope=-0.020 risk=54.00 trend=0.051",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.297 mood_slope=-0.049 risk=54.00 trend=0.124",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.039 mood_slope=0.046 risk=54.00 trend=0.004",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.188 mood_slope=0.253 risk=54.00 trend=0.220",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.183 mood_slope=-0.021 risk=54.00 trend=0.081",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.263 mood_slope=0.059 risk=54.00 trend=0.161",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.299 mood_slope=-0.023 risk=54.00 trend=0.138",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.165 mood_slope=0.221 risk=54.00 trend=0.193",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.226 mood_slope=0.246 risk=54.00 trend=0.236",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.012 mood_slope=0.146 risk=54.00 trend=0.067",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.241 mood_slope=0.044 risk=54.00 trend=0.142",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.112 mood_slope=0.231 risk=54.00 trend=0.172",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.175 mood_slope=0.181 risk=54.00 trend=0.178",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.124 mood_slope=0.024 risk=54.00 trend=0.074",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.039 mood_slope=0.231 risk=54.00 trend=0.096",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.193 mood_slope=0.217 risk=54.00 trend=0.205",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.283 mood_slope=0.051 risk=54.00 trend=0.167",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.096 mood_slope=0.257 risk=54.00 trend=0.177",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.183 mood_slope=0.019 risk=54.00 trend=0.101",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.002 mood_slope=0.001 risk=54.00 trend=0.002",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.029 mood_slope=0.239 risk=54.00 trend=0.105",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.012 mood_slope=0.098 risk=54.00 trend=0.043",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.203 mood_slope=0.043 risk=54.00 trend=0.123",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.191 mood_slope=0.141 risk=54.00 trend=0.166",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.102 mood_slope=-0.010 risk=54.00 trend=0.046",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.278 mood_slope=0.019 risk=54.00 trend=0.149",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.180 mood_slope=0.070 risk=54.00 trend=0.125",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.017 mood_slope=-0.028 risk=54.00 trend=-0.006",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.244 mood_slope=0.215 risk=54.00 trend=0.230",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.015 mood_slope=0.114 risk=54.00 trend=0.065",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.224 mood_slope=0.235 risk=54.00 trend=0.229",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.003 mood_slope=0.058 risk=54.00 trend=0.027",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.180 mood_slope=0.266 risk=54.00 trend=0.223",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.047 mood_slope=0.208 risk=54.00 trend=0.081",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.096 mood_slope=0.111 risk=54.00 trend=0.103",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.002 mood_slope=0.242 risk=54.00 trend=0.122",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.129 mood_slope=0.113 risk=54.00 trend=0.121",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.268 mood_slope=0.188 risk=54.00 trend=0.228",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.037 mood_slope=-0.047 risk=54.00 trend=-0.042",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.199 mood_slope=0.214 risk=54.00 trend=0.207",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.068 mood_slope=-0.015 risk=54.00 trend=0.026",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.024 mood_slope=0.060 risk=54.00 trend=0.042",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.136 mood_slope=0.244 risk=54.00 trend=0.190",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.102 mood_slope=0.263 risk=54.00 trend=0.183",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.109 mood_slope=0.187 risk=54.00 trend=0.148",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.139 mood_slope=0.199 risk=54.00 trend=0.169",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.050 mood_slope=-0.044 risk=54.00 trend=0.003",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.116 mood_slope=0.240 risk=54.00 trend=0.178",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.270 mood_slope=0.151 risk=54.00 trend=0.210",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.273 mood_slope=0.225 risk=54.00 trend=0.249",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.107 mood_slope=0.049 risk=54.00 trend=0.078",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.236 mood_slope=0.171 risk=54.00 trend=0.203",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.088 mood_slope=-0.049 risk=54.00 trend=0.020",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.036 mood_slope=0.264 risk=54.00 trend=0.114",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.034 mood_slope=-0.049 risk=54.00 trend=-0.008",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.286 mood_slope=0.215 risk=54.00 trend=0.250",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.137 mood_slope=0.247 risk=54.00 trend=0.192",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.044 mood_slope=0.237 risk=54.00 trend=0.096",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.219 mood_slope=0.169 risk=54.00 trend=0.194",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.296 mood_slope=0.020 risk=54.00 trend=0.158",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.223 mood_slope=0.232 risk=54.00 trend=0.228",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.146 mood_slope=0.058 risk=54.00 trend=0.102",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.045 mood_slope=0.092 risk=54.00 trend=0.023",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.176 mood_slope=0.262 risk=54.00 trend=0.219",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.015 mood_slope=0.257 risk=54.00 trend=0.121",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.009 mood_slope=0.046 risk=54.00 trend=0.028",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.095 mood_slope=0.249 risk=54.00 trend=0.172",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.205 mood_slope=0.069 risk=54.00 trend=0.137",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.058 mood_slope=0.129 risk=54.00 trend=0.094",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.023 mood_slope=0.001 risk=54.00 trend=-0.011",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.249 mood_slope=-0.049 risk=54.00 trend=0.100",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.027 mood_slope=0.204 risk=54.00 trend=0.089",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.288 mood_slope=-0.013 risk=54.00 trend=0.138",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.068 mood_slope=0.115 risk=54.00 trend=0.092",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.129 mood_slope=0.109 risk=54.00 trend=0.119",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.225 mood_slope=0.068 risk=54.00 trend=0.146",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.074 mood_slope=0.078 risk=54.00 trend=0.076",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.141 mood_slope=0.033 risk=54.00 trend=0.087",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.269 mood_slope=0.155 risk=54.00 trend=0.212",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.297 mood_slope=0.004 risk=54.00 trend=0.150",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.006 mood_slope=0.219 risk=54.00 trend=0.113",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.118 mood_slope=0.255 risk=54.00 trend=0.186",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.040 mood_slope=0.232 risk=54.00 trend=0.096",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.014 mood_slope=0.119 risk=54.00 trend=0.053",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.024 mood_slope=0.013 risk=54.00 trend=0.019",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.221 mood_slope=0.197 risk=54.00 trend=0.209",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.292 mood_slope=0.196 risk=54.00 trend=0.244",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.145 mood_slope=0.101 risk=54.00 trend=0.123",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.175 mood_slope=0.016 risk=54.00 trend=0.095",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.037 mood_slope=0.012 risk=54.00 trend=-0.013",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.044 mood_slope=0.169 risk=54.00 trend=0.063",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.177 mood_slope=0.087 risk=54.00 trend=0.132",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.289 mood_slope=0.234 risk=54.00 trend=0.262",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=-0.003 mood_slope=-0.018 risk=54.00 trend=-0.011",
+    "target": "Signals look stable right now, so continue a steady routine with one practical check-in step.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  },
+  {
+    "input": "sleep_avg_3=6.50 mood_avg_3=3.00 sleep_slope=0.158 mood_slope=0.106 risk=54.00 trend=0.132",
+    "target": "Current pattern appears stable, with no major short-term disruption.",
+    "source": "sleep_health_grounding",
+    "bucket": "stable"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "reddit_rows": 1500,
+  "counsel_rows": 358,
+  "sleep_rows": 400,
+  "outputs": {
+    "reddit_samples": "D:\\Users\\He846\\OneDrive\\Documents\\GitHub\\lifelens\\backend\\ml\\summarization\\incoming\\reddit_samples.csv",
+    "counsel_chat": "D:\\Users\\He846\\OneDrive\\Documents\\GitHub\\lifelens\\backend\\ml\\summarization\\incoming\\counsel_chat.csv",
+    "synthetic_math": "D:\\Users\\He846\\OneDrive\\Documents\\GitHub\\lifelens\\backend\\ml\\summarization\\incoming_bootstrap\\synthetic_math.json"
+  }
+}
