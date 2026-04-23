@@ -1,13 +1,11 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_services.dart';
 import 'exercise_store.dart';
 
-enum TrackingReminderTrigger {
-  largeGap,
-  inconsistency,
-}
+enum TrackingReminderTrigger { largeGap, inconsistency }
 
 class TrackingReminderService {
   TrackingReminderService._();
@@ -21,6 +19,10 @@ class TrackingReminderService {
       'tracking_reminder_last_notification_type';
   static const String _recentLogDaysKey = 'tracking_reminder_recent_log_days';
   static const int _reminderNotificationId = 7101;
+  static const String _channelId = 'tracking_reminders_v2';
+  static const String _channelName = 'Tracking Reminders';
+  static const String _channelDescription =
+      'Gentle reminders when logging has been inconsistent or paused for a while.';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -35,7 +37,9 @@ class TrackingReminderService {
 
     _prefs = await SharedPreferences.getInstance();
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const darwinSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -47,6 +51,19 @@ class TrackingReminderService {
         android: androidSettings,
         iOS: darwinSettings,
         macOS: darwinSettings,
+      ),
+    );
+
+    final androidImplementation = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    await androidImplementation?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _channelId,
+        _channelName,
+        description: _channelDescription,
+        importance: Importance.high,
       ),
     );
 
@@ -63,13 +80,14 @@ class TrackingReminderService {
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
-    await androidImplementation?.requestNotificationsPermission();
+    final androidGranted = await androidImplementation
+        ?.requestNotificationsPermission();
 
     final iosImplementation = _plugin
         .resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin
         >();
-    await iosImplementation?.requestPermissions(
+    final iosGranted = await iosImplementation?.requestPermissions(
       alert: true,
       badge: true,
       sound: true,
@@ -79,10 +97,15 @@ class TrackingReminderService {
         .resolvePlatformSpecificImplementation<
           MacOSFlutterLocalNotificationsPlugin
         >();
-    await macImplementation?.requestPermissions(
+    final macGranted = await macImplementation?.requestPermissions(
       alert: true,
       badge: true,
       sound: true,
+    );
+
+    debugPrint(
+      '[TrackingReminderService] notification permission request results: '
+      'android=$androidGranted iOS=$iosGranted macOS=$macGranted',
     );
   }
 
@@ -94,6 +117,13 @@ class TrackingReminderService {
           IOSFlutterLocalNotificationsPlugin
         >();
     final iosPermissions = await iosImplementation?.checkPermissions();
+
+    final androidImplementation = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    final androidEnabled = await androidImplementation
+        ?.areNotificationsEnabled();
 
     final macImplementation = _plugin
         .resolvePlatformSpecificImplementation<
@@ -109,6 +139,8 @@ class TrackingReminderService {
     }
 
     return 'notificationsEnabledToggle=$notificationsEnabled\n'
+        'androidNotificationsEnabled=${androidEnabled?.toString() ?? 'unavailable'}\n'
+        'androidChannel=$_channelId importance=high\n'
         'iosPermissions=${formatOptions(iosPermissions)}\n'
         'macPermissions=${formatOptions(macPermissions)}';
   }
@@ -129,10 +161,11 @@ class TrackingReminderService {
   Future<void> handleLogRecorded() async {
     await init();
     final today = _dateKey(DateTime.now());
-    final recentDays = (_prefs!.getStringList(_recentLogDaysKey) ?? const <String>[])
-        .where((item) => item.trim().isNotEmpty)
-        .toSet()
-        .toList(growable: true);
+    final recentDays =
+        (_prefs!.getStringList(_recentLogDaysKey) ?? const <String>[])
+            .where((item) => item.trim().isNotEmpty)
+            .toSet()
+            .toList(growable: true);
     recentDays.remove(today);
     recentDays.insert(0, today);
     if (recentDays.length > 30) {
@@ -182,30 +215,7 @@ class TrackingReminderService {
       _reminderNotificationId,
       message.title,
       message.body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'tracking_reminders',
-          'Tracking Reminders',
-          channelDescription:
-              'Gentle reminders when logging has been inconsistent or paused for a while.',
-          importance: Importance.defaultImportance,
-          priority: Priority.defaultPriority,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-          presentBanner: true,
-          presentList: true,
-        ),
-        macOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-          presentBanner: true,
-          presentList: true,
-        ),
-      ),
+      _notificationDetails(),
     );
 
     await _prefs!.setString(_lastNotificationDateKey, today);
@@ -246,35 +256,41 @@ class TrackingReminderService {
   }) async {
     await init();
     final message = _messageForTrigger(trigger);
-    final debugNotificationId =
-        DateTime.now().millisecondsSinceEpoch.remainder(1 << 31);
+    final debugNotificationId = DateTime.now().millisecondsSinceEpoch.remainder(
+      1 << 31,
+    );
     await _plugin.show(
       debugNotificationId,
       message.title,
-      '${message.body} (${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}:${DateTime.now().second.toString().padLeft(2, '0')})',
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'tracking_reminders',
-          'Tracking Reminders',
-          channelDescription:
-              'Gentle reminders when logging has been inconsistent or paused for a while.',
-          importance: Importance.defaultImportance,
-          priority: Priority.defaultPriority,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-          presentBanner: true,
-          presentList: true,
-        ),
-        macOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-          presentBanner: true,
-          presentList: true,
-        ),
+      message.body,
+      _notificationDetails(),
+    );
+  }
+
+  NotificationDetails _notificationDetails() {
+    return const NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDescription,
+        importance: Importance.high,
+        priority: Priority.high,
+        category: AndroidNotificationCategory.reminder,
+        visibility: NotificationVisibility.public,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        presentBanner: true,
+        presentList: true,
+      ),
+      macOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        presentBanner: true,
+        presentList: true,
       ),
     );
   }
@@ -328,7 +344,9 @@ class TrackingReminderService {
     final moodEntries = await AppServices.isar.getRecentMoodEntries(days: 30);
     points.addAll(moodEntries.map((entry) => entry.timestamp.toLocal()));
 
-    final symptomEntries = await AppServices.isar.getRecentSymptomEntries(days: 30);
+    final symptomEntries = await AppServices.isar.getRecentSymptomEntries(
+      days: 30,
+    );
     points.addAll(symptomEntries.map((entry) => entry.timestamp.toLocal()));
 
     final exerciseStore = ExerciseStore();
@@ -341,11 +359,15 @@ class TrackingReminderService {
           .map((item) => item.toLocal()),
     );
 
-    final distinctDays = points.map((point) {
-      return DateTime(point.year, point.month, point.day);
-    }).toSet().toList(growable: true);
+    final distinctDays = points
+        .map((point) {
+          return DateTime(point.year, point.month, point.day);
+        })
+        .toSet()
+        .toList(growable: true);
 
-    final persistedDays = _prefs!.getStringList(_recentLogDaysKey) ?? const <String>[];
+    final persistedDays =
+        _prefs!.getStringList(_recentLogDaysKey) ?? const <String>[];
     for (final day in persistedDays) {
       final parsed = DateTime.tryParse(day);
       if (parsed != null) {
@@ -384,10 +406,7 @@ class TrackingReminderService {
 }
 
 class _ReminderMessage {
-  const _ReminderMessage({
-    required this.title,
-    required this.body,
-  });
+  const _ReminderMessage({required this.title, required this.body});
 
   final String title;
   final String body;

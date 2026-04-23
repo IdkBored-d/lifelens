@@ -290,10 +290,16 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
 
     if (dy < 0.38) {
       _triggerReaction(_MiniMeReaction.flinch);
-    } else if (dx < 0.34 && dy < 0.78) {
+    } else if (dx < 0.28 && dy < 0.72) {
       _triggerReaction(_MiniMeReaction.doubleBicep);
-    } else if (dx > 0.66 && dy < 0.78) {
-      _triggerReaction(_MiniMeReaction.doubleBicep);
+    } else if (dx > 0.72 && dy < 0.72) {
+      _triggerReaction(_MiniMeReaction.wave);
+    } else if (dx >= 0.36 && dx <= 0.64 && dy < 0.62) {
+      _triggerReaction(_MiniMeReaction.shimmy);
+    } else if (dx >= 0.34 && dx <= 0.66 && dy < 0.84) {
+      _triggerReaction(_MiniMeReaction.bounce);
+    } else if (dy >= 0.84) {
+      _triggerReaction(_MiniMeReaction.celebrate);
     } else {
       _triggerReaction(_MiniMeReaction.bounce);
     }
@@ -355,6 +361,7 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
       _MiniMeReaction.doubleBicep => const Duration(milliseconds: 2000),
       _MiniMeReaction.wave => const Duration(milliseconds: 2050),
       _MiniMeReaction.celebrate => const Duration(milliseconds: 1600),
+      _MiniMeReaction.shimmy => const Duration(milliseconds: 1150),
       _ => const Duration(milliseconds: 420),
     };
     setState(() => _reaction = reaction);
@@ -446,6 +453,10 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
               final hatchProgress = widget.isHatched
                   ? 1.0
                   : Curves.easeInOutCubic.transform(_hatchController.value);
+              final preHatchIdle =
+                  (!widget.isHatched && !_hatchController.isAnimating)
+                  ? 1.0
+                  : (1 - hatchProgress).clamp(0.0, 1.0);
               final hatchCharge = ((hatchProgress - 0.08) / 0.44).clamp(
                 0.0,
                 1.0,
@@ -454,16 +465,30 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                 0.0,
                 1.0,
               );
-              final revealFlash = (1.0 -
-                      ((hatchProgress - 0.66).abs() / 0.18).clamp(0.0, 1.0))
-                  .clamp(0.0, 1.0);
+              final revealFlash =
+                  (1.0 - ((hatchProgress - 0.66).abs() / 0.18).clamp(0.0, 1.0))
+                      .clamp(0.0, 1.0);
               final eggOpacity = (1 - (hatchProgress * 1.5)).clamp(0.0, 1.0);
               final mascotOpacity = ((hatchProgress - 0.28) / 0.72).clamp(
                 0.0,
                 1.0,
               );
-              final eggScale = 1.0 - (hatchProgress * 0.08);
+              final eggScale =
+                  1.0 -
+                  (hatchProgress * 0.08) +
+                  math.sin(_idleController.value * math.pi * 2) *
+                      preHatchIdle *
+                      0.018;
               final mascotScale = 0.82 + (mascotOpacity * 0.18);
+              final eggIdleLift =
+                  -math.sin(_idleController.value * math.pi * 2) *
+                  clampedSize *
+                  0.012 *
+                  preHatchIdle;
+              final eggIdleSway =
+                  math.sin(_idleController.value * math.pi * 4) *
+                  0.028 *
+                  preHatchIdle;
               final hatchShake =
                   math.sin(hatchProgress * math.pi * 10) *
                   (1 - hatchProgress) *
@@ -493,7 +518,7 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                     child: _AmbientHalo(
                       size: clampedSize,
                       color: widget.glow ?? palette.primary,
-                      shimmer: idleMotion.shimmer,
+                      shimmer: idleMotion.shimmer + preHatchIdle * 0.22,
                       visualState: widget.visualState,
                     ),
                   ),
@@ -572,14 +597,21 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                             if (!widget.isHatched || eggOpacity > 0)
                               Opacity(
                                 opacity: eggOpacity,
-                                child: Transform.scale(
-                                  scale: eggScale,
-                                  child: _MiniMeEgg(
-                                    size: clampedSize * 0.7,
-                                    accentColor:
-                                        widget.glow ?? palette.accessory,
-                                    bob: bob,
-                                    crackProgress: hatchProgress,
+                                child: Transform.translate(
+                                  offset: Offset(0, eggIdleLift),
+                                  child: Transform.rotate(
+                                    angle: eggIdleSway,
+                                    child: Transform.scale(
+                                      scale: eggScale,
+                                      child: _MiniMeEgg(
+                                        size: clampedSize * 0.7,
+                                        accentColor:
+                                            widget.glow ?? palette.accessory,
+                                        bob: bob,
+                                        crackProgress: hatchProgress,
+                                        idlePulse: preHatchIdle,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -861,15 +893,18 @@ class _MiniMeEgg extends StatelessWidget {
     required this.accentColor,
     required this.bob,
     this.crackProgress = 0,
+    this.idlePulse = 0,
   });
 
   final double size;
   final Color accentColor;
   final double bob;
   final double crackProgress;
+  final double idlePulse;
 
   @override
   Widget build(BuildContext context) {
+    final shellGlow = idlePulse.clamp(0.0, 1.0);
     return Transform.translate(
       offset: Offset(0, bob * 0.35),
       child: SizedBox(
@@ -909,8 +944,39 @@ class _MiniMeEgg extends StatelessWidget {
                   color: accentColor.withValues(alpha: 0.65),
                   width: 2,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: accentColor.withValues(
+                      alpha: 0.06 + shellGlow * 0.1,
+                    ),
+                    blurRadius: size * (0.02 + shellGlow * 0.03),
+                    spreadRadius: size * (0.003 + shellGlow * 0.006),
+                  ),
+                ],
               ),
             ),
+            if (shellGlow > 0.01)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: Container(
+                      width: size * (0.64 + shellGlow * 0.04),
+                      height: size * (0.78 + shellGlow * 0.04),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(size),
+                        gradient: RadialGradient(
+                          colors: [
+                            accentColor.withValues(
+                              alpha: 0.08 + shellGlow * 0.04,
+                            ),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (crackProgress > 0.12)
               Positioned(
                 top: size * 0.16,
@@ -1042,13 +1108,21 @@ class _HatchLevelUpPainter extends CustomPainter {
     final ring1 = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.6
-      ..color = color.withValues(alpha: (0.06 + chargeProgress * 0.2).clamp(0.0, 0.35));
+      ..color = color.withValues(
+        alpha: (0.06 + chargeProgress * 0.2).clamp(0.0, 0.35),
+      );
     final ring2 = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0
-      ..color = color.withValues(alpha: (0.04 + burstProgress * 0.34).clamp(0.0, 0.45));
+      ..color = color.withValues(
+        alpha: (0.04 + burstProgress * 0.34).clamp(0.0, 0.45),
+      );
 
-    canvas.drawCircle(center, baseRadius + chargeProgress * size.shortestSide * 0.06, ring1);
+    canvas.drawCircle(
+      center,
+      baseRadius + chargeProgress * size.shortestSide * 0.06,
+      ring1,
+    );
     if (burstProgress > 0) {
       canvas.drawCircle(
         center,
@@ -1076,7 +1150,9 @@ class _HatchLevelUpPainter extends CustomPainter {
 
     if (flashProgress > 0) {
       final flashPaint = Paint()
-        ..color = Colors.white.withValues(alpha: (flashProgress * 0.28).clamp(0.0, 0.28))
+        ..color = Colors.white.withValues(
+          alpha: (flashProgress * 0.28).clamp(0.0, 0.28),
+        )
         ..style = PaintingStyle.fill;
       canvas.drawCircle(
         center,
@@ -2332,6 +2408,18 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
         rightArmLift: raisedRightArm - settle * 0.08,
         shadowDelta: -0.01 * pose,
       );
+    case _MiniMeReaction.shimmy:
+      final shimmyWindow = math.sin(t * math.pi).clamp(0.0, 1.0);
+      final shimmyCycle = math.sin(t * math.pi * 7.5) * shimmyWindow;
+      final shoulderPop = math.max(0.0, math.sin(t * math.pi * 3.8));
+      return _ReactionMotion(
+        bob: -shimmyWindow * 1.6 + shoulderPop * 0.6,
+        sway: shimmyCycle * 0.018,
+        headDip: -shoulderPop * 0.7,
+        leftArmLift: 0.08 + shoulderPop * 0.1,
+        rightArmLift: 0.08 + (1 - shoulderPop) * 0.1,
+        shadowDelta: -0.03 * shimmyWindow,
+      );
     case _MiniMeReaction.celebrate:
       final launch = Curves.easeOutCubic.transform((t / 0.22).clamp(0.0, 1.0));
       final airborne = ((t - 0.14) / 0.46).clamp(0.0, 1.0);
@@ -2406,7 +2494,15 @@ class _ReactionMotion {
   final double shadowDelta;
 }
 
-enum _MiniMeReaction { none, flinch, doubleBicep, wave, celebrate, bounce }
+enum _MiniMeReaction {
+  none,
+  flinch,
+  doubleBicep,
+  wave,
+  shimmy,
+  celebrate,
+  bounce,
+}
 
 double _timedPoseValue(
   double t, {

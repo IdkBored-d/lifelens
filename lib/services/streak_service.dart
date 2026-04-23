@@ -417,7 +417,7 @@ class StreakService {
     if (!loggedToday) {
       return 'Log any tracker today to keep your streak alive.';
     }
-    if (streak == 1) return 'Day 1 unlocked. Great start.';
+    if (streak == 1) return '';
     if (streak == 2) return 'Day 2 momentum. Keep rolling.';
     if (streak == 3) {
       return 'Day 3 focus streak. You are building consistency.';

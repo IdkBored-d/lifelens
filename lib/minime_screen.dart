@@ -18,6 +18,7 @@ import 'package:lifelens/models/sleep.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/chat_message.dart';
 import 'package:lifelens/database/fitness_entry.dart';
+import 'package:lifelens/database/symptom_entry.dart';
 import 'avatar_store.dart';
 import 'avatar_customization_screen.dart';
 import 'sleep_store.dart';
@@ -172,7 +173,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
   }
 
-  // ignore: unused_element
   Future<void> _runDaySummary() async {
     if (_isReplying) return;
 
@@ -189,6 +189,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _scrollToBottom();
 
     try {
+      final groundedRecap = await _buildGroundedDailyRecap();
       // TODO: replace `true` with a real connectivity check (connectivity_plus).
       final result = await AppServices.eodPipeline.runEndOfDay(
         isOnline: await AppServices.isOnline(),
@@ -200,9 +201,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           result.flagged && (result.flagReason?.isNotEmpty ?? false)
           ? '\n\n⚠ ${result.flagReason}'
           : '';
-      final replyText = result.summary.isNotEmpty
-          ? '${result.summary}$flagNote'
-          : 'Day summary complete. No significant patterns detected today.';
+      final cleanedPipelineSummary = _cleanDailyRecapPipelineSummary(
+        result.summary,
+      );
+      final replyText = cleanedPipelineSummary.isNotEmpty
+          ? '$groundedRecap\n\nOne more note:\n$cleanedPipelineSummary$flagNote'
+          : groundedRecap;
 
       setState(() {
         _appendMessage(
@@ -225,6 +229,209 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
 
     _scrollToBottom();
+  }
+
+  Future<String> _buildGroundedDailyRecap() async {
+    final now = DateTime.now();
+    final moodStore = context.read<MoodLogStore>();
+    final sleepStore = context.read<SleepStore>();
+
+    await _exerciseStore.ensureReady();
+
+    final todayMoods = moodStore.items
+        .where((item) => _isSameDay(item.createdAt, now))
+        .toList(growable: false);
+    final todaySleep = sleepStore.items
+        .where(
+          (item) =>
+              _isSameDay(item.date, now) || _isSameDay(item.wakeTime, now),
+        )
+        .toList(growable: false);
+    final todayExercise = _exerciseStore
+        .getRecentExerciseHistory(limit: 40)
+        .where((record) {
+          final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
+          return timestamp != null && _isSameDay(timestamp, now);
+        })
+        .toList(growable: false);
+
+    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
+    final recentFitness = await IsarService.instance.getRecentFitnessEntries(
+      days: 2,
+    );
+    final latestFitness = recentFitness.isEmpty ? null : recentFitness.first;
+
+    final advice = _dailyRecapAdvice(
+      todayMoods: todayMoods,
+      todaySleep: todaySleep,
+      todayExercise: todayExercise,
+      activeSymptoms: activeSymptoms,
+      latestFitness: latestFitness,
+    );
+
+    return 'Mini-Me recap:\n${advice.overview}\n\nWhy I think that:\n${advice.reasons.map((reason) => '- $reason').join('\n')}\n\nTry this next:\n${advice.nextStep}';
+  }
+
+  String _cleanDailyRecapPipelineSummary(String summary) {
+    final normalized = summary.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.isEmpty) return '';
+
+    final lower = normalized.toLowerCase();
+    final fallbackMarkers = <String>[
+      'unable to reach gemini',
+      'unable to reach',
+      'end-of-day summary unavailable',
+      'could not generate',
+    ];
+    if (fallbackMarkers.any(lower.contains)) {
+      return '';
+    }
+
+    return normalized;
+  }
+
+  _DailyRecapAdvice _dailyRecapAdvice({
+    required List<MoodCheckIn> todayMoods,
+    required List<Sleep> todaySleep,
+    required List<Map<String, String>> todayExercise,
+    required List<SymptomEntry> activeSymptoms,
+    required FitnessEntry? latestFitness,
+  }) {
+    final hasMood = todayMoods.isNotEmpty;
+    final avgMood = hasMood
+        ? todayMoods.map((item) => item.intensity).reduce((a, b) => a + b) /
+              todayMoods.length
+        : null;
+    final latestMood = todayMoods.isEmpty ? null : todayMoods.first;
+    final latestSleep = todaySleep.isEmpty ? null : todaySleep.first;
+    final sleepMinutes = todaySleep.isEmpty
+        ? null
+        : todaySleep.first.duration.inMinutes;
+    final completedExercises = todayExercise
+        .where((record) => record['noExercise'] != 'true')
+        .toList(growable: false);
+    final completedExercise = completedExercises.isNotEmpty;
+    final checkedNoExercise = todayExercise.any(
+      (record) => record['noExercise'] == 'true',
+    );
+    final exerciseName = completedExercises
+        .map(
+          (record) => (record['exerciseName']?.trim().isNotEmpty ?? false)
+              ? record['exerciseName']!.trim()
+              : record['exerciseId']?.trim() ?? '',
+        )
+        .firstWhere((name) => name.isNotEmpty, orElse: () => '');
+    final activeSymptomCount = activeSymptoms.length;
+    final symptomName = activeSymptoms
+        .map((entry) => entry.predictedAilment.trim())
+        .firstWhere((name) => name.isNotEmpty, orElse: () => '');
+    final hasAnyLog =
+        hasMood || latestSleep != null || todayExercise.isNotEmpty;
+    final reasons = <String>[];
+
+    if (latestMood != null) {
+      reasons.add(
+        'Your latest mood check-in was ${latestMood.moodLabel.toLowerCase()} at ${latestMood.intensity}/5.',
+      );
+    }
+    if (latestSleep != null) {
+      reasons.add(
+        'Your sleep came in at ${latestSleep.durationFormatted} with ${latestSleep.quality.label.toLowerCase()} quality.',
+      );
+    }
+    if (completedExercise) {
+      reasons.add(
+        exerciseName.isEmpty
+            ? 'You got some movement in today.'
+            : 'You logged movement today with $exerciseName.',
+      );
+    } else if (checkedNoExercise) {
+      reasons.add('You checked in that today was a no-workout day.');
+    }
+    if (activeSymptomCount > 0) {
+      reasons.add(
+        symptomName.isEmpty
+            ? 'You still have active symptoms worth keeping an eye on.'
+            : '$symptomName is still marked active, so your body may need a gentler plan.',
+      );
+    }
+    if (latestFitness != null && latestFitness.dataFreshnessFlagged) {
+      reasons.add(
+        'Your latest fitness snapshot may be based on stale health data.',
+      );
+    }
+    if (reasons.isEmpty) {
+      reasons.add('I only have a light amount of data from today so far.');
+    }
+
+    if (!hasAnyLog) {
+      return _DailyRecapAdvice(
+        overview:
+            'I do not have enough from today to make a confident read yet, and that is okay.',
+        reasons: reasons,
+        nextStep:
+            'Do one tiny check-in before bed: mood, sleep plan, or whether you moved today.',
+      );
+    }
+
+    if (activeSymptomCount > 0 && (avgMood ?? 3) <= 2.5) {
+      return _DailyRecapAdvice(
+        overview:
+            'Today looks like a day where your body and mood both asked for extra care.',
+        reasons: reasons,
+        nextStep:
+            'Keep tomorrow gentle: choose one low-effort log, hydrate, and avoid pushing intensity unless you feel clearly better.',
+      );
+    }
+
+    if (sleepMinutes != null && sleepMinutes < 6 * 60) {
+      return _DailyRecapAdvice(
+        overview: completedExercise
+            ? 'You still showed up with movement, but recovery is the main signal tonight.'
+            : 'Recovery is the main signal tonight because sleep looks short.',
+        reasons: reasons,
+        nextStep:
+            'Aim for a simple wind-down: dim lights, reduce screens, and set up tomorrow so you do not need to rely on willpower.',
+      );
+    }
+
+    if (completedExercise && (avgMood ?? 0) >= 3.5) {
+      return _DailyRecapAdvice(
+        overview:
+            'This looks like a solid momentum day: your mood and movement are pointing in a supportive direction.',
+        reasons: reasons,
+        nextStep:
+            'Repeat the easiest part of today tomorrow, even if you make it smaller.',
+      );
+    }
+
+    if ((avgMood ?? 0) >= 4) {
+      return _DailyRecapAdvice(
+        overview:
+            'Mood was the bright spot today, so it is worth noticing what helped.',
+        reasons: reasons,
+        nextStep:
+            'Write down one thing that supported your mood so you can reuse it on a lower-energy day.',
+      );
+    }
+
+    if (!completedExercise && latestSleep != null) {
+      return _DailyRecapAdvice(
+        overview:
+            'Today looks like a maintenance day more than a progress day, which can still be useful.',
+        reasons: reasons,
+        nextStep:
+            'Pick one small reset for tomorrow: a short walk, a sleep log, or a quick mood check-in.',
+      );
+    }
+
+    return _DailyRecapAdvice(
+      overview:
+          'Today has mixed signals, so I would focus on consistency rather than a big change.',
+      reasons: reasons,
+      nextStep:
+          'Choose one thing to make easier tomorrow: log earlier, move for a few minutes, or protect your wind-down time.',
+    );
   }
 
   Future<void> _refreshStartLoggingPromptState() async {
@@ -487,7 +694,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         payloadSymptoms.join(','),
       ].join('|');
 
-      if (_intelligence != null && _lastIntelligenceInputSignature == nextSignature) {
+      if (_intelligence != null &&
+          _lastIntelligenceInputSignature == nextSignature) {
         if (mounted) {
           setState(() {
             _activeSymptomCount = activeSymptoms.length;
@@ -556,8 +764,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final trendAdjustment = combinedDelta * 0.018;
 
     return (1.0 + absoluteAdjustment + trendAdjustment)
-      .clamp(0.82, 1.22)
-      .toDouble();
+        .clamp(0.82, 1.22)
+        .toDouble();
   }
 
   int _estimatedSleepHoursFromMood(String moodLabel) {
@@ -1607,6 +1815,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   onToggleCoachExpanded: _toggleCoachExpanded,
                   onExpandCoach: _expandCoachAndFocus,
                   onOpenFullChat: _openFullChatSheet,
+                  onRunDaySummary: _runDaySummary,
                   onSend: _sendMessage,
                 ),
               ),
@@ -1638,6 +1847,7 @@ class _MiniMePanelContent extends StatelessWidget {
     required this.onToggleCoachExpanded,
     required this.onExpandCoach,
     required this.onOpenFullChat,
+    required this.onRunDaySummary,
     required this.onSend,
   });
 
@@ -1664,6 +1874,7 @@ class _MiniMePanelContent extends StatelessWidget {
   final VoidCallback onToggleCoachExpanded;
   final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
+  final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
 
   @override
@@ -1720,6 +1931,7 @@ class _MiniMePanelContent extends StatelessWidget {
       onToggleCoachExpanded: onToggleCoachExpanded,
       onExpandCoach: onExpandCoach,
       onOpenFullChat: onOpenFullChat,
+      onRunDaySummary: onRunDaySummary,
       onSend: onSend,
     );
   }
@@ -1754,6 +1966,7 @@ class _AvatarPanel extends StatelessWidget {
     required this.onToggleCoachExpanded,
     required this.onExpandCoach,
     required this.onOpenFullChat,
+    required this.onRunDaySummary,
     required this.onSend,
   });
 
@@ -1784,6 +1997,7 @@ class _AvatarPanel extends StatelessWidget {
   final VoidCallback onToggleCoachExpanded;
   final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
+  final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
 
   @override
@@ -1808,7 +2022,7 @@ class _AvatarPanel extends StatelessWidget {
                       'What do you want to work on today, ${_displayFirstName(userName)}?',
                 );
           final headTiltBias = isReplying ? -0.12 : 0.0;
-          final bubbleMaxHeight = math.min(constraints.maxHeight * 0.18, 118.0);
+          final bubbleMaxHeight = math.min(constraints.maxHeight * 0.12, 76.0);
           const suggestionBubbleReserve = 108.0;
           final availableAvatarHeight =
               constraints.maxHeight -
@@ -1829,17 +2043,6 @@ class _AvatarPanel extends StatelessWidget {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  if (showPromptBubble)
-                    Positioned(
-                      top: 10,
-                      left: 18,
-                      right: 18,
-                      child: _AvatarSuggestionBubble(
-                        text: promptBubbleText,
-                        maxHeight: bubbleMaxHeight,
-                        isThinking: isSuggestionBubbleThinking,
-                      ),
-                    ),
                   Positioned.fill(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
@@ -1878,6 +2081,17 @@ class _AvatarPanel extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (showPromptBubble)
+                    Positioned(
+                      top: 10,
+                      left: 18,
+                      right: 18,
+                      child: _AvatarSuggestionBubble(
+                        text: promptBubbleText,
+                        maxHeight: bubbleMaxHeight,
+                        isThinking: isSuggestionBubbleThinking,
+                      ),
+                    ),
                 ],
               ),
               Positioned(
@@ -1892,6 +2106,7 @@ class _AvatarPanel extends StatelessWidget {
                     isReplying: isReplying,
                     onExpandCoach: onExpandCoach,
                     onOpenFullChat: onOpenFullChat,
+                    onRunDaySummary: onRunDaySummary,
                     onSend: onSend,
                   ),
                 ),
@@ -1910,18 +2125,7 @@ String _bubblePreviewText(String text) {
     return '';
   }
 
-  final firstSentence = normalized
-      .split(RegExp(r'(?<=[.!?])\s+'))
-      .map((part) => part.trim())
-      .firstWhere((part) => part.isNotEmpty, orElse: () => normalized);
-
-  final candidate = firstSentence.length >= 36 ? firstSentence : normalized;
-  if (candidate.length <= 120) {
-    return candidate;
-  }
-
-  final truncated = candidate.substring(0, 117).trimRight();
-  return '$truncated...';
+  return normalized;
 }
 
 class _MainTypingBubble extends StatelessWidget {
@@ -1974,7 +2178,7 @@ class _MainTypingBubble extends StatelessWidget {
   }
 }
 
-class _AvatarSuggestionBubble extends StatelessWidget {
+class _AvatarSuggestionBubble extends StatefulWidget {
   const _AvatarSuggestionBubble({
     required this.text,
     required this.maxHeight,
@@ -1984,6 +2188,28 @@ class _AvatarSuggestionBubble extends StatelessWidget {
   final String text;
   final double maxHeight;
   final bool isThinking;
+
+  @override
+  State<_AvatarSuggestionBubble> createState() =>
+      _AvatarSuggestionBubbleState();
+}
+
+class _AvatarSuggestionBubbleState extends State<_AvatarSuggestionBubble> {
+  late final ScrollController _scrollController = ScrollController();
+
+  @override
+  void didUpdateWidget(covariant _AvatarSuggestionBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.text != oldWidget.text && _scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2021,8 +2247,8 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                   ],
                 ),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: maxHeight),
-                  child: isThinking
+                  constraints: BoxConstraints(maxHeight: widget.maxHeight),
+                  child: widget.isThinking
                       ? Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -2040,19 +2266,28 @@ class _AvatarSuggestionBubble extends StatelessWidget {
                             ],
                           ),
                         )
-                      : Scrollbar(
-                          thumbVisibility: true,
-                          child: SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Text(
-                              text,
-                              textAlign: TextAlign.center,
-                              softWrap: true,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: cs.onSurface,
-                                fontWeight: FontWeight.w800,
-                                height: 1.28,
+                      : GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {},
+                          child: Scrollbar(
+                            controller: _scrollController,
+                            thumbVisibility: true,
+                            child: SingleChildScrollView(
+                              controller: _scrollController,
+                              primary: false,
+                              physics: const AlwaysScrollableScrollPhysics(
+                                parent: BouncingScrollPhysics(),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                widget.text,
+                                textAlign: TextAlign.center,
+                                softWrap: true,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: cs.onSurface,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.28,
+                                ),
                               ),
                             ),
                           ),
@@ -2500,6 +2735,7 @@ class _CoachComposerCard extends StatelessWidget {
     required this.isReplying,
     required this.onExpandCoach,
     required this.onOpenFullChat,
+    required this.onRunDaySummary,
     required this.onSend,
   });
 
@@ -2509,6 +2745,7 @@ class _CoachComposerCard extends StatelessWidget {
   final bool isReplying;
   final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
+  final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
 
   @override
@@ -2541,6 +2778,12 @@ class _CoachComposerCard extends StatelessWidget {
                 onPressed: onOpenFullChat,
                 tooltip: 'Open full chat',
                 icon: const Icon(Icons.open_in_full_rounded),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: isReplying ? null : onRunDaySummary,
+                tooltip: 'End-of-day recap',
+                icon: const Icon(Icons.nightlight_round_rounded),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -3177,6 +3420,18 @@ class _SuggestionSection {
   final String body;
 }
 
+class _DailyRecapAdvice {
+  const _DailyRecapAdvice({
+    required this.overview,
+    required this.reasons,
+    required this.nextStep,
+  });
+
+  final String overview;
+  final List<String> reasons;
+  final String nextStep;
+}
+
 class _MiniMeDerivedUiState {
   const _MiniMeDerivedUiState({
     required this.visualState,
@@ -3448,13 +3703,15 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 12),
-              Text(
-                streak.message,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant,
+              if (streak.message.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  streak.message,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 4),
               Text(
                 'Best streak: ${streak.bestStreak} day${streak.bestStreak == 1 ? '' : 's'}',

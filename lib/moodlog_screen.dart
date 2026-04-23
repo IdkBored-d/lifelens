@@ -54,6 +54,9 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     "Food",
     "Family",
     "Health",
+    "Partner",
+    "Finances",
+    "Hobby"
   ];
 
   @override

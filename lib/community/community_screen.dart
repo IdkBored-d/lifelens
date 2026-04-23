@@ -25,11 +25,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
           .orderBy('memberCount', descending: true)
           .snapshots();
 
+  static const Set<String> _retiredPremadeSphereNames = {
+    'diabetes',
+    'hello',
+    'hello sphere',
+    'mental health',
+  };
+
   static const Map<String, String> _defaultPinnedBodies = {
-    'Mental Health':
-        'Share what is helping, ask for support, and avoid giving medical advice. If you are in immediate danger, contact local emergency support.',
-    'Diabetes':
-        'Share routines, food swaps, and pattern observations. Use this space for peer support, not diagnosis or medication changes.',
     'Sleep':
         'Post what helped your wind-down, bedtime, or wake consistency. Keep replies practical and kind.',
     'Exercise':
@@ -50,11 +53,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
         FirebaseFirestore.instance.collection('spheres');
 
     final premade = <Map<String, String>>[
-      {
-        'name': 'Mental Health',
-        'description': 'Share and discuss mental health topics',
-      },
-      {'name': 'Diabetes', 'description': 'Support for diabetes management'},
       {'name': 'Sleep', 'description': 'Discuss sleep patterns and tips'},
       {'name': 'Exercise', 'description': 'Fitness and exercise motivation'},
       {'name': 'General', 'description': 'General health discussions'},
@@ -119,16 +117,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
     ];
 
     final messagesBySphere = {
-      'Mental Health': [
-        'Small win today: I took a 10-minute walk before work and felt less overwhelmed.',
-        'Sharing a grounding trick: name 5 things you can see, 4 you can feel, 3 you can hear.',
-        'Anyone else trying to reduce doom-scrolling before bed?',
-      ],
-      'Diabetes': [
-        'Reminder: hydrated + short walk after meals has helped my afternoon numbers.',
-        'What low-prep snacks are working for everyone this week?',
-        'I started logging meals with mood and energy. Patterns are finally making sense.',
-      ],
       'Sleep': [
         'Last night I set a wind-down alarm and actually fell asleep faster.',
         'Trying to keep wake-up time consistent even on weekends. Hard but helping.',
@@ -212,8 +200,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 children: [
                   Text(
                     'Community',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -278,14 +266,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      final spheres = snapshot.data!.docs
-                          .map((doc) => Sphere.fromFirestore(doc))
-                          .where(
-                            (sphere) =>
-                                searchQuery.isEmpty ||
-                                sphere.name.toLowerCase().contains(searchQuery),
-                          )
-                          .toList(growable: false);
+                      final spheres = _visibleUniqueSpheres(
+                        snapshot.data!.docs
+                            .map((doc) => Sphere.fromFirestore(doc))
+                            .where(
+                              (sphere) =>
+                                  searchQuery.isEmpty ||
+                                  sphere.name.toLowerCase().contains(
+                                    searchQuery,
+                                  ),
+                            ),
+                      );
 
                       if (spheres.isEmpty) {
                         return Center(
@@ -353,6 +344,28 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 }
 
+String _normalizedSphereName(String value) =>
+    value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+
+List<Sphere> _visibleUniqueSpheres(Iterable<Sphere> spheres) {
+  final seenNames = <String>{};
+  final uniqueSpheres = <Sphere>[];
+
+  for (final sphere in spheres) {
+    final normalizedName = _normalizedSphereName(sphere.name);
+    if (_CommunityScreenState._retiredPremadeSphereNames.contains(
+      normalizedName,
+    )) {
+      continue;
+    }
+    if (seenNames.add(normalizedName)) {
+      uniqueSpheres.add(sphere);
+    }
+  }
+
+  return uniqueSpheres;
+}
+
 class _SphereCard extends StatelessWidget {
   const _SphereCard({
     required this.sphere,
@@ -412,12 +425,24 @@ class _SphereCard extends StatelessWidget {
                   lastReadAt == null ||
                   (sphere.lastActivityAt?.isAfter(lastReadAt) ?? false);
               final isJoined = memberSnapshot.data?.exists ?? false;
+              final hasNewPostsForVisitor =
+                  !isJoined && sphere.lastActivityAt != null;
+              final highlightPreview =
+                  (isJoined && hasUnread) || hasNewPostsForVisitor;
               final lastActivityLabel = sphere.lastActivityAt == null
                   ? 'No recent activity'
                   : _communityRelativeTimeLabel(sphere.lastActivityAt!);
               final previewText =
                   sphere.lastActivityText ??
                   'Open the sphere to see the latest post.';
+              final previewShadow = highlightPreview
+                  ? [
+                      Shadow(
+                        color: cs.primary.withValues(alpha: 0.45),
+                        blurRadius: 12,
+                      ),
+                    ]
+                  : null;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -547,17 +572,42 @@ class _SphereCard extends StatelessWidget {
                       color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          previewText,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
+                        Expanded(
+                          child: Text(
+                            previewText,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: highlightPreview
+                                  ? cs.primary
+                                  : cs.onSurfaceVariant,
+                              fontWeight: highlightPreview
+                                  ? FontWeight.w800
+                                  : FontWeight.w400,
+                              shadows: previewShadow,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                         ),
+                        if (highlightPreview) ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              color: cs.primary,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: cs.primary.withValues(alpha: 0.55),
+                                  blurRadius: 10,
+                                  spreadRadius: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
