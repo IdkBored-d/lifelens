@@ -81,7 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final isDarkMode = context.select<ThemeController, bool>(
       (controller) => controller.isDarkMode,
     );
-    final username = _headerUsernameFor(user);
+    final userId = user?.uid;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile'), centerTitle: true),
@@ -106,7 +106,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     const SizedBox(height: 13),
-                    Text(username, style: theme.textTheme.titleMedium),
+                    if (userId == null)
+                      Text(
+                        _headerDisplayNameFor(user),
+                        style: theme.textTheme.titleMedium,
+                      )
+                    else
+                      StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                        stream: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(userId)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          final profileData = snapshot.data?.data();
+                          final headerName = _headerDisplayNameFor(
+                            user,
+                            profileData: profileData,
+                          );
+                          return Text(
+                            headerName,
+                            style: theme.textTheme.titleMedium,
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -227,7 +249,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  String _headerUsernameFor(User? user) {
+  String _headerDisplayNameFor(
+    User? user, {
+    Map<String, dynamic>? profileData,
+  }) {
+    final firstName = (profileData?['firstName'] ?? '').toString().trim();
+    final lastName = (profileData?['lastName'] ?? '').toString().trim();
+    final fullName = [firstName, lastName]
+        .where((value) => value.isNotEmpty)
+        .join(' ')
+        .trim();
+
+    if (fullName.isNotEmpty) {
+      return fullName;
+    }
+
     final displayName = user?.displayName?.trim() ?? '';
     if (displayName.isNotEmpty) {
       return displayName;

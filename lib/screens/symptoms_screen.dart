@@ -19,9 +19,16 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   final TextEditingController _symptomsController = TextEditingController();
   late final Stream<List<SymptomEntry>> _trendEntriesStream = AppServices.isar
       .watchRecentSymptomEntries();
+  static const int _symptomWordLimit = 150;
 
   LogButtonVisualState _saveButtonState = LogButtonVisualState.idle;
   bool _showPreviousLogs = false;
+
+  int _wordCount(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return 0;
+    return trimmed.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+  }
 
   @override
   void dispose() {
@@ -203,41 +210,48 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
           behavior: HitTestBehavior.deferToChild,
           onTap: () => FocusScope.of(context).unfocus(),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Track what you are feeling today.',
+                  "Describe how you're feeling, you can get into detail with your Mini-Me",
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Type the symptoms you are having and save.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 _SectionCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const _SectionHeader(title: 'Symptoms'),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       TextField(
                         controller: _symptomsController,
                         maxLines: 5,
+                        inputFormatters: const [
+                          _WordLimitTextInputFormatter(_symptomWordLimit),
+                        ],
+                        onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
                           hintText: 'headache, nausea, fatigue',
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          '${_wordCount(_symptomsController.text)}/$_symptomWordLimit',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: cs.primaryContainer.withValues(alpha: 0.45),
                           borderRadius: BorderRadius.circular(14),
@@ -253,7 +267,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
                 _HistoryDisclosureCard(
                   expanded: _showPreviousLogs,
                   onTap: () {
@@ -264,8 +278,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                     formatDateTime: _formatDateTime,
                   ),
                 ),
-                const SizedBox(height: 14),
-                const SizedBox(height: 18),
+                const SizedBox(height: 22),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
@@ -297,7 +310,7 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
@@ -305,6 +318,30 @@ class _SectionCard extends StatelessWidget {
       ),
       child: child,
     );
+  }
+}
+
+class _WordLimitTextInputFormatter extends TextInputFormatter {
+  const _WordLimitTextInputFormatter(this.maxWords);
+
+  final int maxWords;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final trimmed = newValue.text.trim();
+    if (trimmed.isEmpty) {
+      return newValue;
+    }
+
+    final words = trimmed.split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    if (words.length <= maxWords) {
+      return newValue;
+    }
+
+    return oldValue;
   }
 }
 

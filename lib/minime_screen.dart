@@ -1703,12 +1703,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final canPop = Navigator.canPop(context);
 
     return Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
-        leading: canPop ? const BackButton() : null,
+        automaticallyImplyLeading: false,
         title: Selector<AvatarStore, String>(
           selector: (context, avatarStore) => avatarStore.miniMeName,
           builder: (context, miniMeName, _) => Text(miniMeName),

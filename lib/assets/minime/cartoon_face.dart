@@ -103,6 +103,7 @@ class _CartoonFacePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
+    final isAngry = expression == 'angry';
     final blinkScale = 1 - (blink * 0.92);
     final eyeSpread = size.width * 0.19;
     final eyeY =
@@ -110,12 +111,13 @@ class _CartoonFacePainter extends CustomPainter {
     final eyeWidth = size.width * 0.12;
     final eyeHeight = math.max(
       size.height * 0.018,
-      size.height * 0.15 * blinkScale,
+      size.height * (isAngry ? 0.105 : 0.15) * blinkScale,
     );
-    final underEyeStrength = math.min(
+    final underEyeStrengthRaw = math.min(
       1.0,
       degradationLevel * 1.08 + puffiness * 0.18,
     );
+    final underEyeStrength = isAngry ? 0.0 : underEyeStrengthRaw;
 
     final cheekPaint = Paint()
       ..shader =
@@ -226,7 +228,7 @@ class _CartoonFacePainter extends CustomPainter {
     canvas.drawRRect(leftEyeRect, eyeOutlinePaint);
     canvas.drawRRect(rightEyeRect, eyeOutlinePaint);
 
-    if (blink < 0.5) {
+    if (blink < 0.5 && !isAngry) {
       canvas.drawCircle(
         Offset(
           center.dx - eyeSpread - size.width * 0.014,
@@ -245,7 +247,7 @@ class _CartoonFacePainter extends CustomPainter {
       );
     }
 
-    if (wateryEyes && blink < 0.82) {
+    if (wateryEyes && blink < 0.82 && !isAngry) {
       final tearPaint = Paint()
         ..color = const Color(0xFF79B9E8).withValues(alpha: 0.44)
         ..style = PaintingStyle.fill;
@@ -377,6 +379,43 @@ class _CartoonFacePainter extends CustomPainter {
         );
         _drawRaisedBrows(canvas, size, center);
         break;
+      case 'scared':
+        final scaredPaint = Paint()
+          ..color = palette.eye.withValues(alpha: 0.94)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.02;
+        final scaredCenter = mouthCenter.translate(0, size.height * 0.012);
+        final grimacePath = Path()
+          ..moveTo(center.dx - size.width * 0.085, scaredCenter.dy)
+          ..quadraticBezierTo(
+            center.dx - size.width * 0.043,
+            scaredCenter.dy - size.height * 0.024,
+            center.dx,
+            scaredCenter.dy,
+          )
+          ..quadraticBezierTo(
+            center.dx + size.width * 0.043,
+            scaredCenter.dy - size.height * 0.024,
+            center.dx + size.width * 0.085,
+            scaredCenter.dy,
+          );
+        canvas.drawPath(grimacePath, scaredPaint);
+        final clenchPaint = Paint()
+          ..color = palette.eye.withValues(alpha: 0.78)
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = size.width * 0.012;
+        for (var i = -2; i <= 2; i++) {
+          final x = center.dx + i * size.width * 0.028;
+          canvas.drawLine(
+            Offset(x, scaredCenter.dy - size.height * 0.013),
+            Offset(x, scaredCenter.dy + size.height * 0.013),
+            clenchPaint,
+          );
+        }
+        _drawScaredStressMarks(canvas, size, center);
+        _drawScaredBrows(canvas, size, center);
+        break;
       case 'sad':
         canvas.drawArc(
           Rect.fromCenter(
@@ -398,32 +437,38 @@ class _CartoonFacePainter extends CustomPainter {
         );
         break;
       case 'angry':
-        final snarlTop = mouthCenter.dy - size.height * 0.004;
-        final snarlBottom = mouthCenter.dy + size.height * 0.028;
-        final snarlLeft = center.dx - size.width * 0.09;
-        final snarlRight = center.dx + size.width * 0.09;
-        final snarlPath = Path()
-          ..moveTo(snarlLeft, snarlTop)
-          ..lineTo(center.dx - size.width * 0.03, snarlTop)
-          ..lineTo(center.dx, snarlBottom)
-          ..lineTo(center.dx + size.width * 0.03, snarlTop)
-          ..lineTo(snarlRight, snarlTop);
-        canvas.drawPath(snarlPath, mouthPaint);
+        final snarlY = mouthCenter.dy + size.height * 0.008;
+        final left = center.dx - size.width * 0.1;
+        final right = center.dx + size.width * 0.1;
+        final top = snarlY - size.height * 0.018;
+        final bottom = snarlY + size.height * 0.018;
+        // Tight clenched shape avoids reading as sad while still feeling furious.
+        final snarlBox = RRect.fromRectAndRadius(
+          Rect.fromLTRB(left, top, right, bottom),
+          Radius.circular(size.width * 0.012),
+        );
+        canvas.drawRRect(snarlBox, mouthPaint);
+        final gritPaint = Paint()
+          ..color = palette.eye.withValues(alpha: 0.85)
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = size.width * 0.011;
+        for (var i = -2; i <= 2; i++) {
+          final x = center.dx + i * size.width * 0.034;
+          canvas.drawLine(Offset(x, top), Offset(x, bottom), gritPaint);
+        }
+        // Small downward-angled corners read as irritation.
         canvas.drawLine(
-          Offset(center.dx, snarlTop + size.height * 0.004),
-          Offset(center.dx, snarlBottom - size.height * 0.004),
+          Offset(left - size.width * 0.012, snarlY - size.height * 0.002),
+          Offset(left + size.width * 0.01, snarlY + size.height * 0.01),
           mouthPaint,
         );
         canvas.drawLine(
-          Offset(center.dx - size.width * 0.05, snarlTop),
-          Offset(center.dx - size.width * 0.05, snarlTop + size.height * 0.02),
+          Offset(right + size.width * 0.012, snarlY - size.height * 0.002),
+          Offset(right - size.width * 0.01, snarlY + size.height * 0.01),
           mouthPaint,
         );
-        canvas.drawLine(
-          Offset(center.dx + size.width * 0.05, snarlTop),
-          Offset(center.dx + size.width * 0.05, snarlTop + size.height * 0.02),
-          mouthPaint,
-        );
+        _drawAngryLids(canvas, size, center);
         _drawFurrowedBrows(canvas, size, center);
         break;
       case 'calm':
@@ -561,6 +606,80 @@ class _CartoonFacePainter extends CustomPainter {
     );
   }
 
+  void _drawScaredBrows(Canvas canvas, Size size, Offset center) {
+    final browPaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.96)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.021;
+
+    // Inner corners lift to read as fear/worry rather than surprise.
+    canvas.drawLine(
+      Offset(center.dx - size.width * 0.275, size.height * 0.258),
+      Offset(center.dx - size.width * 0.13, size.height * 0.224),
+      browPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx + size.width * 0.275, size.height * 0.258),
+      Offset(center.dx + size.width * 0.13, size.height * 0.224),
+      browPaint,
+    );
+
+    final worryPaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.62)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.013;
+    canvas.drawLine(
+      Offset(center.dx - size.width * 0.022, size.height * 0.275),
+      Offset(center.dx - size.width * 0.01, size.height * 0.31),
+      worryPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx + size.width * 0.022, size.height * 0.275),
+      Offset(center.dx + size.width * 0.01, size.height * 0.31),
+      worryPaint,
+    );
+  }
+
+  void _drawScaredStressMarks(Canvas canvas, Size size, Offset center) {
+    final stressPaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.012;
+
+    canvas.drawLine(
+      Offset(center.dx - size.width * 0.275, size.height * 0.42),
+      Offset(center.dx - size.width * 0.245, size.height * 0.47),
+      stressPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx + size.width * 0.275, size.height * 0.42),
+      Offset(center.dx + size.width * 0.245, size.height * 0.47),
+      stressPaint,
+    );
+  }
+
+  void _drawAngryLids(Canvas canvas, Size size, Offset center) {
+    final lidPaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.98)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.024;
+
+    canvas.drawLine(
+      Offset(center.dx - size.width * 0.285, size.height * 0.305),
+      Offset(center.dx - size.width * 0.12, size.height * 0.347),
+      lidPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx + size.width * 0.285, size.height * 0.305),
+      Offset(center.dx + size.width * 0.12, size.height * 0.347),
+      lidPaint,
+    );
+  }
+
   void _drawSoftBrows(Canvas canvas, Size size, Offset center) {
     final browPaint = Paint()
       ..color = palette.eye.withValues(alpha: 0.9)
@@ -600,13 +719,13 @@ class _CartoonFacePainter extends CustomPainter {
       ..strokeWidth = size.width * 0.028;
 
     canvas.drawLine(
-      Offset(center.dx - size.width * 0.295, size.height * 0.292),
-      Offset(center.dx - size.width * 0.14, size.height * 0.214),
+      Offset(center.dx - size.width * 0.295, size.height * 0.235),
+      Offset(center.dx - size.width * 0.14, size.height * 0.302),
       browPaint,
     );
     canvas.drawLine(
-      Offset(center.dx + size.width * 0.14, size.height * 0.214),
-      Offset(center.dx + size.width * 0.295, size.height * 0.292),
+      Offset(center.dx + size.width * 0.14, size.height * 0.302),
+      Offset(center.dx + size.width * 0.295, size.height * 0.235),
       browPaint,
     );
 
@@ -616,13 +735,13 @@ class _CartoonFacePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeWidth = size.width * 0.016;
     canvas.drawLine(
-      Offset(center.dx - size.width * 0.038, size.height * 0.302),
-      Offset(center.dx, size.height * 0.338),
+      Offset(center.dx - size.width * 0.03, size.height * 0.304),
+      Offset(center.dx, size.height * 0.352),
       furrowPaint,
     );
     canvas.drawLine(
-      Offset(center.dx + size.width * 0.038, size.height * 0.302),
-      Offset(center.dx, size.height * 0.338),
+      Offset(center.dx + size.width * 0.03, size.height * 0.304),
+      Offset(center.dx, size.height * 0.352),
       furrowPaint,
     );
   }

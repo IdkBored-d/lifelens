@@ -43,8 +43,8 @@ class MiniMeBackendAvatarSnapshot {
 const List<MiniMeCompanionPreset> miniMeCompanionPresets = [
   MiniMeCompanionPreset(
     id: 'cloud',
-    name: 'Cloud',
-    subtitle: 'Soft, steady, reassuring',
+    name: 'Classic',
+    subtitle: 'Original Mini-Me look',
     accentColor: Color(0xFF7A9DDB),
     shellColor: Color(0xFFF9F7F3),
     shirtColor: Color(0xFF7FA8E8),
@@ -55,8 +55,8 @@ const List<MiniMeCompanionPreset> miniMeCompanionPresets = [
   ),
   MiniMeCompanionPreset(
     id: 'pebble',
-    name: 'Pebble',
-    subtitle: 'Grounded, warm, resilient',
+    name: 'Sunset',
+    subtitle: 'Warm coral variation',
     accentColor: Color(0xFF8F7AD8),
     shellColor: Color(0xFFFFF8EC),
     shirtColor: Color(0xFFE8A06F),
@@ -67,8 +67,8 @@ const List<MiniMeCompanionPreset> miniMeCompanionPresets = [
   ),
   MiniMeCompanionPreset(
     id: 'sprig',
-    name: 'Sprig',
-    subtitle: 'Fresh, bright, uplifting',
+    name: 'Mint',
+    subtitle: 'Fresh green variation',
     accentColor: Color(0xFF58A78B),
     shellColor: Color(0xFFF3FBF2),
     shirtColor: Color(0xFF6CC2A4),
@@ -76,6 +76,18 @@ const List<MiniMeCompanionPreset> miniMeCompanionPresets = [
     hairModel: 'preset/sprig_fluff',
     shirtModel: 'preset/sprig_band',
     bodyWidthScale: 0.96,
+  ),
+  MiniMeCompanionPreset(
+    id: 'dawn',
+    name: 'Twilight',
+    subtitle: 'Cool violet variation',
+    accentColor: Color(0xFF7E84DA),
+    shellColor: Color(0xFFF4F2FE),
+    shirtColor: Color(0xFF8F96EA),
+    bodyModel: 'preset/dawn',
+    hairModel: 'preset/dawn_sprout',
+    shirtModel: 'preset/dawn_tie',
+    bodyWidthScale: 1.02,
   ),
 ];
 

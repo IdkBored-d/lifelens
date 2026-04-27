@@ -2529,14 +2529,17 @@ MiniMeFacePalette _resolvePalette(
   String shirtModel,
   String? companionId,
 ) {
-  final source = [
-    companionId ?? '',
-    bodyModel,
-    hairModel,
-    shirtModel,
-  ].join('|').toLowerCase();
-  final index = source.hashCode.abs() % _palettes.length;
-  return _palettes[index];
+  switch ((companionId ?? '').trim().toLowerCase()) {
+    case 'pebble':
+      return _sunsetPalette;
+    case 'sprig':
+      return _mintPalette;
+    case 'dawn':
+      return _twilightPalette;
+    case 'cloud':
+    default:
+      return _classicPalette;
+  }
 }
 
 String _resolveExpression(String? moodLabel, String? animationState) {
@@ -2558,6 +2561,7 @@ String _resolveExpression(String? moodLabel, String? animationState) {
     case 'scared':
     case 'fear':
     case 'anxious':
+      return 'scared';
     case 'sad':
     case 'sadness':
     case 'tired':
@@ -2614,41 +2618,42 @@ enum _MiniMeAccessory { none, band, tie }
 
 enum _MiniMeCrest { none, fluff, sprout }
 
-const List<MiniMeFacePalette> _palettes = [
-  MiniMeFacePalette(
-    primary: Color(0xFFF8F6F2),
-    secondary: Color(0xFF75A0E3),
-    belly: Color(0xFFF2F0EC),
-    beak: Color(0xFFE3D9CF),
-    cheek: Color(0xFFF0B7C5),
-    eye: Color(0xFF17345C),
-    accessory: Color(0xFF90A7F4),
-  ),
-  MiniMeFacePalette(
-    primary: Color(0xFFFFF6EA),
-    secondary: Color(0xFFE7A16F),
-    belly: Color(0xFFF6ECDD),
-    beak: Color(0xFFE1B98A),
-    cheek: Color(0xFFF0B6A6),
-    eye: Color(0xFF3A2A27),
-    accessory: Color(0xFF8B78D9),
-  ),
-  MiniMeFacePalette(
-    primary: Color(0xFFF1FBF3),
-    secondary: Color(0xFF67BEA0),
-    belly: Color(0xFFE8F5EA),
-    beak: Color(0xFFD9E6D7),
-    cheek: Color(0xFFF0C4CF),
-    eye: Color(0xFF234236),
-    accessory: Color(0xFF5C9D87),
-  ),
-  MiniMeFacePalette(
-    primary: Color(0xFFF8F8FC),
-    secondary: Color(0xFF9A8DE8),
-    belly: Color(0xFFF0F0F8),
-    beak: Color(0xFFE4DCF2),
-    cheek: Color(0xFFF0BED1),
-    eye: Color(0xFF2B2950),
-    accessory: Color(0xFFE89172),
-  ),
-];
+const MiniMeFacePalette _classicPalette = MiniMeFacePalette(
+  primary: Color(0xFFF8F6F2),
+  secondary: Color(0xFF75A0E3),
+  belly: Color(0xFFF2F0EC),
+  beak: Color(0xFFE3D9CF),
+  cheek: Color(0xFFF0B7C5),
+  eye: Color(0xFF17345C),
+  accessory: Color(0xFF90A7F4),
+);
+
+const MiniMeFacePalette _sunsetPalette = MiniMeFacePalette(
+  primary: Color(0xFFFFF6EF),
+  secondary: Color(0xFFE59678),
+  belly: Color(0xFFFFFBF6),
+  beak: Color(0xFFF3DCCD),
+  cheek: Color(0xFFF2B8A9),
+  eye: Color(0xFF3E2D3B),
+  accessory: Color(0xFFE8A06F),
+);
+
+const MiniMeFacePalette _mintPalette = MiniMeFacePalette(
+  primary: Color(0xFFF2FAF4),
+  secondary: Color(0xFF6AB79D),
+  belly: Color(0xFFF8FEFA),
+  beak: Color(0xFFDDEEE3),
+  cheek: Color(0xFFBDE4D0),
+  eye: Color(0xFF1F3D33),
+  accessory: Color(0xFF6CC2A4),
+);
+
+const MiniMeFacePalette _twilightPalette = MiniMeFacePalette(
+  primary: Color(0xFFCFCCEC),
+  secondary: Color(0xFF646CB8),
+  belly: Color(0xFFE4E1F5),
+  beak: Color(0xFFC9C4E3),
+  cheek: Color(0xFFB4AAD7),
+  eye: Color(0xFF1E2245),
+  accessory: Color(0xFF6E75C8),
+);
