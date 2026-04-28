@@ -15,6 +15,8 @@ class Sphere {
   final String? dailyPrompt;
   final String? dailyPromptDateKey;
   final String? pinnedPostId;
+  final String? bannerUrl;
+  final String? bannerTemplate;
 
   Sphere({
     required this.id,
@@ -31,6 +33,8 @@ class Sphere {
     this.dailyPrompt,
     this.dailyPromptDateKey,
     this.pinnedPostId,
+    this.bannerUrl,
+    this.bannerTemplate,
   });
 
   factory Sphere.fromFirestore(DocumentSnapshot doc) {
@@ -50,6 +54,8 @@ class Sphere {
       dailyPrompt: data['dailyPrompt'],
       dailyPromptDateKey: data['dailyPromptDateKey'],
       pinnedPostId: data['pinnedPostId'],
+      bannerUrl: data['bannerUrl'],
+      bannerTemplate: data['bannerTemplate'],
     );
   }
 
@@ -70,6 +76,8 @@ class Sphere {
       'dailyPrompt': dailyPrompt,
       'dailyPromptDateKey': dailyPromptDateKey,
       'pinnedPostId': pinnedPostId,
+      'bannerUrl': bannerUrl,
+      'bannerTemplate': bannerTemplate,
     };
   }
 }

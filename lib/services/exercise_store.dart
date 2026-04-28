@@ -138,17 +138,45 @@ class ExerciseStore {
     int sets = 0,
     int reps = 0,
     bool noExercise = false,
+    List<Map<String, String>> workoutItems = const <Map<String, String>>[],
   }) async {
     await _ready;
     final timestamp = DateTime.now();
+    final normalizedWorkoutItems = workoutItems
+        .map(
+          (item) => <String, String>{
+            'exerciseId': (item['exerciseId'] ?? '').trim(),
+            'exerciseName': (item['exerciseName'] ?? '').trim(),
+            'sets': (item['sets'] ?? '').trim(),
+            'reps': (item['reps'] ?? '').trim(),
+            'durationMinutes': (item['durationMinutes'] ?? '').trim(),
+          },
+        )
+        .where((item) => (item['exerciseId'] ?? '').isNotEmpty)
+        .toList(growable: false);
+
+    final hasWorkoutItems = normalizedWorkoutItems.isNotEmpty;
+    final primaryItem = hasWorkoutItems ? normalizedWorkoutItems.first : null;
+    final multiExerciseId = hasWorkoutItems
+        ? (normalizedWorkoutItems.length > 1
+              ? 'multi_exercise'
+              : (primaryItem!['exerciseId'] ?? ''))
+        : exerciseId;
+    final multiExerciseName = hasWorkoutItems
+        ? _workoutSummaryLabel(normalizedWorkoutItems)
+        : exerciseName;
     final record = <String, String>{
-      'exerciseId': exerciseId,
-      'exerciseName': exerciseName,
+      'exerciseId': multiExerciseId,
+      'exerciseName': multiExerciseName,
       'mood': mood,
-      'durationMinutes': durationMinutes.toString(),
-      'sets': sets.toString(),
-      'reps': reps.toString(),
+      'durationMinutes': hasWorkoutItems
+          ? (primaryItem!['durationMinutes'] ?? '')
+          : durationMinutes.toString(),
+      'sets': hasWorkoutItems ? (primaryItem!['sets'] ?? '') : sets.toString(),
+      'reps': hasWorkoutItems ? (primaryItem!['reps'] ?? '') : reps.toString(),
       'noExercise': noExercise.toString(),
+      if (hasWorkoutItems) 'workoutItemsJson': jsonEncode(normalizedWorkoutItems),
+      if (hasWorkoutItems) 'workoutCount': normalizedWorkoutItems.length.toString(),
       'timestamp': timestamp.toIso8601String(),
     };
     final history = List<Map<String, String>>.from(_loadExerciseHistory());
@@ -381,6 +409,7 @@ class ExerciseStore {
     Map<String, String> record,
     DateTime timestamp,
   ) {
+    final workoutItems = _decodeWorkoutItems(record['workoutItemsJson'] ?? '');
     return {
       'exerciseId': record['exerciseId'],
       'exerciseName': record['exerciseName'],
@@ -389,6 +418,9 @@ class ExerciseStore {
       'sets': int.tryParse(record['sets'] ?? '') ?? 0,
       'reps': int.tryParse(record['reps'] ?? '') ?? 0,
       'noExercise': (record['noExercise'] ?? '').trim() == 'true',
+      if (workoutItems.isNotEmpty) 'workoutItems': workoutItems,
+      if ((record['workoutCount'] ?? '').trim().isNotEmpty)
+        'workoutCount': int.tryParse(record['workoutCount'] ?? '') ?? 0,
       'timestamp': Timestamp.fromDate(timestamp),
       'createdAt': FieldValue.serverTimestamp(),
     };
@@ -399,6 +431,7 @@ class ExerciseStore {
   ) {
     final data = doc.data();
     final timestamp = data['timestamp'];
+    final workoutItems = _normalizeWorkoutItemsFromCloud(data['workoutItems']);
 
     return {
       'exerciseId': (data['exerciseId'] ?? '').toString(),
@@ -408,6 +441,8 @@ class ExerciseStore {
       'sets': (data['sets'] ?? '').toString(),
       'reps': (data['reps'] ?? '').toString(),
       'noExercise': (data['noExercise'] ?? false).toString(),
+      if (workoutItems.isNotEmpty) 'workoutItemsJson': jsonEncode(workoutItems),
+      'workoutCount': (data['workoutCount'] ?? workoutItems.length).toString(),
       'timestamp': switch (timestamp) {
         Timestamp value => value.toDate().toIso8601String(),
         DateTime value => value.toIso8601String(),
@@ -415,5 +450,57 @@ class ExerciseStore {
         _ => '',
       },
     };
+  }
+
+  String _workoutSummaryLabel(List<Map<String, String>> items) {
+    if (items.isEmpty) return '';
+    final names = items
+        .map((item) => (item['exerciseName'] ?? '').trim())
+        .where((name) => name.isNotEmpty)
+        .toList(growable: false);
+    if (names.isEmpty) return 'Workout';
+    if (names.length == 1) return names.first;
+    if (names.length == 2) return '${names[0]} + ${names[1]}';
+    return '${names[0]} + ${names.length - 1} more';
+  }
+
+  List<Map<String, String>> _decodeWorkoutItems(String encoded) {
+    if (encoded.trim().isEmpty) return const <Map<String, String>>[];
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! List) return const <Map<String, String>>[];
+      return decoded
+          .whereType<Map>()
+          .map(
+            (item) => <String, String>{
+              'exerciseId': (item['exerciseId'] ?? '').toString(),
+              'exerciseName': (item['exerciseName'] ?? '').toString(),
+              'sets': (item['sets'] ?? '').toString(),
+              'reps': (item['reps'] ?? '').toString(),
+              'durationMinutes': (item['durationMinutes'] ?? '').toString(),
+            },
+          )
+          .where((item) => (item['exerciseId'] ?? '').isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return const <Map<String, String>>[];
+    }
+  }
+
+  List<Map<String, String>> _normalizeWorkoutItemsFromCloud(dynamic value) {
+    if (value is! List) return const <Map<String, String>>[];
+    return value
+        .whereType<Map>()
+        .map(
+          (item) => <String, String>{
+            'exerciseId': (item['exerciseId'] ?? '').toString().trim(),
+            'exerciseName': (item['exerciseName'] ?? '').toString().trim(),
+            'sets': (item['sets'] ?? '').toString().trim(),
+            'reps': (item['reps'] ?? '').toString().trim(),
+            'durationMinutes': (item['durationMinutes'] ?? '').toString().trim(),
+          },
+        )
+        .where((item) => (item['exerciseId'] ?? '').isNotEmpty)
+        .toList(growable: false);
   }
 }

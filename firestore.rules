@@ -80,6 +80,7 @@ service cloud.firestore {
 
       allow update: if signedIn() && (
         isSphereOwner(sphereId) ||
+        get(spherePath(sphereId)).data.isPremade == true ||
         (
           isSphereMember(sphereId) &&
           affectedKeys().hasOnly([
@@ -92,10 +93,10 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if isSphereOwner(sphereId);
+      allow delete: if isSphereOwner(sphereId) || get(spherePath(sphereId)).data.isPremade == true;
 
       match /members/{memberId} {
-        allow read: if isSphereMember(sphereId);
+        allow read: if signedIn();
 
         allow create: if isSelf(memberId) &&
           request.resource.data.nickname is string;
@@ -113,7 +114,7 @@ service cloud.firestore {
           affectedKeys().hasOnly(['role'])
         );
 
-        allow delete: if isSelf(memberId) || isSphereOwner(sphereId);
+        allow delete: if isSelf(memberId) || isSphereOwner(sphereId) || get(spherePath(sphereId)).data.isPremade == true;
       }
 
       match /messages/{messageId} {

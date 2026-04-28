@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/eod_entry.dart';
@@ -469,6 +471,9 @@ class DailySuggestionsService {
       if (timestamp == null) {
         continue;
       }
+      final workoutItems = _decodeExerciseItems(
+        (item['workoutItemsJson'] ?? '').trim(),
+      );
       final name = (item['exerciseName'] ?? '').trim();
       final duration = (item['durationMinutes'] ?? '').trim();
       final sets = (item['sets'] ?? '').trim();
@@ -476,7 +481,15 @@ class DailySuggestionsService {
       final noExercise = (item['noExercise'] ?? '').trim() == 'true';
       final notes = (item['notes'] ?? '').trim();
       final details = <String>[
-        if (name.isNotEmpty)
+        if (workoutItems.isNotEmpty)
+          workoutItems
+              .take(3)
+              .map(
+                (entry) =>
+                    '${entry['name']}${entry['sets']!.isNotEmpty && entry['reps']!.isNotEmpty ? ' (${entry['sets']}x${entry['reps']})' : ''}',
+              )
+              .join(', ')
+        else if (name.isNotEmpty)
           name
         else
           (item['exerciseId'] ?? 'activity').trim(),
@@ -731,6 +744,27 @@ class DailySuggestionsService {
       }
       return _isSameDay(timestamp, today);
     }).length;
+  }
+
+  List<Map<String, String>> _decodeExerciseItems(String encoded) {
+    if (encoded.trim().isEmpty) return const <Map<String, String>>[];
+    try {
+      final decoded = jsonDecode(encoded);
+      if (decoded is! List) return const <Map<String, String>>[];
+      return decoded
+          .whereType<Map>()
+          .map(
+            (item) => <String, String>{
+              'name': (item['exerciseName'] ?? '').toString().trim(),
+              'sets': (item['sets'] ?? '').toString().trim(),
+              'reps': (item['reps'] ?? '').toString().trim(),
+            },
+          )
+          .where((item) => (item['name'] ?? '').isNotEmpty)
+          .toList(growable: false);
+    } catch (_) {
+      return const <Map<String, String>>[];
+    }
   }
 
   int _moodScoreForLabel(String label) {

@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../avatar_store.dart';
 import '../models/sphere.dart';
@@ -18,171 +22,63 @@ class CommunityScreen extends StatefulWidget {
 class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<String> _searchQuery = ValueNotifier<String>('');
-  static Future<void>? _bootstrapFuture;
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _spheresStream =
       FirebaseFirestore.instance
           .collection('spheres')
           .orderBy('memberCount', descending: true)
           .snapshots();
 
-  static const Set<String> _retiredPremadeSphereNames = {
-    'diabetes',
-    'hello',
-    'hello sphere',
-    'mental health',
+  static const List<String> _defaultSphereOrder = ['General', 'Sleep', 'Exercise'];
+
+  static const Map<String, String> _defaultDescriptions = {
+    'General': 'Heartwarming daily support, gratitude, and steady progress.',
+    'Sleep': 'Better nights through calm routines, gentle accountability, and rest tips.',
+    'Exercise': 'Small consistent workouts, motivation boosts, and progress celebrations.',
   };
 
   static const Map<String, String> _defaultPinnedBodies = {
-    'Sleep':
-        'Post what helped your wind-down, bedtime, or wake consistency. Keep replies practical and kind.',
-    'Exercise':
-        'Celebrate progress, ask beginner-friendly questions, and share routines people can actually follow.',
-    'General':
-        'Use this sphere for check-ins, support, and realistic habit tips that help you feel better this week.',
+    'General': 'Use this sphere for check-ins, gentle motivation, and practical support for this week.',
+    'Sleep': 'Share bedtime wins, wind-down routines, and kind tips for better rest tonight.',
+    'Exercise': 'Celebrate every rep, encourage beginners, and share realistic workout routines.',
   };
 
   @override
   void initState() {
     super.initState();
-    _bootstrapFuture ??= _initializePremadeSpheres();
-    unawaited(_bootstrapFuture);
+    unawaited(_initializePremadeSpheres());
   }
 
   Future<void> _initializePremadeSpheres() async {
-    final CollectionReference<Map<String, dynamic>> spheresRef =
-        FirebaseFirestore.instance.collection('spheres');
-
-    final premade = <Map<String, String>>[
-      {'name': 'Sleep', 'description': 'Discuss sleep patterns and tips'},
-      {'name': 'Exercise', 'description': 'Fitness and exercise motivation'},
-      {'name': 'General', 'description': 'General health discussions'},
-    ];
-
+    final spheresRef = FirebaseFirestore.instance.collection('spheres');
     try {
-      final existingDocs = await spheresRef
+      final existing = await spheresRef
           .where('isPremade', isEqualTo: true)
           .get();
-      final existingByName = <String, DocumentReference<Map<String, dynamic>>>{
-        for (final doc in existingDocs.docs)
-          ((doc.data()['name'] as String?) ?? ''): doc.reference,
-      };
+      final existingNames = existing.docs
+          .map((d) => _normalizedSphereName((d.data()['name'] as String?) ?? ''))
+          .toSet();
 
-      final seedTasks = <Future<void>>[];
-
-      for (final sphere in premade) {
-        final name = sphere['name']!;
-        final description = sphere['description']!;
-        var sphereRef = existingByName[name];
-
-        sphereRef ??= await spheresRef.add({
+      final userId = FirebaseAuth.instance.currentUser?.uid ?? 'system';
+      for (final name in _defaultSphereOrder) {
+        if (existingNames.contains(_normalizedSphereName(name))) continue;
+        await spheresRef.add({
           'name': name,
-          'description': description,
+          'description': _defaultDescriptions[name],
           'memberCount': 0,
           'createdAt': FieldValue.serverTimestamp(),
           'isPremade': true,
+          'creatorId': userId,
           'pinnedTitle': 'Welcome to $name',
-          'pinnedBody':
-              _defaultPinnedBodies[name] ??
+          'pinnedBody': _defaultPinnedBodies[name] ??
               'Support each other with kindness, practical tips, and privacy in mind.',
-          'lastActivityText': 'Fresh support threads are ready to start.',
           'lastActivityAt': FieldValue.serverTimestamp(),
         });
-
-        seedTasks.add(_seedDummySphereData(sphereRef, name));
       }
-
-      await Future.wait(seedTasks);
     } catch (_) {
-      // Keep the community UI responsive even if bootstrap seeding fails.
+      // Keep the UI responsive even if bootstrap fails.
     }
   }
 
-  Future<void> _seedDummySphereData(
-    DocumentReference<Map<String, dynamic>> sphereRef,
-    String sphereName,
-  ) async {
-    final sphereSnapshot = await sphereRef.get();
-    final existing = sphereSnapshot.data();
-
-    if (existing?['dummySeedVersion'] == 1) {
-      return;
-    }
-
-    final now = DateTime.now();
-    final members = [
-      {'id': 'demo_member_alex', 'nickname': 'AlexPulse'},
-      {'id': 'demo_member_river', 'nickname': 'RiverMind'},
-      {'id': 'demo_member_sam', 'nickname': 'SamBalance'},
-      {'id': 'demo_member_jo', 'nickname': 'JoSpark'},
-    ];
-
-    final messagesBySphere = {
-      'Sleep': [
-        'Last night I set a wind-down alarm and actually fell asleep faster.',
-        'Trying to keep wake-up time consistent even on weekends. Hard but helping.',
-        'Drop your favorite no-screen routine for the last 20 minutes before bed.',
-      ],
-      'Exercise': [
-        'Did a 15-minute mobility session today and my back feels better already.',
-        'Anyone doing beginner-friendly strength plans at home?',
-        'Stacking movement with music has made it easier to stay consistent.',
-      ],
-      'General': [
-        'Goal for today: one healthy meal, one walk, one check-in.',
-        'What is one habit that gave you the biggest boost this month?',
-        'Keeping this thread for quick daily accountability check-ins.',
-      ],
-    };
-
-    final seededMessages =
-        messagesBySphere[sphereName] ??
-        [
-          'Welcome to the sphere. Share what you are working on this week.',
-          'Daily check-in: one win and one challenge.',
-          'Use this space to support each other with practical tips.',
-        ];
-
-    final batch = FirebaseFirestore.instance.batch();
-
-    for (int i = 0; i < members.length; i++) {
-      final member = members[i];
-      final memberRef = sphereRef.collection('members').doc(member['id']);
-      batch.set(memberRef, {
-        'nickname': member['nickname'],
-        'joinedAt': Timestamp.fromDate(now.subtract(Duration(days: 10 - i))),
-        'warningCount': 0,
-      }, SetOptions(merge: true));
-    }
-
-    for (int i = 0; i < seededMessages.length; i++) {
-      final messageRef = sphereRef
-          .collection('messages')
-          .doc('demo_msg_${i + 1}');
-      final author = members[i % members.length];
-      batch.set(messageRef, {
-        'text': seededMessages[i],
-        'userId': author['id'],
-        'nickname': author['nickname'],
-        'timestamp': Timestamp.fromDate(
-          now.subtract(Duration(minutes: (i + 1) * 18)),
-        ),
-      }, SetOptions(merge: true));
-    }
-
-    batch.set(sphereRef, {
-      'memberCount': members.length,
-      'dummySeedVersion': 1,
-      'lastDummySeedAt': FieldValue.serverTimestamp(),
-      'pinnedTitle': 'Welcome to $sphereName',
-      'pinnedBody':
-          _defaultPinnedBodies[sphereName] ??
-          'Support each other with kindness, practical tips, and privacy in mind.',
-      'lastActivityText': seededMessages.first,
-      'lastActivityAt': Timestamp.fromDate(now),
-    }, SetOptions(merge: true));
-
-    await batch.commit();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -319,9 +215,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 ),
                               );
                             },
-                            onDelete: sphere.isPremade
-                                ? null
-                                : () => _confirmDeleteSphere(context, sphere),
+                            onDelete: (!sphere.isPremade &&
+                                    sphere.creatorId ==
+                                        FirebaseAuth.instance.currentUser?.uid)
+                                ? () => _confirmDeleteSphere(context, sphere)
+                                : null,
                           );
                         },
                       );
@@ -348,20 +246,27 @@ String _normalizedSphereName(String value) =>
     value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 
 List<Sphere> _visibleUniqueSpheres(Iterable<Sphere> spheres) {
+  const defaultOrder = <String, int>{
+    'general': 0,
+    'sleep': 1,
+    'exercise': 2,
+  };
+
   final seenNames = <String>{};
   final uniqueSpheres = <Sphere>[];
 
   for (final sphere in spheres) {
     final normalizedName = _normalizedSphereName(sphere.name);
-    if (_CommunityScreenState._retiredPremadeSphereNames.contains(
-      normalizedName,
-    )) {
-      continue;
-    }
     if (seenNames.add(normalizedName)) {
       uniqueSpheres.add(sphere);
     }
   }
+
+  uniqueSpheres.sort((a, b) {
+    final aOrder = defaultOrder[_normalizedSphereName(a.name)] ?? 999;
+    final bOrder = defaultOrder[_normalizedSphereName(b.name)] ?? 999;
+    return aOrder.compareTo(bOrder);
+  });
 
   return uniqueSpheres;
 }
@@ -413,11 +318,9 @@ class _SphereCard extends StatelessWidget {
           }
         },
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-            stream: memberStream,
-            builder: (context, memberSnapshot) {
+        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: memberStream,
+          builder: (context, memberSnapshot) {
               final memberData = memberSnapshot.data?.data();
               final lastReadAt = (memberData?['lastReadAt'] as Timestamp?)
                   ?.toDate();
@@ -432,9 +335,7 @@ class _SphereCard extends StatelessWidget {
               final lastActivityLabel = sphere.lastActivityAt == null
                   ? 'No recent activity'
                   : _communityRelativeTimeLabel(sphere.lastActivityAt!);
-              final previewText =
-                  sphere.lastActivityText ??
-                  'Open the sphere to see the latest post.';
+              final previewText = sphere.lastActivityText;
               final previewShadow = highlightPreview
                   ? [
                       Shadow(
@@ -443,178 +344,198 @@ class _SphereCard extends StatelessWidget {
                       ),
                     ]
                   : null;
+              final bannerUrl = sphere.bannerUrl?.trim();
+              final hasBanner =
+                  bannerUrl != null &&
+                  bannerUrl.isNotEmpty &&
+                  (_isHttpImageUrl(bannerUrl) || _isDataImageUrl(bannerUrl));
+              final bannerTemplate = sphere.bannerTemplate?.trim() ?? '';
+              final hasTemplateBanner =
+                  !hasBanner &&
+                  bannerTemplate.isNotEmpty &&
+                  _paletteForTemplateKey(bannerTemplate) != null;
+              final hasDefaultBanner =
+                  !hasBanner &&
+                  !hasTemplateBanner &&
+                  _defaultBannerPaletteForSphere(sphere.name) != null;
+              final showBanner = hasBanner || hasTemplateBanner || hasDefaultBanner;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(
-                          Icons.groups_rounded,
-                          size: 24,
-                          color: cs.primary,
-                        ),
+                  if (hasBanner || hasTemplateBanner || hasDefaultBanner) ...[
+                    ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(18),
+                        topRight: Radius.circular(18),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 170,
+                        child: hasBanner
+                            ? _SphereBannerImage(imageSource: bannerUrl)
+                            : _DefaultSphereBanner(
+                                sphereName: sphere.name,
+                                templateKey: hasTemplateBanner ? bannerTemplate : null,
+                              ),
+                      ),
+                    ),
+                  ],
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      showBanner ? 12 : 16,
+                      16,
+                      16,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    sphere.name,
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: cs.onSurface,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    children: [
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          minWidth: 0,
+                                          maxWidth: 180,
+                                        ),
+                                        child: Text(
+                                          sphere.name,
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                color: cs.onSurface,
+                                                letterSpacing: 0.1,
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (isJoined) ...[
+                                        _InfoPill(
+                                          icon: Icons.check_circle_rounded,
+                                          label: 'Joined',
+                                          background: cs.secondaryContainer,
+                                          foreground: cs.onSecondaryContainer,
+                                        ),
+                                      ],
+                                      if (hasUnread && isJoined) ...[
+                                        _InfoPill(
+                                          icon: Icons.mark_chat_unread_rounded,
+                                          label: 'New',
+                                          background: cs.primaryContainer,
+                                          foreground: cs.onPrimaryContainer,
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  if (sphere.description != null) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      sphere.description!,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        height: 1.25,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ),
-                                ),
-                                if (isJoined) ...[
-                                  const SizedBox(width: 8),
-                                  _InfoPill(
-                                    icon: Icons.check_circle_rounded,
-                                    label: 'Joined',
-                                    background: cs.secondaryContainer,
-                                    foreground: cs.onSecondaryContainer,
-                                  ),
+                                  ],
                                 ],
-                                if (hasUnread && isJoined) ...[
-                                  const SizedBox(width: 8),
-                                  _InfoPill(
-                                    icon: Icons.mark_chat_unread_rounded,
-                                    label: 'New',
-                                    background: cs.primaryContainer,
-                                    foreground: cs.onPrimaryContainer,
-                                  ),
-                                ],
-                              ],
+                              ),
                             ),
-                            if (sphere.description != null) ...[
-                              const SizedBox(height: 3),
-                              Text(
-                                sphere.description!,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                            if (onDelete != null) ...[
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: Icon(Icons.delete_outline, color: cs.error),
+                                onPressed: onDelete,
+                                tooltip: 'Delete sphere',
                               ),
                             ],
                           ],
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest.withValues(
-                            alpha: 0.35,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${sphere.memberCount}',
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      if (onDelete != null &&
-                          !sphere.isPremade &&
-                          sphere.creatorId == userId) ...[
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: Icon(Icons.delete_outline, color: cs.error),
-                          onPressed: onDelete,
-                          tooltip: 'Delete sphere',
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _InfoPill(
-                        icon: Icons.schedule_rounded,
-                        label: lastActivityLabel,
-                        background: cs.surfaceContainerHighest,
-                        foreground: cs.onSurfaceVariant,
-                      ),
-                      _InfoPill(
-                        icon: Icons.people_alt_outlined,
-                        label: '${sphere.memberCount} members',
-                        background: cs.surfaceContainerHighest,
-                        foreground: cs.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            previewText,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: highlightPreview
-                                  ? cs.primary
-                                  : cs.onSurfaceVariant,
-                              fontWeight: highlightPreview
-                                  ? FontWeight.w800
-                                  : FontWeight.w400,
-                              shadows: previewShadow,
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _InfoPill(
+                              icon: Icons.schedule_rounded,
+                              label: lastActivityLabel,
+                              background: cs.surfaceContainerHighest,
+                              foreground: cs.onSurfaceVariant,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                            _InfoPill(
+                              icon: Icons.people_alt_outlined,
+                              label: '${sphere.memberCount} members',
+                              background: cs.surfaceContainerHighest,
+                              foreground: cs.onSurfaceVariant,
+                            ),
+                          ],
                         ),
-                        if (highlightPreview) ...[
-                          const SizedBox(width: 10),
-                          Container(
-                            width: 9,
-                            height: 9,
-                            decoration: BoxDecoration(
-                              color: cs.primary,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: cs.primary.withValues(alpha: 0.55),
-                                  blurRadius: 10,
-                                  spreadRadius: 1,
+                        const SizedBox(height: 10),
+                        if (previewText != null) Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  previewText,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: highlightPreview
+                                        ? cs.primary
+                                        : cs.onSurfaceVariant,
+                                    fontWeight: highlightPreview
+                                        ? FontWeight.w800
+                                        : FontWeight.w400,
+                                    shadows: previewShadow,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (highlightPreview) ...[
+                                const SizedBox(width: 10),
+                                Container(
+                                  width: 9,
+                                  height: 9,
+                                  decoration: BoxDecoration(
+                                    color: cs.primary,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: cs.primary.withValues(alpha: 0.55),
+                                        blurRadius: 10,
+                                        spreadRadius: 1,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ),
                 ],
               );
-            },
-          ),
+          },
         ),
       ),
     );
@@ -628,59 +549,88 @@ extension on _CommunityScreenState {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Join Sphere'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Choose a nickname for ${sphere.name}',
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'DO NOT use your real name',
-              style: TextStyle(
-                color: cs.error,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nicknameController,
-              decoration: InputDecoration(
-                hintText: 'Enter nickname...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              maxLength: 20,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final nickname = nicknameController.text.trim();
-              if (nickname.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a nickname')),
-                );
-                return;
-              }
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          String? errorText;
 
-              Navigator.pop(context);
-              await _joinSphere(sphere, nickname);
-            },
-            child: const Text('Join'),
-          ),
-        ],
+          return AlertDialog(
+            title: const Text('Join Sphere'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Choose a nickname for ${sphere.name}',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'DO NOT use your real name',
+                  style: TextStyle(
+                    color: cs.error,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                StatefulBuilder(
+                  builder: (context, setFieldState) {
+                    return TextField(
+                      controller: nicknameController,
+                      decoration: InputDecoration(
+                        hintText: 'Enter nickname...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        errorText: errorText,
+                        errorStyle: TextStyle(color: cs.error),
+                      ),
+                      maxLength: 20,
+                      onChanged: (_) {
+                        if (errorText != null) {
+                          setDialogState(() => errorText = null);
+                        }
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final nickname = nicknameController.text.trim();
+                  if (nickname.isEmpty) {
+                    setDialogState(() => errorText = 'Please enter a nickname');
+                    return;
+                  }
+
+                  // Check for duplicate nickname in this sphere.
+                  final sphereRef = FirebaseFirestore.instance
+                      .collection('spheres')
+                      .doc(sphere.id);
+                  final taken = await sphereRef
+                      .collection('members')
+                      .where('nickname', isEqualTo: nickname)
+                      .limit(1)
+                      .get();
+                  if (taken.docs.isNotEmpty) {
+                    setDialogState(() => errorText = 'Nickname already taken');
+                    return;
+                  }
+
+                  if (context.mounted) Navigator.pop(context);
+                  await _joinSphere(sphere, nickname);
+                },
+                child: const Text('Join'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -696,53 +646,37 @@ extension on _CommunityScreenState {
           .collection('spheres')
           .doc(sphere.id);
       final memberRef = sphereRef.collection('members').doc(userId);
-      var createdJoinPost = false;
-
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final sphereDoc = await transaction.get(sphereRef);
-        final memberDoc = await transaction.get(memberRef);
-        final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
-
-        transaction.set(memberRef, {
-          'nickname': nickname,
-          'joinedAt': memberDoc.exists
-              ? (memberDoc.data()?['joinedAt'] ?? FieldValue.serverTimestamp())
-              : FieldValue.serverTimestamp(),
-          'lastReadAt': FieldValue.serverTimestamp(),
-          'lastActiveAt': FieldValue.serverTimestamp(),
-          'warningCount': memberDoc.data()?['warningCount'] ?? 0,
-          'role': sphere.creatorId == userId ? 'owner' : 'member',
-          'miniMe': miniMeData,
-          'miniMeName': nickname,
-        }, SetOptions(merge: true));
-
-        if (!memberDoc.exists) {
-          transaction.update(sphereRef, {'memberCount': currentCount + 1});
-          createdJoinPost = true;
-          final joinPostRef = sphereRef.collection('posts').doc();
-          transaction.set(joinPostRef, {
-            'type': 'system_join',
-            'text': '$nickname has joined the sphere',
-            'userId': 'system',
-            'nickname': nickname,
-            'miniMe': miniMeData,
-            'miniMeName': nickname,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'latestActivityAt': FieldValue.serverTimestamp(),
-            'replyCount': 0,
-            'reactionCounts': <String, int>{},
-            'isPinned': false,
-          });
-        }
+      await memberRef.set({
+        'nickname': nickname,
+        'joinedAt': FieldValue.serverTimestamp(),
+        'lastReadAt': FieldValue.serverTimestamp(),
+        'lastActiveAt': FieldValue.serverTimestamp(),
+        'warningCount': 0,
+        'role': (!sphere.isPremade && sphere.creatorId == userId) ? 'owner' : 'member',
+        'miniMe': miniMeData,
+        'miniMeName': nickname,
       });
 
-      if (createdJoinPost) {
-        await sphereRef.set({
-          'lastActivityText': '$nickname has joined the sphere',
-          'lastActivityAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
+      await sphereRef.set({
+        'memberCount': FieldValue.increment(1),
+        'lastActivityText': '$nickname has joined the sphere',
+        'lastActivityAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await sphereRef.collection('posts').add({
+        'type': 'system_join',
+        'text': '$nickname has joined the sphere',
+        'userId': userId,
+        'nickname': nickname,
+        'miniMe': miniMeData,
+        'miniMeName': nickname,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'latestActivityAt': FieldValue.serverTimestamp(),
+        'replyCount': 0,
+        'reactionCounts': <String, int>{},
+        'isPinned': false,
+      });
 
       if (mounted) {
         Navigator.push(
@@ -774,61 +708,237 @@ extension on _CommunityScreenState {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Create New Sphere'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: InputDecoration(
-                labelText: 'Sphere Name',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              maxLength: 30,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: descController,
-              decoration: InputDecoration(
-                labelText: 'Description (optional)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              maxLength: 100,
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final name = nameController.text.trim();
-              if (name.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a sphere name')),
-                );
-                return;
-              }
+      builder: (context) {
+        String? selectedTemplate;
+        Uint8List? pickedBytes;
+        XFile? pickedFile;
+        bool isUploading = false;
 
-              Navigator.pop(context);
-              await _createSphere(name, descController.text.trim());
-            },
-            child: const Text('Create'),
-          ),
-        ],
-      ),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Create New Sphere'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Sphere Name',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      maxLength: 30,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descController,
+                      decoration: InputDecoration(
+                        labelText: 'Description (optional)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      maxLength: 100,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Banner',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // ── Template swatches ───────────────────────────────
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (int i = 0; i < _allBannerTemplates.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            Builder(builder: (context) {
+                              final t = _allBannerTemplates[i];
+                              final isSelected = selectedTemplate == t.key;
+                              return Tooltip(
+                                message: t.label,
+                                child: GestureDetector(
+                                  onTap: () => setState(() {
+                                    selectedTemplate = isSelected ? null : t.key;
+                                    pickedBytes = null;
+                                    pickedFile = null;
+                                  }),
+                                  child: Container(
+                                    width: 52,
+                                    height: 52,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [t.startColor, t.endColor],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.transparent,
+                                        width: 2.5,
+                                      ),
+                                    ),
+                                    child: isSelected
+                                        ? const Icon(
+                                            Icons.check_rounded,
+                                            color: Colors.white,
+                                            size: 20,
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            }),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // ── Camera roll button ──────────────────────────────
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picker = ImagePicker();
+                        final file = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          maxWidth: 1200,
+                          maxHeight: 420,
+                          imageQuality: 85,
+                        );
+                        if (file != null) {
+                          final bytes = await file.readAsBytes();
+                          setState(() {
+                            pickedFile = file;
+                            pickedBytes = bytes;
+                            selectedTemplate = null;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.photo_library_outlined, size: 18),
+                      label: const Text('Choose from camera roll'),
+                    ),
+                    // ── Image preview ───────────────────────────────────
+                    if (pickedBytes != null) ...[
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Stack(
+                          children: [
+                            Image.memory(
+                              pickedBytes!,
+                              height: 90,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () => setState(() {
+                                  pickedBytes = null;
+                                  pickedFile = null;
+                                }),
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isUploading ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isUploading
+                      ? null
+                      : () async {
+                          final name = nameController.text.trim();
+                          if (name.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please enter a sphere name'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setState(() => isUploading = true);
+
+                          String uploadedBannerUrl = '';
+                          if (pickedFile != null && pickedBytes != null) {
+                            try {
+                              final uid = FirebaseAuth.instance.currentUser!.uid;
+                              final ref = FirebaseStorage.instance.ref(
+                                'sphere_banners/${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                              );
+                              await ref.putData(
+                                pickedBytes!,
+                                SettableMetadata(contentType: 'image/jpeg'),
+                              );
+                              uploadedBannerUrl = await ref.getDownloadURL();
+                            } catch (_) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Failed to upload banner image'),
+                                  ),
+                                );
+                              }
+                              setState(() => isUploading = false);
+                              return;
+                            }
+                          }
+
+                          if (context.mounted) Navigator.pop(context);
+                          await _createSphere(
+                            name,
+                            descController.text.trim(),
+                            bannerUrl: uploadedBannerUrl,
+                            bannerTemplate: selectedTemplate ?? '',
+                          );
+                        },
+                  child: isUploading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  Future<void> _createSphere(String name, String description) async {
+  Future<void> _createSphere(String name, String description, {String bannerUrl = '', String bannerTemplate = ''}) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
 
@@ -840,10 +950,11 @@ extension on _CommunityScreenState {
         'createdAt': FieldValue.serverTimestamp(),
         'creatorId': userId,
         'isPremade': false,
+        if (bannerUrl.isNotEmpty) 'bannerUrl': bannerUrl,
+        if (bannerTemplate.isNotEmpty) 'bannerTemplate': bannerTemplate,
         'pinnedTitle': 'Start here',
         'pinnedBody':
             'Introduce yourself with a nickname, share what you are working on, and keep replies practical, kind, and privacy-safe.',
-        'lastActivityText': 'This sphere is ready for its first check-in.',
         'lastActivityAt': FieldValue.serverTimestamp(),
       });
 
@@ -954,6 +1065,335 @@ String _communityRelativeTimeLabel(DateTime value) {
   if (diff.inHours < 24) return '${diff.inHours}h ago';
   if (diff.inDays < 7) return '${diff.inDays}d ago';
   return 'Earlier this week';
+}
+
+bool _isHttpImageUrl(String raw) {
+  final parsed = Uri.tryParse(raw);
+  return parsed != null &&
+      (parsed.scheme == 'http' || parsed.scheme == 'https') &&
+      parsed.host.isNotEmpty;
+}
+
+bool _isDataImageUrl(String raw) {
+  return raw.startsWith('data:image/');
+}
+
+Uint8List? _decodeDataImageBytes(String raw) {
+  if (!_isDataImageUrl(raw)) return null;
+  final commaIndex = raw.indexOf(',');
+  if (commaIndex <= 0 || commaIndex >= raw.length - 1) return null;
+  final payload = raw.substring(commaIndex + 1);
+  try {
+    return base64Decode(payload);
+  } catch (_) {
+    return null;
+  }
+}
+
+_DefaultBannerPalette? _defaultBannerPaletteForSphere(String sphereName) {
+  final normalized = _normalizedSphereName(sphereName);
+  switch (normalized) {
+    case 'general':
+      return const _DefaultBannerPalette(
+        title: 'General',
+        subtitle: 'Daily encouragement',
+        icon: Icons.favorite_rounded,
+        startColor: Color(0xFFFFCF8D),
+        endColor: Color(0xFFFF8A80),
+        accentColor: Color(0xFFFFF3E0),
+      );
+    case 'sleep':
+      return const _DefaultBannerPalette(
+        title: 'Sleep',
+        subtitle: 'Rest and reset',
+        icon: Icons.bedtime_rounded,
+        startColor: Color(0xFF4B5D9B),
+        endColor: Color(0xFF9A8FE0),
+        accentColor: Color(0xFFE8EAFD),
+      );
+    case 'exercise':
+      return const _DefaultBannerPalette(
+        title: 'Exercise',
+        subtitle: 'Move with purpose',
+        icon: Icons.fitness_center_rounded,
+        startColor: Color(0xFFFF9A62),
+        endColor: Color(0xFFFF5A6A),
+        accentColor: Color(0xFFFFE9D6),
+      );
+    default:
+      return null;
+  }
+}
+
+// ── Banner templates available when creating a sphere ──────────────────────
+
+class _BannerTemplate {
+  const _BannerTemplate({
+    required this.key,
+    required this.label,
+    required this.startColor,
+    required this.endColor,
+    required this.accentColor,
+    required this.icon,
+    required this.subtitle,
+  });
+
+  final String key;
+  final String label;
+  final Color startColor;
+  final Color endColor;
+  final Color accentColor;
+  final IconData icon;
+  final String subtitle;
+}
+
+const List<_BannerTemplate> _allBannerTemplates = [
+  _BannerTemplate(
+    key: 'sunrise',
+    label: 'Sunrise',
+    startColor: Color(0xFFFFCF8D),
+    endColor: Color(0xFFFF8A80),
+    accentColor: Color(0xFFFFF3E0),
+    icon: Icons.wb_sunny_rounded,
+    subtitle: 'Warm & uplifting',
+  ),
+  _BannerTemplate(
+    key: 'night',
+    label: 'Night',
+    startColor: Color(0xFF4B5D9B),
+    endColor: Color(0xFF9A8FE0),
+    accentColor: Color(0xFFE8EAFD),
+    icon: Icons.bedtime_rounded,
+    subtitle: 'Calm & restful',
+  ),
+  _BannerTemplate(
+    key: 'energy',
+    label: 'Energy',
+    startColor: Color(0xFFFF9A62),
+    endColor: Color(0xFFFF5A6A),
+    accentColor: Color(0xFFFFE9D6),
+    icon: Icons.bolt_rounded,
+    subtitle: 'Bold & active',
+  ),
+  _BannerTemplate(
+    key: 'ocean',
+    label: 'Ocean',
+    startColor: Color(0xFF2196F3),
+    endColor: Color(0xFF4ECDC4),
+    accentColor: Color(0xFFE3F2FD),
+    icon: Icons.waves_rounded,
+    subtitle: 'Fresh & flowing',
+  ),
+  _BannerTemplate(
+    key: 'forest',
+    label: 'Forest',
+    startColor: Color(0xFF56AB2F),
+    endColor: Color(0xFF43C6AC),
+    accentColor: Color(0xFFE8F5E9),
+    icon: Icons.forest_rounded,
+    subtitle: 'Natural & grounded',
+  ),
+  _BannerTemplate(
+    key: 'cosmic',
+    label: 'Cosmic',
+    startColor: Color(0xFF6B48FF),
+    endColor: Color(0xFFE040FB),
+    accentColor: Color(0xFFEDE7F6),
+    icon: Icons.auto_awesome_rounded,
+    subtitle: 'Bold & creative',
+  ),
+  _BannerTemplate(
+    key: 'rose',
+    label: 'Rose',
+    startColor: Color(0xFFFF6B9D),
+    endColor: Color(0xFFFFB347),
+    accentColor: Color(0xFFFCE4EC),
+    icon: Icons.favorite_rounded,
+    subtitle: 'Warm & caring',
+  ),
+  _BannerTemplate(
+    key: 'midnight',
+    label: 'Midnight',
+    startColor: Color(0xFF1A1A2E),
+    endColor: Color(0xFF16213E),
+    accentColor: Color(0xFF533483),
+    icon: Icons.nightlight_rounded,
+    subtitle: 'Dark & focused',
+  ),
+];
+
+_DefaultBannerPalette? _paletteForTemplateKey(String key) {
+  for (final t in _allBannerTemplates) {
+    if (t.key == key) {
+      return _DefaultBannerPalette(
+        title: t.label,
+        subtitle: t.subtitle,
+        icon: t.icon,
+        startColor: t.startColor,
+        endColor: t.endColor,
+        accentColor: t.accentColor,
+      );
+    }
+  }
+  return null;
+}
+
+// ── Palette class ───────────────────────────────────────────────────────────
+
+class _DefaultBannerPalette {
+  const _DefaultBannerPalette({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.startColor,
+    required this.endColor,
+    required this.accentColor,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color startColor;
+  final Color endColor;
+  final Color accentColor;
+}
+
+class _DefaultSphereBanner extends StatelessWidget {
+  const _DefaultSphereBanner({required this.sphereName, this.templateKey});
+
+  final String sphereName;
+  final String? templateKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = (templateKey != null ? _paletteForTemplateKey(templateKey!) : null)
+        ?? _defaultBannerPaletteForSphere(sphereName);
+    if (palette == null) {
+      return ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [palette.startColor, palette.endColor],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            right: -18,
+            top: -24,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: palette.accentColor.withValues(alpha: 0.28),
+              ),
+            ),
+          ),
+          Positioned(
+            left: -26,
+            bottom: -34,
+            child: Container(
+              width: 170,
+              height: 120,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(80),
+                color: palette.accentColor.withValues(alpha: 0.22),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(palette.icon, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        palette.title,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        palette.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SphereBannerImage extends StatelessWidget {
+  const _SphereBannerImage({required this.imageSource});
+
+  final String imageSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final memoryBytes = _decodeDataImageBytes(imageSource);
+    if (memoryBytes != null) {
+      return Image.memory(
+        memoryBytes,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.medium,
+      );
+    }
+
+    return Image.network(
+      imageSource,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (context, _, __) {
+        return Container(
+          color: cs.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.image_not_supported_outlined,
+            color: cs.onSurfaceVariant,
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _InfoPill extends StatelessWidget {

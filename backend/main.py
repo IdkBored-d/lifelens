@@ -560,7 +560,114 @@ Mini-Me conversation history:
 def _build_suggestions_fallback(
     suggestion_input: MiniMeSuggestionsRequest,
 ) -> MiniMeSuggestionsResponse:
-    raise RuntimeError('Hardcoded Mini-Me suggestion fallback is disabled')
+    mood = (suggestion_input.latest_mood_label or 'neutral').lower()
+    intensity = suggestion_input.latest_mood_intensity or 0
+    suggestion_window = (suggestion_input.suggestion_window or '').strip().lower()
+    summary_context = (suggestion_input.summary_context or '').lower()
+    recent_logs = [item.lower() for item in (suggestion_input.recent_logs or [])]
+    active_symptoms = [item.lower() for item in (suggestion_input.active_symptoms or [])]
+
+    target_count = 1 if suggestion_window in {
+        'morning_anchor',
+        'midday_checkin',
+        'evening_reflection',
+        'event_override',
+        'log_update',
+    } else 3
+
+    symptom_text = ' '.join(active_symptoms)
+    log_text = ' '.join(recent_logs)
+    context_text = f"{summary_context} {log_text} {symptom_text}".strip()
+
+    has_sleep_signal = any(
+        token in context_text
+        for token in ['sleep', 'bed', 'wake', 'insomnia', 'rest', 'night']
+    )
+    has_exercise_signal = any(
+        token in context_text
+        for token in ['exercise', 'workout', 'walk', 'steps', 'movement', 'cardio', 'strength']
+    )
+    has_stress_signal = any(
+        token in context_text
+        for token in ['stress', 'anxious', 'overwhelmed', 'panic', 'tense']
+    )
+    has_low_energy_signal = any(
+        token in context_text
+        for token in ['fatigue', 'tired', 'drained', 'low energy']
+    )
+    has_physical_discomfort = any(
+        token in context_text
+        for token in ['pain', 'injury', 'headache', 'dizzy', 'nausea', 'sore']
+    )
+
+    cautious_mode = has_physical_discomfort or intensity >= 4
+
+    fallback_items: List[MiniMeSuggestionItem] = []
+    seen_actions = set()
+
+    def add_item(action: str, reason: str):
+        normalized = action.strip().lower()
+        if not normalized or normalized in seen_actions:
+            return
+        seen_actions.add(normalized)
+        fallback_items.append(
+            MiniMeSuggestionItem(
+                action=action.strip()[:240],
+                reason=reason.strip()[:240],
+            )
+        )
+
+    if cautious_mode:
+        add_item(
+            'Take a gentle 3-minute reset: sip water, loosen your shoulders, and do 6 slow breaths.',
+            'Your recent signals suggest higher strain, so a low-effort calming step is safer and easier to start.',
+        )
+
+    if has_sleep_signal:
+        add_item(
+            'Set a simple sleep anchor tonight: pick one bedtime cue and keep wake time steady tomorrow.',
+            'Your recent context mentions sleep patterns, and consistency is the most practical next lever.',
+        )
+
+    if has_exercise_signal and not cautious_mode:
+        add_item(
+            'Do a 10-minute movement block now (walk, stretch, or light bodyweight) and stop while it still feels easy.',
+            'Your recent logs suggest movement helps, and short sessions improve follow-through without burnout.',
+        )
+
+    if mood in {'anxious', 'stressed', 'overwhelmed'} or has_stress_signal:
+        add_item(
+            'Write one sentence naming the top stressor, then choose one tiny action you can finish in 10 minutes.',
+            'Breaking stress into one concrete step reduces mental load and builds momentum quickly.',
+        )
+
+    if mood in {'sad', 'low', 'down'} or has_low_energy_signal:
+        add_item(
+            'Pick one mood-lift pair for today: brief sunlight + short walk, or water + stretch break.',
+            'Low-energy patterns usually improve with very small physical and environmental boosts.',
+        )
+
+    add_item(
+        'Do a quick evening reflection: one win, one challenge, and one tiny plan for tomorrow.',
+        'This keeps progress visible and helps tomorrow start with less friction.',
+    )
+
+    add_item(
+        'Choose one non-negotiable wellness step for the next 2-4 hours and treat it as your baseline win.',
+        'A single clear commitment is easier to keep and still moves your overall trend in the right direction.',
+    )
+
+    suggestions = fallback_items[:target_count] if fallback_items else [
+        MiniMeSuggestionItem(
+            action='Take one small supportive step now: hydrate, breathe slowly for one minute, and plan your next tiny action.',
+            reason='When context is mixed, a low-friction reset helps stabilize and makes follow-through more likely.',
+        ),
+    ]
+
+    return MiniMeSuggestionsResponse(
+        suggestions=suggestions,
+        source='fallback',
+    )
 
 
 def _build_exercise_recommendations_prompt(
@@ -830,11 +937,15 @@ async def minime_suggestions(
             source='gemini',
         )
     except Exception as e:
-        logger.error(f"Mini-Me suggestions generation failed: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail="Mini-Me suggestions are temporarily unavailable.",
-        )
+        logger.warning(f"Mini-Me suggestions fallback used: {e}")
+        try:
+            return _build_suggestions_fallback(suggestion_input)
+        except Exception as fallback_error:
+            logger.error(f"Mini-Me suggestions fallback failed: {fallback_error}")
+            raise HTTPException(
+                status_code=503,
+                detail="Mini-Me suggestions are temporarily unavailable.",
+            )
 
 
 @app.post(

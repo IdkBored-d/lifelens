@@ -17,8 +17,15 @@ class AppRoot extends StatefulWidget {
 
 class _AppRootState extends State<AppRoot> {
   late Future<void> _initFuture;
+  String? _cachedHomeUserId;
   String? _cachedHomeUserName;
   Widget? _cachedHomeScreen;
+
+  void _clearHomeCache() {
+    _cachedHomeUserId = null;
+    _cachedHomeUserName = null;
+    _cachedHomeScreen = null;
+  }
 
   @override
   void initState() {
@@ -50,6 +57,7 @@ class _AppRootState extends State<AppRoot> {
             }
 
             if (!authSnapshot.hasData) {
+              _clearHomeCache();
               return const SignupLogin();
             }
 
@@ -80,21 +88,28 @@ class _AppRootState extends State<AppRoot> {
 
                 final doc = userSnapshot.data;
                 if (doc == null || !doc.exists) {
-                  return const IntroScreen();
+                  _clearHomeCache();
+                  return const SignupLogin();
                 }
 
                 final data = doc.data() ?? <String, dynamic>{};
                 final onboardingComplete = data['onboardingComplete'] == true;
 
                 if (!onboardingComplete) {
+                  _clearHomeCache();
                   return const IntroScreen();
                 }
 
                 final userName = (data['firstName'] ?? 'Friend').toString();
                 if (_cachedHomeScreen == null ||
+                    _cachedHomeUserId != uid ||
                     _cachedHomeUserName != userName) {
+                  _cachedHomeUserId = uid;
                   _cachedHomeUserName = userName;
-                  _cachedHomeScreen = HomeScreen(userName: userName);
+                  _cachedHomeScreen = HomeScreen(
+                    key: ValueKey('home-$uid'),
+                    userName: userName,
+                  );
                 }
                 return _cachedHomeScreen!;
               },

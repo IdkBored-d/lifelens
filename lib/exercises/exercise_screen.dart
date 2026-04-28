@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -32,6 +34,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   List<ExerciseModel> _cachedFilteredExercises = const <ExerciseModel>[];
   String _searchQuery = '';
   String? _selectedExerciseId;
+  List<_WorkoutDraftItem> _pendingWorkouts = const <_WorkoutDraftItem>[];
   bool _noExercise = false;
   bool _showPreviousLogs = false;
   int _loggedToday = 0;
@@ -58,13 +61,24 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
   bool get _canLogExercise {
     if (_noExercise) return true;
+    return _pendingWorkouts.isNotEmpty || _currentDraftWorkout != null;
+  }
+
+  _WorkoutDraftItem? get _currentDraftWorkout {
+    final selectedId = _selectedExerciseId;
+    final selected = _selectedExercise;
     final sets = _parsedSets;
     final reps = _parsedReps;
-    return _selectedExerciseId != null &&
-        sets != null &&
-        reps != null &&
-        sets > 0 &&
-        reps > 0;
+    if (selectedId == null || selected == null || sets == null || reps == null) {
+      return null;
+    }
+    if (sets <= 0 || reps <= 0) return null;
+    return _WorkoutDraftItem(
+      exerciseId: selectedId,
+      exerciseName: selected.name,
+      sets: sets,
+      reps: reps,
+    );
   }
 
   Future<void> _load() async {
@@ -127,11 +141,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<void> _logSelectedExercise() async {
-    final exercise = _selectedExercise;
-    if (!_noExercise && exercise == null) {
+    if (!_noExercise && _pendingWorkouts.isEmpty && _currentDraftWorkout == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Choose an exercise first.'),
+          content: Text('Add at least one workout first.'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -140,12 +153,31 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
     setState(() => _logButtonState = LogButtonVisualState.loading);
 
+    final workoutsToLog = _noExercise
+        ? const <_WorkoutDraftItem>[]
+        : <_WorkoutDraftItem>[
+            ..._pendingWorkouts,
+            if (_currentDraftWorkout != null) _currentDraftWorkout!,
+          ];
+
+    final primary = workoutsToLog.isEmpty ? null : workoutsToLog.first;
     final syncMessage = await _exerciseStore.logExercise(
-      _noExercise ? 'no_exercise' : exercise!.id,
-      exerciseName: _noExercise ? 'No exercise' : exercise!.name,
-      sets: _noExercise ? 0 : _parsedSets!,
-      reps: _noExercise ? 0 : _parsedReps!,
+      _noExercise ? 'no_exercise' : (primary?.exerciseId ?? ''),
+      exerciseName: _noExercise ? 'No exercise' : (primary?.exerciseName ?? ''),
+      sets: _noExercise ? 0 : (primary?.sets ?? 0),
+      reps: _noExercise ? 0 : (primary?.reps ?? 0),
       noExercise: _noExercise,
+      workoutItems: workoutsToLog
+          .map(
+            (item) => <String, String>{
+              'exerciseId': item.exerciseId,
+              'exerciseName': item.exerciseName,
+              'sets': item.sets.toString(),
+              'reps': item.reps.toString(),
+              'durationMinutes': '',
+            },
+          )
+          .toList(growable: false),
     );
 
     final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
@@ -158,6 +190,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _loggedWeek = activity.fold(0, (sum, value) => sum + value);
       _logButtonState = LogButtonVisualState.success;
       _selectedExerciseId = null;
+      _pendingWorkouts = const <_WorkoutDraftItem>[];
       _noExercise = false;
       _searchQuery = '';
       _lastFilterQuery = '';
@@ -189,6 +222,30 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _noExercise = false;
       _lastFilterQuery = '';
       _cachedFilteredExercises = const <ExerciseModel>[];
+    });
+  }
+
+  void _addWorkoutToPending() {
+    final draft = _currentDraftWorkout;
+    if (draft == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Choose exercise and valid sets/reps first.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _pendingWorkouts = <_WorkoutDraftItem>[..._pendingWorkouts, draft];
+      _selectedExerciseId = null;
+      _searchQuery = '';
+      _lastFilterQuery = '';
+      _cachedFilteredExercises = const <ExerciseModel>[];
+      _searchController.clear();
+      _setsController.text = '3';
+      _repsController.text = '10';
     });
   }
 
@@ -335,6 +392,37 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                             ),
                         ],
                         const SizedBox(height: 12),
+                        if (_pendingWorkouts.isNotEmpty) ...[
+                          _ExercisePickerSection(
+                            title: 'Workouts in this log',
+                            subtitle: 'You can add multiple workouts before logging.',
+                            child: Column(
+                              children: _pendingWorkouts
+                                  .asMap()
+                                  .entries
+                                  .map(
+                                    (entry) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 10),
+                                      child: _PendingWorkoutCard(
+                                        item: entry.value,
+                                        onRemove: () {
+                                          setState(() {
+                                            _pendingWorkouts = _pendingWorkouts
+                                                .asMap()
+                                                .entries
+                                                .where((item) => item.key != entry.key)
+                                                .map((item) => item.value)
+                                                .toList(growable: false);
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         Container(
                           decoration: BoxDecoration(
                             color: cs.surfaceContainerHighest.withValues(
@@ -349,6 +437,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                 _noExercise = value ?? false;
                                 if (_noExercise) {
                                   _selectedExerciseId = null;
+                                  _pendingWorkouts = const <_WorkoutDraftItem>[];
                                   _searchQuery = '';
                                   _lastFilterQuery = '';
                                   _cachedFilteredExercises =
@@ -403,6 +492,15 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                         const SizedBox(height: 14),
                         SizedBox(
                           width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _noExercise ? null : _addWorkoutToPending,
+                            icon: const Icon(Icons.add_rounded),
+                            label: const Text('Add workout to this log'),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
                           child: FilledButton(
                             onPressed:
                                 !_canLogExercise ||
@@ -412,7 +510,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                 : _logSelectedExercise,
                             child: LogButtonContent(
                               state: _logButtonState,
-                              idleLabel: 'Log',
+                              idleLabel: 'Log workout entry',
                               loadingLabel: 'Logging',
                               successLabel: 'Logged',
                             ),
@@ -773,6 +871,7 @@ class _ExerciseHistoryCard extends StatelessWidget {
     final sets = (record['sets'] ?? '').trim();
     final reps = (record['reps'] ?? '').trim();
     final duration = (record['durationMinutes'] ?? '').trim();
+    final workoutItems = _decodeWorkoutItems(record['workoutItemsJson'] ?? '');
     final detail = noExercise
         ? 'No exercise'
         : sets.isNotEmpty && reps.isNotEmpty
@@ -780,6 +879,7 @@ class _ExerciseHistoryCard extends StatelessWidget {
         : duration.isNotEmpty
         ? '$duration min'
         : 'Exercise logged';
+    final summaryDetail = workoutItems.isNotEmpty ? '' : detail;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -815,15 +915,33 @@ class _ExerciseHistoryCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  [
-                    detail,
-                    if ((record['timestamp'] ?? '').isNotEmpty)
-                      _formatTimestamp(record['timestamp']!),
-                  ].join(' • '),
+                  workoutItems.isNotEmpty
+                      ? _formatTimestamp(record['timestamp'] ?? '')
+                      : [
+                          summaryDetail,
+                          if ((record['timestamp'] ?? '').isNotEmpty)
+                            _formatTimestamp(record['timestamp']!),
+                        ].join(' • '),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: cs.onSurfaceVariant,
                   ),
                 ),
+                if (workoutItems.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ...workoutItems
+                      .take(4)
+                      .map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '• ${item.exerciseName} (${item.sets} x ${item.reps})',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                ],
               ],
             ),
           ),
@@ -873,4 +991,90 @@ String _formatTimestamp(String raw) {
   final minute = local.minute.toString().padLeft(2, '0');
   final suffix = local.hour >= 12 ? 'PM' : 'AM';
   return '$month ${local.day} • $hour:$minute $suffix';
+}
+
+List<_WorkoutDraftItem> _decodeWorkoutItems(String encoded) {
+  if (encoded.trim().isEmpty) return const <_WorkoutDraftItem>[];
+  try {
+    final items = jsonDecode(encoded);
+    if (items is! List) return const <_WorkoutDraftItem>[];
+    return items
+        .whereType<Map>()
+        .map(
+          (item) => _WorkoutDraftItem(
+            exerciseId: (item['exerciseId'] ?? '').toString(),
+            exerciseName: (item['exerciseName'] ?? '').toString(),
+            sets: int.tryParse((item['sets'] ?? '').toString()) ?? 0,
+            reps: int.tryParse((item['reps'] ?? '').toString()) ?? 0,
+          ),
+        )
+        .where((item) => item.exerciseId.isNotEmpty)
+        .toList(growable: false);
+  } catch (_) {
+    return const <_WorkoutDraftItem>[];
+  }
+}
+
+class _WorkoutDraftItem {
+  const _WorkoutDraftItem({
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.sets,
+    required this.reps,
+  });
+
+  final String exerciseId;
+  final String exerciseName;
+  final int sets;
+  final int reps;
+}
+
+class _PendingWorkoutCard extends StatelessWidget {
+  const _PendingWorkoutCard({required this.item, required this.onRemove});
+
+  final _WorkoutDraftItem item;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.exerciseName,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${item.sets} sets • ${item.reps} reps',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onRemove,
+            icon: const Icon(Icons.remove_circle_outline_rounded),
+            tooltip: 'Remove',
+          ),
+        ],
+      ),
+    );
+  }
 }

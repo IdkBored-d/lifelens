@@ -16,6 +16,7 @@ dependencies:
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.0
   cloud_firestore: ^5.5.0
+  firebase_storage: ^12.3.3
   health: ^13.3.1
   share_plus: ^12.0.1
 
@@ -48,6 +49,7 @@ dependencies:
   model_viewer_plus: ^1.7.0
   emoji_picker_flutter: ^4.4.0
   shared_preferences: ^2.2.3
+  image_picker: ^1.1.2
   permission_handler: ^11.3.1
 
 dev_dependencies:

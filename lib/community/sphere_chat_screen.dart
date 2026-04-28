@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/cupertino.dart';
@@ -11,6 +14,8 @@ import 'package:provider/provider.dart';
 import '../avatar_store.dart';
 import '../models/sphere.dart';
 import '../services/content_moderation_service.dart';
+import '../services/exercise_store.dart';
+import '../sleep_store.dart';
 
 class SphereChatScreen extends StatefulWidget {
   const SphereChatScreen({super.key, required this.sphere});
@@ -23,14 +28,18 @@ class SphereChatScreen extends StatefulWidget {
 
 class _SphereChatScreenState extends State<SphereChatScreen>
     with SingleTickerProviderStateMixin {
+  static const int _fallbackChatSeedVersion = 7;
+
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _composerController = TextEditingController();
   final FocusNode _composerFocusNode = FocusNode();
+  final ExerciseStore _exerciseStore = ExerciseStore();
 
   String? _userNickname;
   bool _isBootstrapping = true;
   bool _isSendingPost = false;
   _ReplyTarget? _composerReplyTarget;
+  int _activeChatSeedVersion = 0;
   static const double _maxTimeRevealOffset = 76.0;
   double _timeRevealOffset = 0.0;
   late final AnimationController _timeRevealController;
@@ -50,6 +59,27 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _membersStream =
       _membersRef.snapshots();
 
+  bool get _isSleepSphere {
+    final normalized = widget.sphere.name.trim().toLowerCase();
+    return normalized == 'sleep' || normalized.contains('sleep');
+  }
+
+  bool get _isExerciseSphere {
+    final normalized = widget.sphere.name.trim().toLowerCase();
+    return normalized == 'exercise' || normalized.contains('exercise');
+  }
+
+  String? get _bannerUrl {
+    final raw = widget.sphere.bannerUrl?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    if (_isDataImageUrl(raw)) return raw;
+    final parsed = Uri.tryParse(raw);
+    if (parsed == null) return null;
+    final isWeb = parsed.scheme == 'http' || parsed.scheme == 'https';
+    if (!isWeb || parsed.host.isEmpty) return null;
+    return raw;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -67,12 +97,44 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   }
 
   Future<void> _bootstrapSphere() async {
-    await _loadUserNickname();
-    await _syncMemberMiniMe();
-    await _ensureSphereStarterContent();
-    await _markSphereSeen();
+    try {
+      await _exerciseStore.ensureReady();
+      await _loadSphereSeedConfig();
+      await _loadUserNickname();
+      await _syncMemberMiniMe();
+      await _ensureSphereStarterContent();
+      await _markSphereSeen();
+    } catch (e) {
+      if (e is! FirebaseException || e.code != 'permission-denied') {
+        rethrow;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Some sphere updates are restricted by permissions. Loading available content.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (!mounted) return;
+      setState(() => _isBootstrapping = false);
+    }
+  }
+
+  Future<void> _loadSphereSeedConfig() async {
+    final sphereDoc = await _sphereRef.get();
+    final data = sphereDoc.data();
+    final configuredSeed =
+        (data?['chatSeedVersion'] as num?)?.toInt() ??
+        (data?['dummySeedVersion'] as num?)?.toInt() ??
+        _fallbackChatSeedVersion;
+
     if (!mounted) return;
-    setState(() => _isBootstrapping = false);
+    setState(() {
+      _activeChatSeedVersion = configuredSeed;
+    });
   }
 
   Future<void> _loadUserNickname() async {
@@ -119,84 +181,49 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   }
 
   Future<void> _ensureSphereStarterContent() async {
-    final postsSnapshot = await _postsRef.limit(1).get();
-    if (postsSnapshot.docs.isNotEmpty) return;
-
-    final legacyMessages = await _sphereRef
-        .collection('messages')
-        .orderBy('timestamp')
-        .limit(8)
-        .get();
-
-    if (legacyMessages.docs.isEmpty) {
-      await _postsRef.add({
-        'type': 'check_in',
-        'text':
-            'Welcome to ${widget.sphere.name}. Share one win, one challenge, or one question to get support started.',
-        'userId': 'system',
-        'nickname': 'LifeLens',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'latestActivityAt': FieldValue.serverTimestamp(),
-        'replyCount': 0,
-        'reactionCounts': <String, int>{},
-        'isPinned': false,
-      });
-      return;
-    }
-
-    for (final doc in legacyMessages.docs) {
-      final data = doc.data();
-      await _postsRef.add({
-        'type': 'check_in',
-        'text': data['text'] ?? '',
-        'userId': data['userId'] ?? 'legacy',
-        'nickname': data['nickname'] ?? 'Anonymous',
-        'createdAt': data['timestamp'] ?? FieldValue.serverTimestamp(),
-        'updatedAt': data['timestamp'] ?? FieldValue.serverTimestamp(),
-        'latestActivityAt': data['timestamp'] ?? FieldValue.serverTimestamp(),
-        'replyCount': 0,
-        'reactionCounts': <String, int>{},
-        'isPinned': false,
-      });
-    }
+    // Keep sphere chats empty by default unless users post manually.
+    return;
   }
 
   Future<void> _markSphereSeen() async {
     final userId = _userId;
     if (userId == null) return;
-
-    await _membersRef.doc(userId).set({
+    final doc = await _membersRef.doc(userId).get();
+    if (!doc.exists) return;
+    await _membersRef.doc(userId).update({
       'lastReadAt': FieldValue.serverTimestamp(),
       'lastActiveAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    });
   }
 
   Future<void> _touchMemberActivity() async {
     final userId = _userId;
     if (userId == null) return;
-
-    await _membersRef.doc(userId).set({
+    final doc = await _membersRef.doc(userId).get();
+    if (!doc.exists) return;
+    await _membersRef.doc(userId).update({
       'lastActiveAt': FieldValue.serverTimestamp(),
       'lastReadAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    });
   }
 
   Future<void> _syncMemberMiniMe() async {
     final userId = _userId;
     if (userId == null) return;
-
+    final doc = await _membersRef.doc(userId).get();
+    if (!doc.exists) return;
     final avatarStore = context.read<AvatarStore>();
-    await _membersRef.doc(userId).set({
+    await _membersRef.doc(userId).update({
       'miniMe': avatarStore.toCommunityAvatarMap(),
       'miniMeName': avatarStore.miniMeName,
-    }, SetOptions(merge: true));
+    });
   }
 
   Future<void> _createPost({
     required String type,
     required String text,
     _ReplyTarget? replyTarget,
+    Map<String, dynamic>? extraData,
   }) async {
     final userId = _userId;
     final nickname = _userNickname;
@@ -218,6 +245,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       'text': text,
       'userId': userId,
       'nickname': nickname,
+      'seedVersion': _activeChatSeedVersion,
       'miniMe': avatarStore.toCommunityAvatarMap(),
       'miniMeName': avatarStore.miniMeName,
       'createdAt': FieldValue.serverTimestamp(),
@@ -226,6 +254,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       'replyCount': 0,
       'reactionCounts': <String, int>{},
       'isPinned': false,
+      if (extraData != null) ...extraData,
       if (replyTarget != null) ...{
         'replyToPostId': replyTarget.postId,
         'replyToUserId': replyTarget.userId,
@@ -276,6 +305,321 @@ class _SphereChatScreenState extends State<SphereChatScreen>
         _composerController.clear();
         _composerReplyTarget = null;
       });
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingPost = false);
+      }
+    }
+  }
+
+  Future<void> _showQuickShareOptions() async {
+    if (_isSendingPost) return;
+    if (_userNickname == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Join with a nickname to post.')),
+      );
+      return;
+    }
+
+    final action = await showModalBottomSheet<_QuickShareAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.emoji_events_outlined),
+                title: const Text('Milestone'),
+                subtitle: const Text('Share a personal win'),
+                onTap: () => Navigator.of(context).pop(_QuickShareAction.milestone),
+              ),
+              if (_isSleepSphere)
+                ListTile(
+                  leading: const Icon(Icons.support_agent_outlined),
+                  title: const Text('Sleep help request'),
+                  subtitle: const Text('Only for rough nights (under 6 hours)'),
+                  onTap: () => Navigator.of(context).pop(_QuickShareAction.sleepHelp),
+                ),
+              if (_isExerciseSphere)
+                ListTile(
+                  leading: const Icon(Icons.fitness_center_outlined),
+                  title: const Text('Share exercise log'),
+                  subtitle: const Text('Post your latest exercise entry'),
+                  onTap: () => Navigator.of(context).pop(_QuickShareAction.exercise),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case _QuickShareAction.milestone:
+        await _showMilestoneAchievementModal();
+      case _QuickShareAction.sleepHelp:
+        await _shareSleepHelpRequest();
+      case _QuickShareAction.exercise:
+        await _shareLatestExerciseLog();
+    }
+  }
+
+  Future<void> _showMilestoneAchievementModal() async {
+    String title = '';
+    String description = '';
+    String? errorText;
+
+    final draft = await showModalBottomSheet<_MilestoneCardDraft>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (modalContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  4,
+                  16,
+                  16 + MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Achievement card',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Fill out each box, then post your milestone to the sphere.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                      ),
+                      const SizedBox(height: 14),
+                      _MilestoneInputField(
+                        label: 'Achievement title',
+                        hint: 'Ex: 7-day mood logging streak',
+                        maxLines: 1,
+                        onChanged: (value) => title = value,
+                      ),
+                      const SizedBox(height: 10),
+                      _MilestoneInputField(
+                        label: 'Short description',
+                        hint: 'What made this achievement meaningful?',
+                        onChanged: (value) => description = value,
+                      ),
+                      if (errorText != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          errorText!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            final safeTitle = title.trim();
+                            final safeDescription = description.trim();
+                            if (safeTitle.isEmpty || safeDescription.isEmpty) {
+                              setModalState(() {
+                                errorText = 'Please fill out all boxes before sharing.';
+                              });
+                              return;
+                            }
+                            Navigator.of(modalContext).pop(
+                              _MilestoneCardDraft(
+                                title: safeTitle,
+                                description: safeDescription,
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.emoji_events_outlined),
+                          label: const Text('Share achievement card'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || draft == null) return;
+
+    final text = 'Achievement unlocked: ${draft.title}';
+    await _postQuickShare(
+      type: 'milestone_card',
+      text: text,
+      extraData: {
+        'milestoneCardKind': 'achievement',
+        'milestoneTitle': draft.title,
+        'milestoneDescription': draft.description,
+      },
+    );
+  }
+
+  Future<void> _shareSleepHelpRequest() async {
+    if (!_isSleepSphere) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sleep help requests can only be shared in the Sleep sphere.')),
+      );
+      return;
+    }
+
+    final sleepStore = context.read<SleepStore>();
+    if (sleepStore.items.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No sleep logs yet for a help request.')),
+      );
+      return;
+    }
+
+    final latest = sleepStore.items.first;
+    final bedLabel = TimeOfDay.fromDateTime(latest.bedTime).format(context);
+    final wakeLabel = TimeOfDay.fromDateTime(latest.wakeTime).format(context);
+    final durationHours = latest.duration.inMinutes / 60.0;
+    if (durationHours >= 6.0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sleep help request is only for short sleep nights (under 6 hours).'),
+        ),
+      );
+      return;
+    }
+    final ask = durationHours < 6.0
+        ? 'Any tips to fall asleep earlier without feeling wired?'
+        : 'Any tips to make sleep deeper and less interrupted?';
+    final text =
+        'Sleep help request: I slept ${latest.durationFormatted} (${latest.quality.label.toLowerCase()}) '
+        'from $bedLabel to $wakeLabel. $ask';
+
+    await _postQuickShare(
+      type: 'sleep_help_request',
+      text: text,
+      extraData: {
+        'sleepCardKind': 'help',
+        'restDuration': latest.durationFormatted,
+        'restQuality': latest.quality.label,
+        'restBedTime': bedLabel,
+        'restWakeTime': wakeLabel,
+        'restHours': durationHours,
+        'restAsk': ask,
+      },
+    );
+  }
+
+  Future<void> _shareLatestExerciseLog() async {
+    if (!_isExerciseSphere) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Exercise logs can only be shared in the Exercise sphere.')),
+      );
+      return;
+    }
+
+    await _exerciseStore.ensureReady();
+    final history = _exerciseStore.getRecentExerciseHistory(limit: 1);
+    if (history.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No exercise logs yet to share.')),
+      );
+      return;
+    }
+
+    final latest = history.first;
+    final noExercise = (latest['noExercise'] ?? '').trim() == 'true';
+    final name = (latest['exerciseName'] ?? '').trim();
+    final duration = (latest['durationMinutes'] ?? '').trim();
+    final sets = (latest['sets'] ?? '').trim();
+    final reps = (latest['reps'] ?? '').trim();
+    final workoutItems = _decodeExerciseWorkoutItems(
+      (latest['workoutItemsJson'] ?? '').trim(),
+    );
+    final exerciseItems = workoutItems
+        .map(
+          (item) => <String, dynamic>{
+            'name': item.name,
+            'sets': item.sets,
+            'reps': item.reps,
+            'durationMinutes': item.durationMinutes,
+          },
+        )
+        .toList(growable: false);
+
+    final detail = noExercise
+        ? 'No workout today, focusing on recovery.'
+        : workoutItems.isNotEmpty
+        ? workoutItems
+              .take(3)
+              .map(
+                (item) =>
+                    '${item.name}${item.sets > 0 && item.reps > 0 ? ' (${item.sets}x${item.reps})' : ''}',
+              )
+              .join(' • ')
+        : [
+            if (name.isNotEmpty) name,
+            if (duration.isNotEmpty) '$duration min',
+            if (sets.isNotEmpty && reps.isNotEmpty) '$sets sets x $reps reps',
+          ].join(' • ');
+
+    final text = workoutItems.isNotEmpty
+      ? detail
+      : detail.isEmpty
+      ? 'Exercise log: Completed a workout session.'
+      : 'Exercise log: $detail';
+
+    await _postQuickShare(
+      type: 'exercise_log',
+      text: text,
+      extraData: {
+        'exerciseCardKind': 'log',
+        'exerciseItems': workoutItems.isNotEmpty
+            ? exerciseItems
+            : [
+                {
+                  'name': name,
+                  'sets': int.tryParse(sets) ?? 0,
+                  'reps': int.tryParse(reps) ?? 0,
+                  'durationMinutes': int.tryParse(duration) ?? 0,
+                },
+              ],
+        'exerciseCount': workoutItems.isNotEmpty ? workoutItems.length : 1,
+        'noExercise': noExercise,
+      },
+    );
+  }
+
+  Future<void> _postQuickShare({
+    required String type,
+    required String text,
+    Map<String, dynamic>? extraData,
+  }) async {
+    if (_isSendingPost || text.trim().isEmpty) return;
+    setState(() => _isSendingPost = true);
+    try {
+      await _createPost(type: type, text: text.trim(), extraData: extraData);
     } finally {
       if (mounted) {
         setState(() => _isSendingPost = false);
@@ -488,7 +832,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                     return ListView.builder(
                       itemCount: members.length,
                       itemBuilder: (context, index) {
+                        final memberId = members[index].id;
+                        final isMe = memberId == _userId;
                         final member = members[index].data();
+                        final memberNickname = member['nickname'] as String?;
+                        final displayNickname = isMe ? 'You' : (memberNickname ?? 'Anonymous');
                         final miniMe = Map<String, dynamic>.from(
                           member['miniMe'] as Map? ?? {},
                         );
@@ -512,9 +860,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                 (miniMe['degradationLevel'] as num?)
                                     ?.toDouble() ??
                                 0,
-                            fallbackLabel: member['nickname'] as String?,
+                            fallbackLabel: memberNickname,
                           ),
-                          title: Text(member['nickname'] ?? 'Anonymous'),
+                          title: Text(displayNickname),
                           subtitle: Text(
                             'Joined ${_timeLabel((member['joinedAt'] as Timestamp?)?.toDate())}',
                           ),
@@ -722,6 +1070,14 @@ class _SphereChatScreenState extends State<SphereChatScreen>
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                if (_bannerUrl != null || _defaultChatBannerPaletteForSphere(widget.sphere.name) != null)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 170,
+                    child: _bannerUrl != null
+                        ? _SphereChatBannerImage(imageSource: _bannerUrl!)
+                        : _DefaultSphereChatBanner(sphereName: widget.sphere.name),
+                  ),
                 Expanded(
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
@@ -739,7 +1095,17 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      final posts = snapshot.data!.docs;
+                      final seededPosts = snapshot.data!.docs.where((doc) {
+                        final data = doc.data();
+                        final seedVersion =
+                            (data['seedVersion'] as num?)?.toInt() ?? -1;
+                        if (_activeChatSeedVersion > 0 &&
+                            seedVersion != _activeChatSeedVersion) {
+                          return false;
+                        }
+                        return true;
+                      }).toList(growable: false);
+                        final posts = seededPosts;
                       if (posts.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
@@ -815,6 +1181,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                   replyTarget: _composerReplyTarget,
                   isSending: _isSendingPost,
                   onChanged: (_) => setState(() {}),
+                  onOpenQuickShare: _showQuickShareOptions,
                   onSend: _submitInlinePost,
                   onCancelReply: () {
                     setState(() => _composerReplyTarget = null);
@@ -892,6 +1259,7 @@ class _ComposerDock extends StatelessWidget {
     required this.replyTarget,
     required this.isSending,
     required this.onChanged,
+    required this.onOpenQuickShare,
     required this.onSend,
     required this.onCancelReply,
   });
@@ -902,6 +1270,7 @@ class _ComposerDock extends StatelessWidget {
   final _ReplyTarget? replyTarget;
   final bool isSending;
   final ValueChanged<String> onChanged;
+  final VoidCallback onOpenQuickShare;
   final VoidCallback onSend;
   final VoidCallback onCancelReply;
 
@@ -963,8 +1332,19 @@ class _ComposerDock extends StatelessWidget {
                   ],
                   Row(
                     children: [
-                      Icon(Icons.edit_rounded, color: cs.primary),
-                      const SizedBox(width: 8),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        splashRadius: 18,
+                        tooltip: 'Share options',
+                        onPressed: (isSending || !canType)
+                            ? null
+                            : onOpenQuickShare,
+                        icon: Icon(
+                          Icons.add_circle_outline_rounded,
+                          color: canType ? cs.primary : cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
                       Expanded(
                         child: TextField(
                           controller: controller,
@@ -1358,8 +1738,10 @@ class _ChatMessageTile extends StatelessWidget {
     final data = postDoc.data();
     final isMine = data['userId'] == currentUserId;
     final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
-    final displayName = (data['nickname'] ?? data['miniMeName'] ?? 'Anonymous')
+    final postType = (data['type'] ?? 'check_in').toString();
+    final rawDisplayName = (data['nickname'] ?? data['miniMeName'] ?? 'Anonymous')
         .toString();
+    final displayName = isMine ? 'You' : rawDisplayName;
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
     final text = (data['text'] ?? '').toString();
     final replyToUserName = (data['replyToUserName'] ?? '').toString().trim();
@@ -1419,13 +1801,22 @@ class _ChatMessageTile extends StatelessWidget {
                   compact: true,
                 ),
               if (replyToText.isNotEmpty) const SizedBox(height: 8),
-              Text(
-                text,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  height: 1.3,
-                  color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+              if (postType == 'sleep_log' ||
+                  postType == 'rest_check_in' ||
+                  postType == 'sleep_help_request')
+                _SleepLogPostContent(data: data, isMine: isMine)
+              else if (postType == 'exercise_log')
+                _ExerciseLogPostContent(data: data, isMine: isMine, fallbackText: text)
+              else if (postType == 'milestone_card')
+                _MilestoneAchievementCard(data: data, isMine: isMine)
+              else
+                Text(
+                  text,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    height: 1.3,
+                    color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1605,7 +1996,607 @@ class _ChatMessageTile extends StatelessWidget {
   }
 }
 
+class _SleepLogPostContent extends StatelessWidget {
+  const _SleepLogPostContent({required this.data, required this.isMine});
+
+  final Map<String, dynamic> data;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    final duration =
+      (data['restDuration'] ?? data['sleepDuration'] ?? '').toString().trim();
+    final quality =
+      (data['restQuality'] ?? data['sleepQuality'] ?? '').toString().trim();
+    final bed =
+      (data['restBedTime'] ?? data['sleepBedTime'] ?? '').toString().trim();
+    final wake =
+      (data['restWakeTime'] ?? data['sleepWakeTime'] ?? '').toString().trim();
+    final energy = (data['restEnergy'] ?? '').toString().trim();
+    final blocker = (data['restBlocker'] ?? '').toString().trim();
+    final helped = (data['restHelped'] ?? '').toString().trim();
+    final plan = (data['restPlan'] ?? '').toString().trim();
+    final win = (data['restWin'] ?? '').toString().trim();
+    final ask = (data['restAsk'] ?? '').toString().trim();
+    final hoursRaw = data['restHours'];
+    final restHours = hoursRaw is num ? hoursRaw.toDouble() : null;
+    final note =
+      (data['restNote'] ?? data['sleepNote'] ?? '').toString().trim();
+    final kind = (data['sleepCardKind'] ?? 'checkin').toString().trim();
+    final title = switch (kind) {
+      'help' => 'Sleep help request',
+      _ => 'Rest check-in',
+    };
+    final isHelpCard = kind == 'help';
+
+    final primaryTextColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
+    final secondaryTextColor = isMine
+      ? cs.onPrimaryContainer.withValues(alpha: 0.86)
+      : cs.onSurfaceVariant;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.bedtime_outlined, size: 16, color: primaryTextColor),
+            const SizedBox(width: 6),
+            Text(
+              title,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: primaryTextColor,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (isHelpCard)
+          _SleepHelpRequestChart(
+            duration: duration,
+            quality: quality,
+            bed: bed,
+            wake: wake,
+            ask: ask,
+            note: note,
+            hours: restHours,
+            isMine: isMine,
+          )
+        else ...[
+          if (duration.isNotEmpty)
+            _SleepMetricLine(
+              label: 'Duration',
+              value: duration,
+              isMine: isMine,
+            ),
+          if (quality.isNotEmpty)
+            _SleepMetricLine(label: 'Quality', value: quality, isMine: isMine),
+          if (bed.isNotEmpty || wake.isNotEmpty)
+            _SleepMetricLine(
+              label: 'Time',
+              value:
+                  bed.isEmpty || wake.isEmpty ? '$bed$wake' : '$bed to $wake',
+              isMine: isMine,
+            ),
+          if (energy.isNotEmpty)
+            _SleepMetricLine(label: 'Energy', value: energy, isMine: isMine),
+          if (blocker.isNotEmpty)
+            _SleepMetricLine(label: 'Blocker', value: blocker, isMine: isMine),
+          if (helped.isNotEmpty)
+            _SleepMetricLine(
+              label: 'What helped',
+              value: helped,
+              isMine: isMine,
+            ),
+          if (plan.isNotEmpty)
+            _SleepMetricLine(label: 'Small plan', value: plan, isMine: isMine),
+          if (win.isNotEmpty)
+            _SleepMetricLine(label: 'Win', value: win, isMine: isMine),
+          if (ask.isNotEmpty)
+            _SleepMetricLine(
+              label: 'Ask community',
+              value: ask,
+              isMine: isMine,
+            ),
+          if (note.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Note: $note',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: secondaryTextColor,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+class _SleepHelpRequestChart extends StatelessWidget {
+  const _SleepHelpRequestChart({
+    required this.duration,
+    required this.quality,
+    required this.bed,
+    required this.wake,
+    required this.ask,
+    required this.note,
+    required this.hours,
+    required this.isMine,
+  });
+
+  final String duration;
+  final String quality;
+  final String bed;
+  final String wake;
+  final String ask;
+  final String note;
+  final double? hours;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final borderColor = cs.outlineVariant.withValues(alpha: 0.35);
+    final panelBg = cs.surfaceContainerHighest.withValues(alpha: 0.42);
+    final safeDuration = duration.isEmpty ? '-' : duration;
+    final safeQuality = quality.isEmpty ? '-' : quality;
+    final safeBed = bed.isEmpty ? '-' : bed;
+    final safeWake = wake.isEmpty ? '-' : wake;
+    final safeAsk = ask.isEmpty ? 'Any practical sleep tips?' : ask;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hours != null) ...[
+          _SleepAmountChart(hours: hours!, isMine: isMine),
+          const SizedBox(height: 10),
+        ],
+        Container(
+          decoration: BoxDecoration(
+            color: panelBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: Table(
+            columnWidths: const {
+              0: FlexColumnWidth(),
+              1: FlexColumnWidth(),
+            },
+            border: TableBorder(
+              horizontalInside: BorderSide(color: borderColor),
+              verticalInside: BorderSide(color: borderColor),
+            ),
+            children: [
+              TableRow(
+                children: [
+                  _SleepTableCell(label: 'Duration', value: safeDuration),
+                  _SleepTableCell(label: 'Quality', value: safeQuality),
+                ],
+              ),
+              TableRow(
+                children: [
+                  _SleepTableCell(label: 'Bedtime', value: safeBed),
+                  _SleepTableCell(label: 'Wake', value: safeWake),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        _SleepMetricLine(label: 'Ask community', value: safeAsk, isMine: isMine),
+        if (note.isNotEmpty)
+          _SleepMetricLine(label: 'Context', value: note, isMine: isMine),
+      ],
+    );
+  }
+}
+
+class _MilestoneAchievementCard extends StatelessWidget {
+  const _MilestoneAchievementCard({required this.data, required this.isMine});
+
+  final Map<String, dynamic> data;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final title = (data['milestoneTitle'] ?? '').toString().trim();
+    final description = (data['milestoneDescription'] ?? '').toString().trim();
+
+    final cardBg = isMine
+        ? cs.primary.withValues(alpha: 0.12)
+        : cs.tertiaryContainer.withValues(alpha: 0.38);
+    final cardBorder = isMine
+        ? cs.primary.withValues(alpha: 0.34)
+        : cs.tertiary.withValues(alpha: 0.3);
+    final headerColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
+    final captionColor = isMine
+      ? cs.onPrimaryContainer.withValues(alpha: 0.76)
+      : cs.onSurfaceVariant;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.workspace_premium_rounded, size: 18, color: headerColor),
+            const SizedBox(width: 6),
+            Text(
+              'Achievement card',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: headerColor,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cardBorder),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title.isNotEmpty)
+                Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: headerColor,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                  ),
+                ),
+              if (title.isNotEmpty && description.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: cardBorder.withValues(alpha: 0.7),
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (description.isNotEmpty)
+                Text(
+                  description,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: captionColor,
+                    fontWeight: FontWeight.w500,
+                    height: 1.45,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExerciseLogPostContent extends StatelessWidget {
+  const _ExerciseLogPostContent({
+    required this.data,
+    required this.isMine,
+    required this.fallbackText,
+  });
+
+  final Map<String, dynamic> data;
+  final bool isMine;
+  final String fallbackText;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final noExercise = data['noExercise'] == true;
+    final items = _exerciseItemsFromPostData(data);
+    final titleColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
+    final borderColor = cs.outlineVariant.withValues(alpha: 0.35);
+    final panelBg = cs.surfaceContainerHighest.withValues(alpha: 0.42);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.fitness_center_rounded, size: 16, color: titleColor),
+            const SizedBox(width: 8),
+            Text(
+              'Exercise log',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: titleColor,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (noExercise)
+          Text(
+            'No workout today, focusing on recovery.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+          )
+        else if (items.isNotEmpty)
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: panelBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              runAlignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 12,
+              children: items
+                  .map(
+                    (item) => _ExerciseWorkoutChip(
+                      item: item,
+                      isMine: isMine,
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          )
+        else
+          Text(
+            fallbackText,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ExerciseWorkoutChip extends StatelessWidget {
+  const _ExerciseWorkoutChip({required this.item, required this.isMine});
+
+  final _ExerciseWorkoutShareItem item;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final chipBg = isMine
+        ? cs.primary.withValues(alpha: 0.12)
+        : cs.surfaceContainerHighest.withValues(alpha: 0.56);
+    final chipBorder = isMine
+        ? cs.primary.withValues(alpha: 0.28)
+        : cs.outlineVariant.withValues(alpha: 0.28);
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 210, maxWidth: 320),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: chipBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: chipBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            item.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.sets > 0 && item.reps > 0
+                ? '${item.sets} sets x ${item.reps} reps'
+                : item.durationMinutes > 0
+                ? '${item.durationMinutes} min'
+                : 'Logged',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: isMine
+                  ? cs.onPrimaryContainer.withValues(alpha: 0.84)
+                  : cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class _MilestoneInputField extends StatelessWidget {
+  const _MilestoneInputField({
+    required this.label,
+    required this.hint,
+    required this.onChanged,
+    this.maxLines = 2,
+  });
+
+  final String label;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      maxLines: maxLines,
+      textInputAction: maxLines == 1 ? TextInputAction.next : TextInputAction.newline,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        alignLabelWithHint: maxLines > 1,
+        border: const OutlineInputBorder(),
+        filled: true,
+      ),
+    );
+  }
+}
+
+class _SleepTableCell extends StatelessWidget {
+  const _SleepTableCell({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SleepMetricLine extends StatelessWidget {
+  const _SleepMetricLine({
+    required this.label,
+    required this.value,
+    required this.isMine,
+  });
+
+  final String label;
+  final String value;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final labelColor = isMine
+        ? cs.onPrimaryContainer.withValues(alpha: 0.78)
+        : cs.onSurfaceVariant;
+    final valueColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: RichText(
+        text: TextSpan(
+          style: Theme.of(context).textTheme.bodySmall,
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: TextStyle(color: labelColor, fontWeight: FontWeight.w700),
+            ),
+            TextSpan(
+              text: value,
+              style: TextStyle(color: valueColor, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 enum _MessageAction { reply, copy, delete, report }
+
+class _SleepAmountChart extends StatelessWidget {
+  const _SleepAmountChart({required this.hours, required this.isMine});
+
+  final double hours;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final progress = (hours / 8.0).clamp(0.0, 1.0).toDouble();
+    final fillColor = hours < 6.0
+        ? cs.error
+        : (isMine ? cs.onPrimaryContainer : cs.primary);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Sleep amount',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isMine
+                    ? cs.onPrimaryContainer.withValues(alpha: 0.8)
+                    : cs.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${hours.toStringAsFixed(1)}h / 8h',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isMine ? cs.onPrimaryContainer : cs.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 8,
+            backgroundColor: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+            valueColor: AlwaysStoppedAnimation<Color>(fillColor),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+enum _QuickShareAction {
+  milestone,
+  sleepHelp,
+  exercise,
+}
+
+class _MilestoneCardDraft {
+  const _MilestoneCardDraft({
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+}
 
 class _ReplyTarget {
   const _ReplyTarget({
@@ -1619,6 +2610,271 @@ class _ReplyTarget {
   final String userId;
   final String userName;
   final String text;
+}
+
+List<_ExerciseWorkoutShareItem> _decodeExerciseWorkoutItems(String encoded) {
+  if (encoded.trim().isEmpty) return const <_ExerciseWorkoutShareItem>[];
+  try {
+    final decoded = jsonDecode(encoded);
+    if (decoded is! List) return const <_ExerciseWorkoutShareItem>[];
+    return decoded
+        .whereType<Map>()
+        .map(
+          (item) => _ExerciseWorkoutShareItem(
+            name: (item['exerciseName'] ?? '').toString().trim(),
+            sets: int.tryParse((item['sets'] ?? '').toString()) ?? 0,
+            reps: int.tryParse((item['reps'] ?? '').toString()) ?? 0,
+            durationMinutes:
+                int.tryParse((item['durationMinutes'] ?? '').toString()) ?? 0,
+          ),
+        )
+        .where((item) => item.name.isNotEmpty)
+        .toList(growable: false);
+  } catch (_) {
+    return const <_ExerciseWorkoutShareItem>[];
+  }
+}
+
+class _ExerciseWorkoutShareItem {
+  const _ExerciseWorkoutShareItem({
+    required this.name,
+    required this.sets,
+    required this.reps,
+    required this.durationMinutes,
+  });
+
+  final String name;
+  final int sets;
+  final int reps;
+  final int durationMinutes;
+}
+
+List<_ExerciseWorkoutShareItem> _exerciseItemsFromPostData(
+  Map<String, dynamic> data,
+) {
+  final raw = data['exerciseItems'];
+  if (raw is! List) return const <_ExerciseWorkoutShareItem>[];
+  return raw
+      .whereType<Map>()
+      .map(
+        (item) => _ExerciseWorkoutShareItem(
+          name: (item['name'] ?? '').toString().trim(),
+          sets: (item['sets'] as num?)?.toInt() ??
+              int.tryParse((item['sets'] ?? '').toString()) ??
+              0,
+          reps: (item['reps'] as num?)?.toInt() ??
+              int.tryParse((item['reps'] ?? '').toString()) ??
+              0,
+          durationMinutes: (item['durationMinutes'] as num?)?.toInt() ??
+              int.tryParse((item['durationMinutes'] ?? '').toString()) ??
+              0,
+        ),
+      )
+      .where((item) => item.name.isNotEmpty)
+      .toList(growable: false);
+}
+
+bool _isDataImageUrl(String raw) {
+  return raw.startsWith('data:image/');
+}
+
+Uint8List? _decodeDataImageBytes(String raw) {
+  if (!_isDataImageUrl(raw)) return null;
+  final commaIndex = raw.indexOf(',');
+  if (commaIndex <= 0 || commaIndex >= raw.length - 1) return null;
+  final payload = raw.substring(commaIndex + 1);
+  try {
+    return base64Decode(payload);
+  } catch (_) {
+    return null;
+  }
+}
+
+_ChatBannerPalette? _defaultChatBannerPaletteForSphere(String sphereName) {
+  final normalized = sphereName.trim().toLowerCase();
+  switch (normalized) {
+    case 'general':
+      return const _ChatBannerPalette(
+        title: 'General',
+        subtitle: 'Daily encouragement',
+        icon: Icons.favorite_rounded,
+        startColor: Color(0xFFFFCF8D),
+        endColor: Color(0xFFFF8A80),
+        accentColor: Color(0xFFFFF3E0),
+      );
+    case 'sleep':
+      return const _ChatBannerPalette(
+        title: 'Sleep',
+        subtitle: 'Rest and reset',
+        icon: Icons.bedtime_rounded,
+        startColor: Color(0xFF4B5D9B),
+        endColor: Color(0xFF9A8FE0),
+        accentColor: Color(0xFFE8EAFD),
+      );
+    case 'exercise':
+      return const _ChatBannerPalette(
+        title: 'Exercise',
+        subtitle: 'Move with purpose',
+        icon: Icons.fitness_center_rounded,
+        startColor: Color(0xFFFF9A62),
+        endColor: Color(0xFFFF5A6A),
+        accentColor: Color(0xFFFFE9D6),
+      );
+    default:
+      return null;
+  }
+}
+
+class _DefaultSphereChatBanner extends StatelessWidget {
+  const _DefaultSphereChatBanner({required this.sphereName});
+
+  final String sphereName;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _defaultChatBannerPaletteForSphere(sphereName);
+    if (palette == null) {
+      return ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[palette.startColor, palette.endColor],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            right: -18,
+            top: -24,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: palette.accentColor.withValues(alpha: 0.28),
+              ),
+            ),
+          ),
+          Positioned(
+            left: -26,
+            bottom: -34,
+            child: Container(
+              width: 170,
+              height: 120,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(80),
+                color: palette.accentColor.withValues(alpha: 0.22),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(palette.icon, color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        palette.title,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        palette.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChatBannerPalette {
+  const _ChatBannerPalette({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.startColor,
+    required this.endColor,
+    required this.accentColor,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color startColor;
+  final Color endColor;
+  final Color accentColor;
+}
+
+class _SphereChatBannerImage extends StatelessWidget {
+  const _SphereChatBannerImage({required this.imageSource});
+
+  final String imageSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final memoryBytes = _decodeDataImageBytes(imageSource);
+    if (memoryBytes != null) {
+      return Image.memory(
+        memoryBytes,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.medium,
+      );
+    }
+
+    return Image.network(
+      imageSource,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (context, _, __) {
+        return Container(
+          color: cs.surfaceContainerHighest,
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.image_not_supported_outlined,
+            color: cs.onSurfaceVariant,
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ReplyReferenceSnippet extends StatelessWidget {

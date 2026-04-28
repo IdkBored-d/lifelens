@@ -331,7 +331,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     if (latestMood != null) {
       reasons.add(
-        'Your latest mood check-in was ${latestMood.moodLabel.toLowerCase()} at ${latestMood.intensity}/5.',
+        'Your latest mood check-in was ${latestMood.moodLabel.toLowerCase()}.',
       );
     }
     if (latestSleep != null) {
@@ -1063,15 +1063,21 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   void _openFullChatSheet() {
+    if (!mounted) return;
+    final sheetContext = context;
+    final miniMeName = sheetContext.read<AvatarStore>().miniMeName;
+    final messageSnapshot = List<_MiniMeChatMessage>.from(_messages);
+    final isReplying = _isReplying;
+
     showModalBottomSheet<void>(
-      context: context,
+      context: sheetContext,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _MiniMeFullChatSheet(
-        miniMeName: context.read<AvatarStore>().miniMeName,
-        messages: _messages,
-        isReplying: _isReplying,
+        miniMeName: miniMeName,
+        messages: messageSnapshot,
+        isReplying: isReplying,
       ),
     );
   }
@@ -2021,18 +2027,20 @@ class _AvatarPanel extends StatelessWidget {
                       'What do you want to work on today, ${_displayFirstName(userName)}?',
                 );
           final headTiltBias = isReplying ? -0.12 : 0.0;
-          final bubbleMaxHeight = math.min(constraints.maxHeight * 0.12, 76.0);
-          const suggestionBubbleReserve = 108.0;
+          final bubbleMaxHeight = math.min(constraints.maxHeight * 0.09, 64.0);
+            final suggestionBubbleReserve = showPromptBubble
+              ? bubbleMaxHeight + 80
+              : 42.0;
           final availableAvatarHeight =
               constraints.maxHeight -
               chatDockHeight -
               collapsedBottomInset -
               suggestionBubbleReserve;
           final avatarSize = math.max(
-            320.0,
+            380.0,
             math.min(
-              constraints.biggest.shortestSide * 1.3,
-              availableAvatarHeight * 1.02,
+              constraints.biggest.shortestSide * 2.0,
+              availableAvatarHeight - 24,
             ),
           );
 
@@ -2042,47 +2050,39 @@ class _AvatarPanel extends StatelessWidget {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  Positioned.fill(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        4,
-                        suggestionBubbleReserve - 8,
-                        4,
-                        chatDockHeight + collapsedBottomInset - 18,
-                      ),
-                      child: Align(
-                        alignment: const Alignment(0, -0.2),
-                        child: Transform.translate(
-                          offset: const Offset(0, -62),
-                          child: RepaintBoundary(
-                            child: MiniMeAvatar(
-                              bodyModel: avatarSelection.bodyModel,
-                              hairModel: avatarSelection.hairModel,
-                              shirtModel: avatarSelection.shirtModel,
-                              bodyWidthScale: avatarSelection.bodyWidthScale,
-                              companionId: avatarSelection.companionId,
-                              moodLabel: moodLabel,
-                              moodEmoji: moodEmoji,
-                              animationState: avatarAnimationState,
-                              glow: glow,
-                              size: avatarSize,
-                              degradationLevel: visualState.wearLevel,
-                              isHatched: avatarSelection.isMiniMeHatched,
-                              visualState: visualState,
-                              onHatchComplete: avatarSelection.onHatchComplete,
-                              autoWaveToken: avatarWaveToken,
-                              lockScreenPosition: true,
-                              headTiltBias: headTiltBias,
-                              celebrateOnOpen: celebrateOnOpen,
-                            ),
-                          ),
+                  Positioned(
+                    bottom: chatDockHeight + collapsedBottomInset - 8,
+                    left: 0,
+                    right: 0,
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: RepaintBoundary(
+                        child: MiniMeAvatar(
+                          bodyModel: avatarSelection.bodyModel,
+                          hairModel: avatarSelection.hairModel,
+                          shirtModel: avatarSelection.shirtModel,
+                          bodyWidthScale: avatarSelection.bodyWidthScale,
+                          companionId: avatarSelection.companionId,
+                          moodLabel: moodLabel,
+                          moodEmoji: moodEmoji,
+                          animationState: avatarAnimationState,
+                          glow: glow,
+                          size: avatarSize,
+                          degradationLevel: visualState.wearLevel,
+                          isHatched: avatarSelection.isMiniMeHatched,
+                          visualState: visualState,
+                          onHatchComplete: avatarSelection.onHatchComplete,
+                          autoWaveToken: avatarWaveToken,
+                          lockScreenPosition: true,
+                          headTiltBias: headTiltBias,
+                          celebrateOnOpen: celebrateOnOpen,
                         ),
                       ),
                     ),
                   ),
                   if (showPromptBubble)
                     Positioned(
-                      top: 10,
+                      top: 8,
                       left: 18,
                       right: 18,
                       child: _AvatarSuggestionBubble(
@@ -2298,7 +2298,7 @@ class _AvatarSuggestionBubbleState extends State<_AvatarSuggestionBubble> {
                 left: 0,
                 right: 0,
                 child: CustomPaint(
-                  size: const Size(34, 18),
+                  size: const Size(22, 12),
                   painter: _SpeechTailPainter(
                     fillColor: bubbleColor,
                     borderColor: bubbleBorder,

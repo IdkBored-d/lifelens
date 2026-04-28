@@ -166,22 +166,29 @@ ThemeData lifeLensCalmTheme() {
     brightness: Brightness.light,
   );
 
-  const appBg = Color(0xFFF4F1FF);
-  const cardBg = Color(0xFFE9E2FF);
+  const appBg = Color(0xFFE7E2EE);
+  const cardBg = Color(0xFFDCD4E5);
+  const topBarBg = Color(0xFFE1D9E9);
 
   final base = ThemeData(
     useMaterial3: true,
     colorScheme: scheme.copyWith(
-      primary: const Color(0xFF6D4CFF),
-      primaryContainer: const Color(0xFFE1D8FF),
-      secondary: const Color(0xFF5A4B86),
-      secondaryContainer: const Color(0xFFE6E0FF),
+      primary: const Color(0xFF6653C7),
+      primaryContainer: const Color(0xFFD0C3EA),
+      secondary: const Color(0xFF584A77),
+      secondaryContainer: const Color(0xFFD3CBDF),
       surface: appBg,
+      surfaceBright: const Color(0xFFEDE8F3),
+      surfaceDim: const Color(0xFFD9D1E2),
+      surfaceContainerLowest: const Color(0xFFF1ECF7),
+      surfaceContainerLow: const Color(0xFFEAE4F0),
+      surfaceContainer: const Color(0xFFE5DEEB),
+      surfaceContainerHigh: const Color(0xFFE0D8E8),
       // Material 3 container tones (used a LOT by your UI)
       surfaceContainerHighest: cardBg,
-      outline: const Color(0xFFC1BADB),
-      outlineVariant: const Color(0xFFD2C9F0),
-      onSurfaceVariant: const Color(0xFF5F5A70),
+      outline: const Color(0xFFAEA4BF),
+      outlineVariant: const Color(0xFFBFB5D1),
+      onSurfaceVariant: const Color(0xFF555068),
     ),
   );
 
@@ -191,6 +198,7 @@ ThemeData lifeLensCalmTheme() {
     splashFactory: InkRipple.splashFactory,
     pageTransitionsTheme: _lifeLensPageTransitionsTheme,
     scaffoldBackgroundColor: appBg,
+    canvasColor: cs.surfaceContainerLow,
 
     textTheme: base.textTheme.copyWith(
       headlineSmall: base.textTheme.headlineSmall?.copyWith(
@@ -219,7 +227,7 @@ ThemeData lifeLensCalmTheme() {
     ),
 
     appBarTheme: AppBarTheme(
-      backgroundColor: appBg,
+      backgroundColor: topBarBg,
       elevation: 0,
       centerTitle: false,
       surfaceTintColor: Colors.transparent,
@@ -291,7 +299,7 @@ ThemeData lifeLensCalmTheme() {
 
     navigationBarTheme: NavigationBarThemeData(
       height: 72,
-      backgroundColor: appBg,
+      backgroundColor: topBarBg,
       indicatorColor: cs.primaryContainer.withValues(alpha: 0.85),
       labelTextStyle: WidgetStatePropertyAll(
         base.textTheme.labelMedium?.copyWith(
@@ -305,6 +313,19 @@ ThemeData lifeLensCalmTheme() {
         }
         return IconThemeData(color: cs.onSurfaceVariant);
       }),
+    ),
+
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: cs.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: cs.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
     ),
 
     dividerTheme: DividerThemeData(
