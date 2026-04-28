@@ -107,7 +107,9 @@ service cloud.firestore {
             'nickname',
             'lastReadAt',
             'lastActiveAt',
-            'warningCount'
+            'warningCount',
+            'miniMe',
+            'miniMeName'
           ])
         ) || (
           isSphereOwner(sphereId) &&

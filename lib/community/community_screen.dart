@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../avatar_store.dart';
@@ -703,238 +702,13 @@ extension on _CommunityScreenState {
       return;
     }
 
-    final nameController = TextEditingController();
-    final descController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        String? selectedTemplate;
-        Uint8List? pickedBytes;
-        XFile? pickedFile;
-        bool isUploading = false;
-
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Create New Sphere'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Sphere Name',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      maxLength: 30,
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: descController,
-                      decoration: InputDecoration(
-                        labelText: 'Description (optional)',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      maxLength: 100,
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Banner',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    // ── Template swatches ───────────────────────────────
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (int i = 0; i < _allBannerTemplates.length; i++) ...[
-                            if (i > 0) const SizedBox(width: 8),
-                            Builder(builder: (context) {
-                              final t = _allBannerTemplates[i];
-                              final isSelected = selectedTemplate == t.key;
-                              return Tooltip(
-                                message: t.label,
-                                child: GestureDetector(
-                                  onTap: () => setState(() {
-                                    selectedTemplate = isSelected ? null : t.key;
-                                    pickedBytes = null;
-                                    pickedFile = null;
-                                  }),
-                                  child: Container(
-                                    width: 52,
-                                    height: 52,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [t.startColor, t.endColor],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.transparent,
-                                        width: 2.5,
-                                      ),
-                                    ),
-                                    child: isSelected
-                                        ? const Icon(
-                                            Icons.check_rounded,
-                                            color: Colors.white,
-                                            size: 20,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                              );
-                            }),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // ── Camera roll button ──────────────────────────────
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final picker = ImagePicker();
-                        final file = await picker.pickImage(
-                          source: ImageSource.gallery,
-                          maxWidth: 1200,
-                          maxHeight: 420,
-                          imageQuality: 85,
-                        );
-                        if (file != null) {
-                          final bytes = await file.readAsBytes();
-                          setState(() {
-                            pickedFile = file;
-                            pickedBytes = bytes;
-                            selectedTemplate = null;
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.photo_library_outlined, size: 18),
-                      label: const Text('Choose from camera roll'),
-                    ),
-                    // ── Image preview ───────────────────────────────────
-                    if (pickedBytes != null) ...[
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Stack(
-                          children: [
-                            Image.memory(
-                              pickedBytes!,
-                              height: 90,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                            Positioned(
-                              top: 4,
-                              right: 4,
-                              child: GestureDetector(
-                                onTap: () => setState(() {
-                                  pickedBytes = null;
-                                  pickedFile = null;
-                                }),
-                                child: Container(
-                                  padding: const EdgeInsets.all(3),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black54,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                    size: 14,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isUploading ? null : () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: isUploading
-                      ? null
-                      : () async {
-                          final name = nameController.text.trim();
-                          if (name.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please enter a sphere name'),
-                              ),
-                            );
-                            return;
-                          }
-
-                          setState(() => isUploading = true);
-
-                          String uploadedBannerUrl = '';
-                          if (pickedFile != null && pickedBytes != null) {
-                            try {
-                              final uid = FirebaseAuth.instance.currentUser!.uid;
-                              final ref = FirebaseStorage.instance.ref(
-                                'sphere_banners/${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg',
-                              );
-                              await ref.putData(
-                                pickedBytes!,
-                                SettableMetadata(contentType: 'image/jpeg'),
-                              );
-                              uploadedBannerUrl = await ref.getDownloadURL();
-                            } catch (_) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Failed to upload banner image'),
-                                  ),
-                                );
-                              }
-                              setState(() => isUploading = false);
-                              return;
-                            }
-                          }
-
-                          if (context.mounted) Navigator.pop(context);
-                          await _createSphere(
-                            name,
-                            descController.text.trim(),
-                            bannerUrl: uploadedBannerUrl,
-                            bannerTemplate: selectedTemplate ?? '',
-                          );
-                        },
-                  child: isUploading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Create'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _CreateSphereScreen(
+          onCreate: _createSphere,
+        ),
+      ),
     );
   }
 
@@ -1212,6 +986,15 @@ const List<_BannerTemplate> _allBannerTemplates = [
     subtitle: 'Warm & caring',
   ),
   _BannerTemplate(
+    key: 'sky',
+    label: 'Sky',
+    startColor: Color(0xFF7BDFF2),
+    endColor: Color(0xFFB2F7EF),
+    accentColor: Color(0xFFE0F7FA),
+    icon: Icons.cloud_rounded,
+    subtitle: 'Light & airy',
+  ),
+  _BannerTemplate(
     key: 'midnight',
     label: 'Midnight',
     startColor: Color(0xFF1A1A2E),
@@ -1350,6 +1133,306 @@ class _DefaultSphereBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CreateSphereScreen extends StatefulWidget {
+  const _CreateSphereScreen({required this.onCreate});
+
+  final Future<void> Function(
+    String name,
+    String description, {
+    String bannerUrl,
+    String bannerTemplate,
+  }) onCreate;
+
+  @override
+  State<_CreateSphereScreen> createState() => _CreateSphereScreenState();
+}
+
+class _CreateSphereScreenState extends State<_CreateSphereScreen> {
+  final _nameController = TextEditingController();
+  final _descController = TextEditingController();
+  String? _selectedTemplate;
+  Uint8List? _pickedBytes;
+  bool _isUploading = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      maxHeight: 420,
+      imageQuality: 85,
+    );
+    if (!mounted) return;
+    if (file != null) {
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _pickedBytes = bytes;
+        _selectedTemplate = null;
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a sphere name')),
+      );
+      return;
+    }
+
+    setState(() => _isUploading = true);
+
+    String uploadedBannerUrl = '';
+    if (_pickedBytes != null) {
+      // Encode as base64 data URI — stored directly in Firestore.
+      // Firebase Storage is not yet initialised on this project.
+      uploadedBannerUrl =
+          'data:image/jpeg;base64,${base64Encode(_pickedBytes!)}';
+    }
+
+    await widget.onCreate(
+      name,
+      _descController.text.trim(),
+      bannerUrl: uploadedBannerUrl,
+      bannerTemplate: _selectedTemplate ?? '',
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Create New Sphere'),
+        actions: [
+          TextButton(
+            onPressed: _isUploading ? null : _submit,
+            child: _isUploading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Create'),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  labelText: 'Sphere Name',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                maxLength: 30,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _descController,
+                decoration: InputDecoration(
+                  labelText: 'Description (optional)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                maxLength: 100,
+                maxLines: 2,
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'Banner',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: cs.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: 3,
+                mainAxisSpacing: 6,
+                crossAxisSpacing: 6,
+                childAspectRatio: 1,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  for (int i = 0; i < _allBannerTemplates.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: _BannerSwatch(
+                        template: _allBannerTemplates[i],
+                        selectedKey: _selectedTemplate,
+                        onSelect: (key) => setState(() {
+                          _selectedTemplate = key == _selectedTemplate ? null : key;
+                          _pickedBytes = null;
+                        }),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              GestureDetector(
+                onTap: _pickImage,
+                child: Container(
+                  height: 140,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      if (_pickedBytes != null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.memory(
+                            _pickedBytes!,
+                            height: 140,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      else
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.photo_library_outlined,
+                                color: cs.onSurfaceVariant,
+                                size: 26,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Choose from camera roll',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.onSurface,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Recommended size: 1200 x 420',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: cs.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (_pickedBytes != null)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: () => setState(() {
+                              _pickedBytes = null;
+                            }),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BannerSwatch extends StatelessWidget {
+  const _BannerSwatch({
+    required this.template,
+    required this.selectedKey,
+    required this.onSelect,
+  });
+
+  final _BannerTemplate template;
+  final String? selectedKey;
+  final ValueChanged<String> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = selectedKey == template.key;
+    return GestureDetector(
+      onTap: () => onSelect(template.key),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        margin: const EdgeInsets.all(0),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [template.startColor, template.endColor],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? Colors.white : Colors.transparent,
+            width: 2.5,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: template.endColor.withValues(alpha: 0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: isSelected
+            ? const Center(
+                child: Icon(
+                  Icons.check_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              )
+            : null,
       ),
     );
   }

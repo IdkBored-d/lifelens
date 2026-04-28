@@ -1068,25 +1068,46 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       ),
       body: _isBootstrapping
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                if (_bannerUrl != null || _defaultChatBannerPaletteForSphere(widget.sphere.name) != null)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 170,
-                    child: _bannerUrl != null
-                        ? _SphereChatBannerImage(imageSource: _bannerUrl!)
-                        : _DefaultSphereChatBanner(sphereName: widget.sphere.name),
-                  ),
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onHorizontalDragUpdate: _handleTimelineRevealDragUpdate,
-                    onHorizontalDragEnd: (_) => _resetTimelineReveal(),
-                    onHorizontalDragCancel: _resetTimelineReveal,
-                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: _postsStream,
-                      builder: (context, snapshot) {
+          : MediaQuery.removePadding(
+              context: context,
+              removeLeft: true,
+              removeRight: true,
+              child: Column(
+                children: [
+                  if (_bannerUrl != null || _defaultChatBannerPaletteForSphere(widget.sphere.name) != null)
+                    SizedBox(
+                      height: 170,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final screenWidth = MediaQuery.of(context).size.width;
+                          return OverflowBox(
+                            minWidth: screenWidth,
+                            maxWidth: screenWidth,
+                            alignment: Alignment.center,
+                            child: SizedBox(
+                              width: screenWidth,
+                              height: 170,
+                              child: _bannerUrl != null
+                                  ? _SphereChatBannerImage(
+                                      imageSource: _bannerUrl!,
+                                    )
+                                  : _DefaultSphereChatBanner(
+                                      sphereName: widget.sphere.name,
+                                    ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragUpdate: _handleTimelineRevealDragUpdate,
+                      onHorizontalDragEnd: (_) => _resetTimelineReveal(),
+                      onHorizontalDragCancel: _resetTimelineReveal,
+                      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: _postsStream,
+                        builder: (context, snapshot) {
                       if (snapshot.hasError) {
                         return Center(child: Text('Error: ${snapshot.error}'));
                       }
@@ -1189,6 +1210,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                 ),
               ],
             ),
+          ),
     );
   }
 
