@@ -53,6 +53,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   String? _lastIntelligenceInputSignature;
   String? _derivedUiSignature;
   _MiniMeDerivedUiState? _derivedUiState;
+  bool _hasSymptomCheckupPending = false;
+  String? _pendingCheckupSymptomName;
 
   // Chat session persistence (ISAR-backed, replaces flat-file MiniMeChatStorageService)
   String? _sessionId;
@@ -82,6 +84,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       if (!mounted) return;
       await _refreshStartLoggingPromptState();
       if (!mounted) return;
+      unawaited(_checkSymptomCheckupPending());
       final moodStore = context.read<MoodLogStore>();
       final moodCtx = _buildMoodContext(moodStore);
       _sessionId = await _chatSessionService.startSession(
@@ -114,6 +117,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         if (!mounted) return;
         await _refreshStartLoggingPromptState();
         if (!mounted) return;
+        unawaited(_checkSymptomCheckupPending());
         await _syncUnreadSuggestions(forceRefresh: true);
       });
     }
@@ -171,6 +175,132 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       _latestAssistantMessageText = trimmed;
       break;
     }
+  }
+
+  Future<void> _checkSymptomCheckupPending() async {
+    final recent = await IsarService.instance.getRecentSymptomEntries(days: 7);
+    final active = recent
+        .where((e) => e.status == 'active' || e.status == 'monitoring')
+        .toList(growable: false);
+    if (!mounted) return;
+    setState(() {
+      _hasSymptomCheckupPending = active.isNotEmpty;
+      _pendingCheckupSymptomName = active.isNotEmpty
+          ? (active.first.predictedAilment.trim().isNotEmpty
+                ? active.first.predictedAilment.trim()
+                : active.first.rawSymptoms.trim())
+          : null;
+    });
+  }
+
+  Future<void> _runSymptomCheckup() async {
+    if (_isReplying) return;
+
+    final symptomName = _pendingCheckupSymptomName;
+    if (symptomName == null || symptomName.isEmpty) {
+      // Re-check in case state is stale.
+      await _checkSymptomCheckupPending();
+      if (!mounted) return;
+      if (_pendingCheckupSymptomName == null) {
+        setState(() {
+          _isCoachExpanded = true;
+          _appendMessage(
+            const _MiniMeChatMessage(
+              role: _ChatRole.assistant,
+              text:
+                  'No active symptoms to check up on — you are all clear! Keep logging and I will keep an eye out.',
+            ),
+          );
+        });
+        _scrollToBottom();
+        await _persistMessages();
+        return;
+      }
+    }
+
+    // Fetch the actual entry from the DB to get the id for status update.
+    final recent = await IsarService.instance.getRecentSymptomEntries(days: 7);
+    final active = recent
+        .where((e) => e.status == 'active' || e.status == 'monitoring')
+        .toList(growable: false);
+    if (!mounted) return;
+    if (active.isEmpty) {
+      await _checkSymptomCheckupPending();
+      return;
+    }
+
+    final latest = active.first;
+    final resolvedName = latest.predictedAilment.trim().isNotEmpty
+        ? latest.predictedAilment.trim()
+        : latest.rawSymptoms.trim();
+
+    final still = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _SymptomCheckupDialog(symptomName: resolvedName),
+    );
+
+    if (still == null || !mounted) return;
+
+    if (still) {
+      // Still experiencing — ask the AI for a follow-up recommendation.
+      setState(() {
+        _isCoachExpanded = true;
+        _isReplying = true;
+        _appendMessage(
+          _MiniMeChatMessage(
+            role: _ChatRole.user,
+            text: 'Yes, I am still experiencing $resolvedName.',
+          ),
+        );
+      });
+      await _persistMessages();
+      _scrollToBottom();
+
+      final moodStore = context.read<MoodLogStore>();
+      final moodContext = _buildMoodContext(moodStore);
+      String reply;
+      try {
+        reply = await _geminiOrOffline(
+          userText:
+              'I am still experiencing $resolvedName. What should I do to manage or recover from it?',
+          moodContext: moodContext,
+        );
+      } catch (_) {
+        reply =
+            'Since $resolvedName is still ongoing, focus on rest, hydration, and avoiding anything that worsens the symptoms. If it persists or intensifies, consider checking in with a healthcare professional.';
+      }
+
+      if (!mounted) return;
+      await _appendAssistantReplyInChunks(reply);
+      await _refreshIntelligence();
+    } else {
+      // No longer experiencing — mark the symptom as resolved.
+      final today = DateTime.now().toIso8601String().split('T').first;
+      await IsarService.instance.updateSymptomStatus(
+        latest.id,
+        'resolved',
+        today,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isCoachExpanded = true;
+        _activeSymptomCount = (_activeSymptomCount - 1).clamp(0, 99);
+        _appendMessage(
+          _MiniMeChatMessage(
+            role: _ChatRole.assistant,
+            text:
+                'Glad to hear it! I have marked $resolvedName as resolved. Keep listening to your body — log anything new if it comes up.',
+          ),
+        );
+      });
+      _scrollToBottom();
+      await _persistMessages();
+      await _refreshIntelligence();
+    }
+
+    // Refresh notification banner state after any outcome.
+    await _checkSymptomCheckupPending();
   }
 
   Future<void> _runDaySummary() async {
@@ -1719,6 +1849,28 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           builder: (context, miniMeName, _) => Text(miniMeName),
         ),
         actions: [
+          // Check-Up button — always visible, badge dot when pending
+          Tooltip(
+            message: 'Symptom Check-Up',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(50),
+              onTap: _runSymptomCheckup,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Badge(
+                  isLabelVisible: _hasSymptomCheckupPending,
+                  backgroundColor: cs.error,
+                  smallSize: 9,
+                  child: Icon(
+                    Icons.monitor_heart_rounded,
+                    color: _hasSymptomCheckupPending
+                        ? cs.error
+                        : cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Clear chat',
             onPressed: _messages.isEmpty
@@ -2028,7 +2180,7 @@ class _AvatarPanel extends StatelessWidget {
                 );
           final headTiltBias = isReplying ? -0.12 : 0.0;
           final bubbleMaxHeight = math.min(constraints.maxHeight * 0.09, 64.0);
-            final suggestionBubbleReserve = showPromptBubble
+          final suggestionBubbleReserve = showPromptBubble
               ? bubbleMaxHeight + 80
               : 42.0;
           final availableAvatarHeight =
@@ -3909,4 +4061,208 @@ class _MiniMeMoodContext {
   final int intensity;
   final String notes;
   final List<String> recentMoodSummary;
+}
+
+/// Notification banner shown at the top of the Mini-Me screen when the user
+/// has an active symptom logged in the last 7 days. Tapping it triggers the
+/// symptom check-up flow.
+class _SymptomCheckupNotificationBanner extends StatelessWidget {
+  const _SymptomCheckupNotificationBanner({
+    required this.symptomName,
+    required this.onTap,
+  });
+
+  final String symptomName;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+        padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: cs.tertiaryContainer.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.tertiary.withValues(alpha: 0.35)),
+          boxShadow: [
+            BoxShadow(
+              color: cs.shadow.withValues(alpha: 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Icon with red notification dot
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: cs.tertiary.withValues(alpha: 0.18),
+                  ),
+                  child: Icon(
+                    Icons.monitor_heart_rounded,
+                    color: cs.onTertiaryContainer,
+                    size: 20,
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: cs.error,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: cs.surface, width: 1.5),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Symptom Check-Up',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: cs.onTertiaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Are you still experiencing $symptomName?',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onTertiaryContainer.withValues(alpha: 0.78),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: cs.onTertiaryContainer.withValues(alpha: 0.7),
+              size: 22,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Dialog that asks the user whether they are still experiencing a symptom.
+/// Returns `true` when the user confirms (yes), `false` when they deny (no),
+/// or `null` when the dialog is dismissed without a choice.
+class _SymptomCheckupDialog extends StatelessWidget {
+  const _SymptomCheckupDialog({required this.symptomName});
+
+  final String symptomName;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      icon: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: cs.tertiaryContainer,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.monitor_heart_rounded,
+          color: cs.onTertiaryContainer,
+          size: 26,
+        ),
+      ),
+      title: const Text('Symptom Check-Up'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Are you still experiencing',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              symptomName,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '?',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+      actionsAlignment: MainAxisAlignment.spaceEvenly,
+      actions: [
+        // No — mark as done
+        FilledButton.tonalIcon(
+          onPressed: () => Navigator.of(context).pop(false),
+          icon: Icon(Icons.close_rounded, color: cs.error),
+          label: Text(
+            'No, all good',
+            style: TextStyle(color: cs.error, fontWeight: FontWeight.w700),
+          ),
+          style: FilledButton.styleFrom(
+            backgroundColor: cs.errorContainer.withValues(alpha: 0.55),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          ),
+        ),
+        // Yes — get a recommendation
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).pop(true),
+          icon: const Icon(Icons.check_circle_rounded),
+          label: const Text(
+            'Yes, still there',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          ),
+        ),
+      ],
+    );
+  }
 }
