@@ -162,6 +162,27 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
   }
 
+  String _resolveCheckupSymptomName(SymptomEntry entry) {
+    final predicted = entry.predictedAilment.trim();
+    final normalized = predicted.toLowerCase();
+    final isTrackingOnly = normalized == 'tracking-only' || normalized == 'tracking only';
+    if (predicted.isNotEmpty && !isTrackingOnly) {
+      return predicted;
+    }
+
+    final list = entry.symptomList;
+    if (list.isNotEmpty) {
+      return list.join(', ');
+    }
+
+    final raw = entry.rawSymptoms.trim();
+    if (raw.isNotEmpty) {
+      return raw;
+    }
+
+    return 'your symptoms';
+  }
+
   void _replaceMessages(Iterable<_MiniMeChatMessage> messages) {
     _messages
       ..clear()
@@ -185,11 +206,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (!mounted) return;
     setState(() {
       _hasSymptomCheckupPending = active.isNotEmpty;
-      _pendingCheckupSymptomName = active.isNotEmpty
-          ? (active.first.predictedAilment.trim().isNotEmpty
-                ? active.first.predictedAilment.trim()
-                : active.first.rawSymptoms.trim())
-          : null;
+      _pendingCheckupSymptomName =
+          active.isNotEmpty ? _resolveCheckupSymptomName(active.first) : null;
     });
   }
 
@@ -230,9 +248,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
 
     final latest = active.first;
-    final resolvedName = latest.predictedAilment.trim().isNotEmpty
-        ? latest.predictedAilment.trim()
-        : latest.rawSymptoms.trim();
+    final resolvedName = _resolveCheckupSymptomName(latest);
 
     final still = await showDialog<bool>(
       context: context,
@@ -4202,65 +4218,60 @@ class _SymptomCheckupDialog extends StatelessWidget {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'Are you still experiencing',
+          RichText(
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              symptomName,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: cs.onSurface,
+            text: TextSpan(
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onSurfaceVariant,
               ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '?',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onSurfaceVariant,
+              children: [
+                const TextSpan(text: 'Are you still experiencing '),
+                TextSpan(
+                  text: symptomName,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const TextSpan(text: '?'),
+              ],
             ),
           ),
         ],
       ),
-      actionsAlignment: MainAxisAlignment.spaceEvenly,
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
-        // No — mark as done
-        FilledButton.tonalIcon(
-          onPressed: () => Navigator.of(context).pop(false),
-          icon: Icon(Icons.close_rounded, color: cs.error),
-          label: Text(
-            'No, all good',
-            style: TextStyle(color: cs.error, fontWeight: FontWeight.w700),
-          ),
-          style: FilledButton.styleFrom(
-            backgroundColor: cs.errorContainer.withValues(alpha: 0.55),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          ),
-        ),
-        // Yes — get a recommendation
-        FilledButton.icon(
-          onPressed: () => Navigator.of(context).pop(true),
-          icon: const Icon(Icons.check_circle_rounded),
-          label: const Text(
-            'Yes, still there',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: () => Navigator.of(context).pop(false),
+                icon: Icon(Icons.close_rounded, color: cs.error),
+                label: Text(
+                  'No, all good',
+                  style: TextStyle(color: cs.error, fontWeight: FontWeight.w700),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: cs.errorContainer.withValues(alpha: 0.55),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(context).pop(true),
+                icon: const Icon(Icons.check_circle_rounded),
+                label: const Text(
+                  'Yes, still there',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
