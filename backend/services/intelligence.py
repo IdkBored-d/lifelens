@@ -539,23 +539,42 @@ def _classify_trends(trends: Dict[str, Any], features: Dict[str, float]) -> Dict
 
 
 def _deterministic_summary(risk_score: float, tier: str, trend_classification: Dict[str, str], next_day: Dict[str, Any]) -> str:
-    dominant_trend = trend_classification.get("overall", "stable")
-
+    # 1. Map the Risk Tier
     if tier == "high":
-        opening = "Your current pattern suggests elevated short-term risk."
+        risk_clause = "Elevated short-term risk is present"
     elif tier == "medium":
-        opening = "Your recent signals show moderate risk that should be watched closely."
+        risk_clause = "Moderate risk requires observation"
     else:
-        opening = "Your overall trend is currently in a manageable range."
+        risk_clause = "Overall risk remains in a manageable range"
 
-    if dominant_trend == "declining":
-        trend_note = "Sleep and mood trends are moving downward."
-    elif dominant_trend == "improving":
-        trend_note = "Recent signals show early recovery momentum."
+    # 2. Gather and sort strictly Sleep, Mood, and Activity trends
+    metrics = {
+        "sleep": trend_classification.get("sleep", "stable"),
+        "mood": trend_classification.get("mood", "stable"),
+        "activity": trend_classification.get("activity", "stable")
+    }
+
+    declining = [k for k, v in metrics.items() if v == "declining"]
+    improving = [k for k, v in metrics.items() if v == "improving"]
+
+    # Helper to format lists naturally for the SLM context block
+    def format_list(items: List[str]) -> str:
+        if len(items) == 1: return items[0]
+        if len(items) == 2: return f"{items[0]} and {items[1]}"
+        return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+    # 3. Dynamically build the momentum clause based on populated buckets
+    if declining and improving:
+        trend_clause = f"driven by declining {format_list(declining)} momentum, though {format_list(improving)} shows early recovery."
+    elif declining:
+        trend_clause = f"driven by declining momentum in {format_list(declining)}."
+    elif improving:
+        trend_clause = f"featuring early recovery momentum in {format_list(improving)}."
     else:
-        trend_note = "Your short-term trends look fairly stable."
+        trend_clause = "with stable momentum across sleep, mood, and activity."
 
-    return f"{opening} {trend_note}"
+    # 4. Stitch into a single continuous sentence
+    return f"{risk_clause}, {trend_clause}"
 
 
 def _action_to_user_text(action: str) -> str:
