@@ -93,7 +93,8 @@ class QuickTrackService {
     await file.writeAsString(text, flush: true);
   }
 
-  // ── Context builders for Gemma / pipelines ───────────────────────────────────
+  // ── Context builders for MiniGen / pipelines ───────────────────────────────────
+  // NOTE: logic may be incorrect -- this is replacing our old version.
 
   Future<String> buildMoodContext() async {
     final s = await readMoodSummary();

@@ -19,7 +19,8 @@ class DisEmbedResult {
   });
 }
 
-/// A single disease prediction entry from Gemma2b or Gemini.
+/// A single disease prediction entry from MiniGen or Gemini.
+/// NOTE: logic may be incorrect -- this is replacing our old version.
 class DiagnosisEntry {
   final String diseaseName;
   final String reasoning;
@@ -47,11 +48,11 @@ class SymptomPipelineResult {
   /// May be null if DisEmbed was skipped due to low confidence.
   final String? disEmbedPrediction;
 
-  /// Top 5 diagnoses from Gemma2b / Gemini.
+  /// Top 5 diagnoses from MiniGen / Gemini.
   /// Index 0 = most likely, index 4 = least likely.
   final List<DiagnosisEntry> diagnoses;
 
-  /// Whether Weaviate RAG was used to ground the Gemma2b/Gemini response.
+  /// Whether Weaviate RAG was used to ground the MiniGen/Gemini response.
   final bool ragUsed;
 
   /// Whether the response was generated offline (no RAG grounding).

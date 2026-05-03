@@ -95,7 +95,7 @@ class ConfidenceManager {
         topProb: topProb, allProbs: allProbs,
         confidenceOk: false,
         thresholdUsed: mbGlobalFloor,
-        escalation: EscalationLevel.gemma,
+        escalation: EscalationLevel.onDevice,
         reason: 'Top prob ${_pct(topProb)} is below global floor '
                 '${_pct(mbGlobalFloor)}. Model is uncertain.',
       );
@@ -109,7 +109,7 @@ class ConfidenceManager {
         topProb: topProb, allProbs: allProbs,
         confidenceOk: false,
         thresholdUsed: classThreshold,
-        escalation: EscalationLevel.gemma,
+        escalation: EscalationLevel.onDevice,
         reason: '"$topLabel" predicted at ${_pct(topProb)}, below its '
                 'class threshold of ${_pct(classThreshold)} (F1-adjusted).',
       );
@@ -128,7 +128,7 @@ class ConfidenceManager {
         topProb: topProb, allProbs: allProbs,
         confidenceOk: false,
         thresholdUsed: classThreshold,
-        escalation: EscalationLevel.gemma,
+        escalation: EscalationLevel.onDevice,
         reason: '"$topLabel" (${_pct(topProb)}) vs "$secondLabel" '
                 '(${_pct(secondProb)}) — margin ${_pct(margin)} '
                 'is below ${_pct(mbAmbiguityMargin)}. Ambiguous.',
@@ -161,7 +161,7 @@ class ConfidenceManager {
         prediction: prediction,
         confidenceOk: false,
         confidenceLevel: 'uncertain',
-        escalation: EscalationLevel.gemma,
+        escalation: EscalationLevel.onDevice,
         reason: 'Score ${cosineScore.toStringAsFixed(4)} is within '
                 '±$deMargin of threshold $deThreshold. Too close to call.',
       );
@@ -208,8 +208,9 @@ class ConfidenceManager {
   ///
   /// [proba] = [P(is_fit=0), P(is_fit=1)]
   ///
-  /// Note: Low fitness confidence does NOT escalate to Gemma2b/Gemini.
-  /// Gemma2b cannot improve a numerical fitness score.
+  /// Note: Low fitness confidence does NOT escalate to MiniGen/Gemini.
+  /// NOTE: logic may be incorrect -- this is replacing our old version.
+  /// MiniGen cannot improve a numerical fitness score.
   /// Low confidence instead flags a data freshness issue to the user.
   FitnessMlpResult evaluateFitness(List<double> proba) {
     assert(proba.length == 2, 'Expected 2 class probs, got ${proba.length}');
@@ -223,9 +224,9 @@ class ConfidenceManager {
         isFit: isFit,
         fitProbability: fitProb,
         confidenceOk: false,
-        // GEMMA here signals "flag to user + suggest data refresh"
-        // not actual Gemma2b LLM escalation
-        escalation: EscalationLevel.gemma,
+        // onDevice here signals "flag to user + suggest data refresh"
+        // not actual MiniGen LLM escalation. NOTE: replacing old MiniGen reference.
+        escalation: EscalationLevel.onDevice,
         reason: 'Max confidence ${_pct(maxConf)} is below threshold '
                 '${_pct(fitThreshold)}. Health data may be stale.',
       );

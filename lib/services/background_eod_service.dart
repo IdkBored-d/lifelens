@@ -101,7 +101,7 @@ void backgroundFetchHeadlessTask(HeadlessTask task) async {
   try {
     // AppServices must be re-initialised in the headless isolate — it has
     // no shared memory with the foreground isolate.
-    await AppServices.init(gemmaPath: '');
+    await AppServices.init(); // background isolate: ISAR + Gemini only, no OnnxLLM cold-start
     await BackgroundEodService._runEodIfNeeded();
     await TrackingReminderService.instance.init();
     await TrackingReminderService.instance.evaluateAndNotifyIfNeeded();

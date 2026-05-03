@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_gemma/flutter_gemma.dart' show PreferredBackend;
+// MiniGen GGUF replaces ONNX LLM — llamadart inference
 import 'package:provider/provider.dart';
 import 'package:lifelens/app_services.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
+import 'package:lifelens/services/crisis_regex_net.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/chat_session_service.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
@@ -68,10 +69,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   @override
   void initState() {
     super.initState();
-    _chatSessionService = ChatSessionService(
-      AppServices.quickTrack,
-      AppServices.gemma,
-    );
+    _chatSessionService = ChatSessionService();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _attachPromptRefreshListeners();
 
@@ -273,11 +271,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       await _persistMessages();
       _scrollToBottom();
 
+      if (!mounted) return;
       final moodStore = context.read<MoodLogStore>();
       final moodContext = _buildMoodContext(moodStore);
       String reply;
       try {
-        reply = await _geminiOrOffline(
+        reply = await _miniGenReplyOrFallback(
           userText:
               'I am still experiencing $resolvedName. What should I do to manage or recover from it?',
           moodContext: moodContext,
@@ -595,130 +594,83 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (_didLoadOpeningSuggestion) return;
     final moodStore = context.read<MoodLogStore>();
 
-    if (await _computeDailyLoggingPromptText() != null) {
-      return;
-    }
+    if (await _computeDailyLoggingPromptText() != null) return;
 
     _didLoadOpeningSuggestion = true;
-
     final moodContext = _buildMoodContext(moodStore);
-    final summaryContext = await _buildSummaryContext();
+    const greetingPrompt =
+        'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.';
 
-    try {
-      final response = await MiniMeBackendService.instance.chat(
-        userMessage: '',
-        moodLabel: moodContext.label,
-        moodIntensity: moodContext.intensity,
-        moodNotes: moodContext.notes,
-        recentMoods: moodContext.recentMoodSummary,
-        activeSymptoms: const [],
-        history: const [],
-        summaryContext: summaryContext,
-        intelligence: _intelligence,
-      );
-
-      if (!mounted) return;
-      final opening = response.openingSuggestion.isEmpty
-          ? response.reply
-          : response.openingSuggestion;
-
-      setState(() {
-        _appendMessage(
-          _MiniMeChatMessage(role: _ChatRole.assistant, text: opening),
-        );
-      });
-      await _persistMessages();
-      await _refreshIntelligence();
-
-      // Proactive check-in for acute-risk users — fires only when both
-      // user_phase == 'acute-risk' and an alert string is set.
-      if (mounted &&
-          _intelligence != null &&
-          _intelligence!.userPhase == 'acute-risk' &&
-          (_intelligence!.alert?.isNotEmpty ?? false)) {
-        await Future<void>.delayed(const Duration(milliseconds: 800));
+    // Tier 1: MiniGen on-device greeting
+    if (AppServices.isMiniGenLoaded) {
+      try {
+        final ctx = await _buildMiniMeIsarContext();
+        final greeting = await AppServices.miniGenChat
+            .generateMiniMeReply(
+              userMessage: greetingPrompt,
+              moodLabel: moodContext.label,
+              user: widget.userName,
+              moodLog: moodContext.recentMoodSummary
+                  .take(3)
+                  .join(', '),
+              symptoms: ctx['symptoms'],
+              trends: ctx['trends'],
+            )
+            .timeout(const Duration(seconds: 20));
         if (!mounted) return;
         setState(() {
           _appendMessage(
-            const _MiniMeChatMessage(
-              role: _ChatRole.assistant,
-              text:
-                  'I noticed some patterns in your recent logs that I want to check in about. '
-                  'How are you feeling right now? No pressure — just want to make sure you have support if you need it.',
-            ),
+            _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
           );
         });
         await _persistMessages();
+        await _refreshIntelligence();
+        return;
+      } on CrisisInterventionException catch (e) {
+        _showCrisisOverlay(e.type);
+        return;
+      } catch (_) {
+        // fall through to Gemini
       }
-    } catch (_) {
-      if (!mounted) return;
-
-      // Tier 2: Gemma on-device greeting (no backend required)
-      if (AppServices.isGemmaLoaded) {
-        final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
-        final online = await AppServices.isOnline();
-        if (isGpu || !online) {
-          try {
-            final greeting = await AppServices.gemma
-                .generateMiniMeReply(
-                  userMessage:
-                      'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.',
-                  moodLabel: moodContext.label,
-                  intelligenceSummary: _buildIntelligenceSummary(),
-                )
-                .timeout(const Duration(seconds: 20));
-            if (!mounted) return;
-            setState(() {
-              _appendMessage(
-                _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
-              );
-            });
-            await _persistMessages();
-            return;
-          } catch (_) {
-            // fall through to Gemini
-          }
-        }
-      }
-
-      // Tier 3: Direct Gemini greeting (network, no backend server required)
-      if (await AppServices.isOnline()) {
-        try {
-          final greeting = await AppServices.gemini.generateMiniMeReply(
-            userMessage:
-                'Start our conversation with a warm, brief greeting. Keep it to 1-2 sentences.',
-            moodLabel: moodContext.label,
-            intelligenceSummary: _buildIntelligenceSummary(),
-          );
-          if (greeting.trim().isNotEmpty &&
-              !greeting.startsWith('Unable to reach Gemini')) {
-            if (!mounted) return;
-            setState(() {
-              _appendMessage(
-                _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
-              );
-            });
-            await _persistMessages();
-            return;
-          }
-        } catch (_) {
-          // fall through to offline message
-        }
-      }
-
-      // Tier 4: Static offline message
-      if (!mounted) return;
-      setState(() {
-        _appendMessage(
-          const _MiniMeChatMessage(
-            role: _ChatRole.assistant,
-            text:
-                'Mini-Me backend is currently offline. I can still help in local mode and will retry when you send a message.',
-          ),
-        );
-      });
-      await _persistMessages();
     }
+
+    // Tier 2: Direct Gemini greeting
+    if (await AppServices.isOnline()) {
+      try {
+        final greeting = await AppServices.gemini.generateMiniMeReply(
+          userMessage: greetingPrompt,
+          moodLabel: moodContext.label,
+          intelligenceSummary: _buildIntelligenceSummary(),
+        );
+        if (greeting.trim().isNotEmpty &&
+            !greeting.startsWith('Unable to reach Gemini')) {
+          if (!mounted) return;
+          setState(() {
+            _appendMessage(
+              _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
+            );
+          });
+          await _persistMessages();
+          await _refreshIntelligence();
+          return;
+        }
+      } catch (_) {
+        // fall through to offline
+      }
+    }
+
+    // Tier 3: Static offline message
+    if (!mounted) return;
+    setState(() {
+      _appendMessage(
+        const _MiniMeChatMessage(
+          role: _ChatRole.assistant,
+          text:
+              'Mini-Me is running in local mode. Go ahead and send a message — I can still help.',
+        ),
+      );
+    });
+    await _persistMessages();
   }
 
   Future<String?> _computeDailyLoggingPromptText() async {
@@ -1032,7 +984,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     String reply;
 
     try {
-      reply = await _geminiOrOffline(userText: text, moodContext: moodContext);
+      reply = await _miniGenReplyOrFallback(userText: text, moodContext: moodContext);
     } catch (_) {
       reply = _buildOfflineReply(userText: text, moodLabel: moodLabel);
     }
@@ -1228,68 +1180,102 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
   }
 
-  Future<String> _geminiOrOffline({
+  Future<bool> _isOnline() async {
+    return AppServices.isOnline();
+  }
+
+  // ── MiniGen chat helpers ──────────────────────────────────────────────────────
+
+  /// Fetches symptom and trend context from Isar for MiniGen prompt assembly.
+  Future<Map<String, String?>> _buildMiniMeIsarContext() async {
+    final isar = IsarService.instance;
+    final activeSymptoms = await isar.getActiveSymptomEntries();
+    final symptomsStr = activeSymptoms.isNotEmpty
+        ? activeSymptoms.map((e) => e.predictedAilment).join(', ')
+        : null;
+    return {
+      'symptoms': symptomsStr,
+      'conditions': null,
+      'trends': _buildIntelligenceSummary(),
+    };
+  }
+
+  /// Maps chat history to MiniGen tagged format (oldest → newest).
+  List<String> _buildTaggedHistory() => _messages
+      .take(20)
+      .map((m) => m.role == _ChatRole.user
+          ? '<|user|>${m.text}'
+          : '<|companion|>${m.text}')
+      .toList();
+
+  /// Shows the crisis support dialog — dual-tier (988 mental health / 911 emergency).
+  void _showCrisisOverlay([CrisisType type = CrisisType.mentalHealth988]) {
+    if (!mounted) return;
+
+    final bool is911 = type == CrisisType.physicalEmergency911;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: Text(is911 ? 'Emergency Detected' : "You're not alone"),
+        content: Text(
+          is911
+              ? 'It sounds like you or someone nearby may need immediate medical help.\n\n'
+                'Call 911 right away.\n\n'
+                'If you\'re unsure, call anyway — they can help you decide.'
+              : 'If you\'re in crisis or need immediate support, please reach out:\n\n'
+                '988 Suicide & Crisis Lifeline — call or text 988\n'
+                'Crisis Text Line — text HOME to 741741',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// MiniGen → Gemini → offline reply chain for all user-initiated turns.
+  ///
+  /// Crisis-triggered turns are NOT appended to history — the incomplete
+  /// turn is discarded entirely.
+  Future<String> _miniGenReplyOrFallback({
     required String userText,
     required _MiniMeMoodContext moodContext,
   }) async {
-    if (await _isOnline()) {
+    // Tier 1: MiniGen on-device (stream collected to buffer)
+    if (AppServices.isMiniGenLoaded) {
       try {
-        final summaryContext = await _buildSummaryContext();
-        final history = _messages
-            .take(20)
-            .map(
-              (m) => MiniMeChatTurn(
-                role: m.role == _ChatRole.user ? 'user' : 'assistant',
-                text: m.text,
-              ),
-            )
-            .toList(growable: false);
-
-        final response = await MiniMeBackendService.instance.chat(
+        final ctx = await _buildMiniMeIsarContext();
+        final history = _buildTaggedHistory();
+        final buffer = StringBuffer();
+        await for (final token in AppServices.miniGenChat.generateMiniMeReplyStream(
           userMessage: userText,
           moodLabel: moodContext.label,
-          moodIntensity: moodContext.intensity,
-          moodNotes: moodContext.notes,
-          recentMoods: moodContext.recentMoodSummary,
-          activeSymptoms: const [],
-          history: history,
-          summaryContext: summaryContext,
-          intelligence: _intelligence,
-        );
-
-        final reply = response.reply.trim().isNotEmpty
-            ? response.reply.trim()
-            : response.openingSuggestion.trim();
-        if (reply.isNotEmpty) {
-          return reply;
+          user: widget.userName,
+          moodLog: moodContext.recentMoodSummary.take(3).join(', '),
+          symptoms: ctx['symptoms'],
+          conditions: ctx['conditions'],
+          trends: ctx['trends'],
+          chatHistory: history,
+        )) {
+          buffer.write(token);
         }
+        final result = buffer.toString().trim();
+        if (result.isNotEmpty) return result;
+      } on CrisisInterventionException catch (e) {
+        // Do NOT append — discard the incomplete turn entirely
+        _showCrisisOverlay(e.type);
+        return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
       } catch (_) {
-        // fall through to local model/offline fallback
+        // fall through to Gemini
       }
     }
 
-    // Tier 2: Gemma on-device (no network required)
-    // Skip when running on CPU backend and Gemini is reachable — CPU inference
-    // on emulators / unsupported GPUs is too slow for interactive chat.
-    if (AppServices.isGemmaLoaded) {
-      final isGpu = AppServices.gemma.activeBackend == PreferredBackend.gpu;
-      final online = await _isOnline();
-      if (isGpu || !online) {
-        try {
-          return await AppServices.gemma
-              .generateMiniMeReply(
-                userMessage: userText,
-                moodLabel: moodContext.label,
-                intelligenceSummary: _buildIntelligenceSummary(),
-              )
-              .timeout(const Duration(seconds: 20));
-        } catch (_) {
-          // fall through to direct Gemini
-        }
-      }
-    }
-
-    // Tier 3: Direct Gemini (network, no backend server required)
+    // Tier 2: Direct Gemini
     if (await _isOnline()) {
       try {
         final directReply = await AppServices.gemini.generateMiniMeReply(
@@ -1302,16 +1288,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           return directReply;
         }
       } catch (_) {
-        // fall through to offline template
+        // fall through to offline
       }
     }
 
-    // Tier 4: Offline template
+    // Tier 3: Offline template
     return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
-  }
-
-  Future<bool> _isOnline() async {
-    return AppServices.isOnline();
   }
 
   /// Builds a concise intelligence summary string for on-device LLM prompts.
@@ -1482,24 +1464,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         '$intelligenceSignature';
   }
 
-  Future<String> _buildSummaryContext() async {
-    try {
-      final moodSummary = await AppServices.quickTrack.buildMoodContext();
-      final symptomSummary = await AppServices.quickTrack.buildSymptomContext();
-      final conversationSummary = await AppServices.quickTrack
-          .buildConversationContext();
-      final parts = <String>[
-        if (moodSummary.trim().isNotEmpty) 'Mood summary:\n$moodSummary',
-        if (symptomSummary.trim().isNotEmpty)
-          'Symptom summary:\n$symptomSummary',
-        if (conversationSummary.trim().isNotEmpty)
-          'Conversation summary:\n$conversationSummary',
-      ];
-      return parts.join('\n\n');
-    } catch (_) {
-      return '';
-    }
-  }
 
   // ignore: unused_element
   MiniMeVisualState _buildMiniMeVisualState({
@@ -4079,112 +4043,7 @@ class _MiniMeMoodContext {
   final List<String> recentMoodSummary;
 }
 
-/// Notification banner shown at the top of the Mini-Me screen when the user
-/// has an active symptom logged in the last 7 days. Tapping it triggers the
-/// symptom check-up flow.
-class _SymptomCheckupNotificationBanner extends StatelessWidget {
-  const _SymptomCheckupNotificationBanner({
-    required this.symptomName,
-    required this.onTap,
-  });
 
-  final String symptomName;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-        padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: cs.tertiaryContainer.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.tertiary.withValues(alpha: 0.35)),
-          boxShadow: [
-            BoxShadow(
-              color: cs.shadow.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Icon with red notification dot
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: cs.tertiary.withValues(alpha: 0.18),
-                  ),
-                  child: Icon(
-                    Icons.monitor_heart_rounded,
-                    color: cs.onTertiaryContainer,
-                    size: 20,
-                  ),
-                ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: cs.error,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: cs.surface, width: 1.5),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Symptom Check-Up',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: cs.onTertiaryContainer,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Are you still experiencing $symptomName?',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onTertiaryContainer.withValues(alpha: 0.78),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: cs.onTertiaryContainer.withValues(alpha: 0.7),
-              size: 22,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Dialog that asks the user whether they are still experiencing a symptom.
 /// Returns `true` when the user confirms (yes), `false` when they deny (no),

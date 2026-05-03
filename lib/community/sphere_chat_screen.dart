@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
@@ -118,8 +117,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
         );
       }
     } finally {
-      if (!mounted) return;
-      setState(() => _isBootstrapping = false);
+      if (mounted) {
+        setState(() => _isBootstrapping = false);
+      }
     }
   }
 
@@ -212,6 +212,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (userId == null) return;
     final doc = await _membersRef.doc(userId).get();
     if (!doc.exists) return;
+    if (!mounted) return;
     final avatarStore = context.read<AvatarStore>();
     await _membersRef.doc(userId).update({
       'miniMe': avatarStore.toCommunityAvatarMap(),

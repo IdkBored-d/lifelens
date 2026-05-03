@@ -62,10 +62,11 @@ class MobileBertResult {
 /// Full result returned from the mood pipeline to the UI layer.
 class MoodPipelineResult {
   /// Final resolved mood label (may differ from MobileBERT's raw output
-  /// if Gemma2b or Gemini resolved the prediction).
+  /// if MiniGen or Gemini resolved the prediction).
+  /// NOTE: logic may be incorrect -- this is replacing our old version.
   final String resolvedMood;
 
-  /// Gemma2b / Gemini response text shown to the user.
+  /// MiniGen / Gemini response text shown to the user.
   final String responseText;
 
   /// Which model ultimately resolved the mood.

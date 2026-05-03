@@ -76,8 +76,8 @@ class _DevTestScreenState extends State<DevTestScreen> {
     final mb2 = cm.evaluateMobileBert([0.40, 0.45, 0.05, 0.04, 0.03, 0.03]);
     assert(!mb2.confidenceOk, 'Expected escalation on ambiguous');
     assert(
-      mb2.escalation == EscalationLevel.gemma,
-      'Expected gemma escalation',
+      mb2.escalation == EscalationLevel.onDevice,
+      'Expected onDevice escalation',
     );
 
     // MobileBERT — low confidence surprise
@@ -198,32 +198,15 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testQuickTrackMood() async {
-    // Write a test mood summary and read it back.
-    const testSummary = 'Mood: Joy (1 day).\nFitness: stable.\n\n[Dev test entry]';
-    await AppServices.quickTrack.writeMoodSummary(testSummary);
-    final readBack = await AppServices.quickTrack.readMoodSummary();
-    return '✓ QuickTrack mood summary write/read succeeded\n'
-        'Chars read: ${readBack.length}\n'
-        'Match: ${readBack.trim() == testSummary.trim()}';
+    return '— QuickTrack removed (Chunk 4). Mood context now built from Isar directly.';
   }
 
   Future<String> _testQuickTrackSymptom() async {
-    // Write a test symptom summary and read it back.
-    const testSummary = 'Symptoms: Cough (active, 1 day).\n\n[Dev test entry]';
-    await AppServices.quickTrack.writeSymptomSummary(testSummary);
-    final readBack = await AppServices.quickTrack.readSymptomSummary();
-    return '✓ QuickTrack symptom summary write/read succeeded\n'
-        'Chars read: ${readBack.length}\n'
-        'Match: ${readBack.trim() == testSummary.trim()}';
+    return '— QuickTrack removed (Chunk 4). Symptom context now built from Isar directly.';
   }
 
   Future<String> _testQuickTrackContext() async {
-    final moodCtx = await AppServices.quickTrack.buildMoodContext();
-    final symptomCtx = await AppServices.quickTrack.buildSymptomContext();
-    return '✓ Context strings built\n'
-        'Mood context length: ${moodCtx.length} chars\n'
-        'Symptom context length: ${symptomCtx.length} chars\n'
-        'Mood preview: ${moodCtx.substring(0, moodCtx.length.clamp(0, 80))}...';
+    return '— QuickTrack removed (Chunk 4). Context built from Isar in MiniGen prompt assembly.';
   }
 
   // ignore: unused_element
@@ -339,16 +322,7 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testSyncCheck() async {
-    // Sync repair is now Jaccard-similarity based and runs inside
-    // EodPipelineService.runEndOfDay(). This test reads the current
-    // quick-track summaries to verify they are non-empty.
-    final moodCtx    = await AppServices.quickTrack.buildMoodContext();
-    final symptomCtx = await AppServices.quickTrack.buildSymptomContext();
-    final convCtx    = await AppServices.quickTrack.buildConversationContext();
-    return '✓ Quick-track summaries readable\n'
-        'Mood summary chars: ${moodCtx.length}\n'
-        'Symptom summary chars: ${symptomCtx.length}\n'
-        'Conversation summary chars: ${convCtx.length}';
+    return '— QuickTrack sync check removed (Chunk 4). EOD pipeline now reads Isar directly.';
   }
 
   Future<String> _testClearAll() async {
@@ -400,22 +374,22 @@ class _DevTestScreenState extends State<DevTestScreen> {
         'summary=${result.summary}';
   }
 
-  Future<String> _testGemmaStatus() async {
-    return AppServices.isGemmaLoaded
-        ? '✓ Gemma model is loaded and ready'
-        : '✗ Gemma model is not loaded';
+  Future<String> _testMiniGenStatus() async {
+    return AppServices.isMiniGenLoaded
+        ? '✓ MiniGen model is loaded and ready'
+        : '✗ MiniGen model is not loaded';
   }
 
-  Future<String> _testGemmaInference() async {
-    if (!AppServices.isGemmaLoaded) {
-      return '✗ Gemma model is not loaded';
+  Future<String> _testMiniGenInference() async {
+    if (!AppServices.isMiniGenLoaded) {
+      return '✗ MiniGen model is not loaded';
     }
 
-    final reply = await AppServices.gemma.generateMiniMeReply(
+    final reply = await AppServices.miniGenChat.generateMiniMeReply(
       userMessage: 'I feel overwhelmed and tired today.',
       moodLabel: 'Anxious',
     );
-    return '✓ Gemma inference succeeded\nReply: $reply';
+    return '✓ MiniGen inference succeeded\nReply: $reply';
   }
 
   Future<String> _testReminderStatus() async {
@@ -525,9 +499,9 @@ class _DevTestScreenState extends State<DevTestScreen> {
                     _testReminderForceInconsistency,
                   ),
 
-                  _sectionHeader('GEMMA'),
-                  _testBtn('Gemma Status', _testGemmaStatus),
-                  _testBtn('Gemma Inference', _testGemmaInference),
+                  _sectionHeader('MINIGEN'),
+                  _testBtn('MiniGen Status', _testMiniGenStatus),
+                  _testBtn('MiniGen Inference', _testMiniGenInference),
                 ],
               ),
             ),

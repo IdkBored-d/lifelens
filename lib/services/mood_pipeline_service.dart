@@ -3,15 +3,12 @@
 // lib/services/symptom_auto_detector_service.dart and is called from UI screens
 // (moodlog_screen.dart, symptoms_screen.dart). Decide whether to re-wire it here
 // or keep it UI-only. See architecture notes in MERGE_NOTES.md.
-import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/mood_result.dart';
 import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
-import 'quick_track_service.dart';
 import 'mobilebert_service.dart';
 import 'model_lifecycle_service.dart';
-import 'gemma_service.dart';
 import 'gemini_service.dart';
 import '../database/isar_service.dart';
 import '../database/mood_entry.dart';
@@ -20,18 +17,17 @@ import '../database/mood_entry.dart';
 ///
 /// Full flow:
 ///   1. MobileBERT classifies mood from user log text
-///   2. Confidence check → escalate to Gemma2b if needed
+///   2. Confidence check → escalate to MiniGen (on-device) if needed
+///   NOTE: logic may be incorrect -- this is replacing our old version.
 ///   3. Present mood to user for confirmation (optional — user can skip)
 ///   4. If user rejects → re-run with rejection context OR escalate
-///   5. Gemma2b generates personalised response using quick-track context
+///   5. MiniGen generates personalised response using quick-track context
 ///   6. WRITE to ISAR database (source of truth)
 ///   7. WRITE condensed entry to quick-tracking file
 class MoodPipelineService {
   final MobileBertService  _mobileBert;
-  final GemmaService       _gemma;
   final GeminiService      _gemini;
   final ConfidenceManager  _confidence;
-  final QuickTrackService  _quickTrack;
 
   // Tokenizer function injected from the app layer.
   // Must return { 'input_ids': List<int>, 'attention_mask': List<int> }
@@ -40,16 +36,12 @@ class MoodPipelineService {
 
   MoodPipelineService({
     required MobileBertService  mobileBert,
-    required GemmaService       gemma,
     required GeminiService      gemini,
     required ConfidenceManager  confidence,
-    required QuickTrackService  quickTrack,
     required Map<String, List<int>> Function(String, int) tokenize,
   })  : _mobileBert = mobileBert,
-        _gemma      = gemma,
         _gemini     = gemini,
         _confidence = confidence,
-        _quickTrack = quickTrack,
         _tokenize   = tokenize;
 
   // ── Main entry point ────────────────────────────────────────────────────────
@@ -100,7 +92,7 @@ class MoodPipelineService {
       );
     }
 
-    // ── STEP 4: MobileBERT passed — generate Gemma2b response ─────────────
+    // ── STEP 4: MobileBERT passed — generate on-device response ─────────────
     return _generateAndStore(
       userLog:             userLog,
       resolvedMood:        mbResult.topLabel,
@@ -121,64 +113,32 @@ class MoodPipelineService {
     required String?             rejectedMood,
     required String?             rejectionContext,
   }) async {
-    // Build combined log text including rejection context if provided
     final enrichedLog = rejectionContext != null
         ? '$userLog\n[User clarification: $rejectionContext]'
         : userLog;
 
-    // ── Try Gemma2b first ────────────────────────────────────────────────────
-    final context = await _quickTrack.buildMoodContext();
-    String? gemmaRaw;
-    String  gemmaLabel = 'neutral';
-    try {
-      await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
-      gemmaRaw   = await _gemma.analyzeMoodDirectly(
-        userLog:      enrichedLog,
-        context:      context,
-        rejectedMood: rejectedMood,
-      );
-      gemmaLabel = _gemma.extractMoodLabel(gemmaRaw);
-    } on StateError catch (e) {
-      debugPrint('[MoodPipeline] Gemma not ready, skipping: $e');
-    }
-
-    // Gemma2b resolved — no further escalation needed for mood
-    // (NO re-generation step for Gemma2b per system design)
-    if (gemmaRaw == null || gemmaLabel != 'neutral' || !isOnline) {
-      return _generateAndStore(
-        userLog:             enrichedLog,
-        resolvedMood:        gemmaRaw != null ? gemmaLabel : mobileBertResult.topLabel,
-        resolvedBy:          EscalationLevel.gemma,
-        mobileBertResult:    mobileBertResult,
-        userConfirmed:       false,
-        currentFitnessScore: currentFitnessScore,
-        gemmaResponse:       gemmaRaw,
-      );
-    }
-
-    // ── Gemini fallback (online only) ────────────────────────────────────────
-    try {
-      final geminiRaw = await _gemini.analyzeMood(
-        userLog:               enrichedLog,
-        context:               context,
-        rejectedMood:          rejectedMood,
-        previousGemmaResponse: gemmaRaw,
-      );
-
-      // Extract label from Gemini response
-      final geminiLabel = _extractLabelFromText(geminiRaw);
-
-      return _generateAndStore(
-        userLog:             enrichedLog,
-        resolvedMood:        geminiLabel,
-        resolvedBy:          EscalationLevel.gemini,
-        mobileBertResult:    mobileBertResult,
-        userConfirmed:       false,
-        currentFitnessScore: currentFitnessScore,
-        gemmaResponse:       geminiRaw,
-      );
-    } catch (e) {
-      debugPrint('[MoodPipeline] Gemini failed, falling back to MobileBERT: $e');
+    // ── Gemini (online only) ─────────────────────────────────────────────────
+    if (isOnline) {
+      try {
+        final geminiRaw = await _gemini.analyzeMood(
+          userLog:               enrichedLog,
+          context:               '',
+          rejectedMood:          rejectedMood,
+          previousOnDeviceResponse: null,
+        );
+        final geminiLabel = _extractLabelFromText(geminiRaw);
+        return _generateAndStore(
+          userLog:             enrichedLog,
+          resolvedMood:        geminiLabel,
+          resolvedBy:          EscalationLevel.gemini,
+          mobileBertResult:    mobileBertResult,
+          userConfirmed:       false,
+          currentFitnessScore: currentFitnessScore,
+          onDeviceResponse:    geminiRaw,
+        );
+      } catch (e) {
+        debugPrint('[MoodPipeline] Gemini failed, falling back to MobileBERT: $e');
+      }
     }
 
     // ── Final fallback: MobileBERT result ────────────────────────────────────
@@ -201,17 +161,18 @@ class MoodPipelineService {
     required MobileBertResult mobileBertResult,
     required double           currentFitnessScore,
     bool?   userConfirmed,
-    String? gemmaResponse,
+    String? onDeviceResponse,
   }) async {
-    // Generate response text if not already provided by Gemma2b/Gemini
-    // TODO: re-enable Gemma response generation when ready
+    // Generate response text if not already provided by MiniGen/Gemini
+    // TODO: re-enable MiniGen response generation when ready
+    // NOTE: logic may be incorrect -- this is replacing our old version.
     String responseText;
-    if (gemmaResponse != null) {
-      responseText = gemmaResponse;
+    if (onDeviceResponse != null) {
+      responseText = onDeviceResponse;
     } else {
       // try {
-      //   await ModelLifecycleService.instance.ensureLoaded([ModelType.gemma]);
-      //   responseText = await _gemma.generateMoodResponse(
+      //   await ModelLifecycleService.instance.ensureLoaded([ModelType.miniGen]);
+      //   responseText = await _miniGen.generateMoodResponse(
       //     predictedMood: resolvedMood,
       //     userLog:       userLog,
       //     context:       await _quickTrack.buildMoodContext(),
@@ -242,12 +203,6 @@ class MoodPipelineService {
 
     await IsarService.instance.writeMoodEntry(moodEntry);
 
-    // ── 2. REGENERATE MOOD QUICK-TRACK SUMMARY ───────────────────────────
-    // Unawaited: ISAR is the source of truth (already written above).
-    // Queries ISAR for the last 14 days, builds a template + Gemma insight,
-    // then overwrites mood_summary.txt.
-    unawaited(_generateAndWriteMoodSummary());
-
     return MoodPipelineResult(
       resolvedMood:     resolvedMood,
       responseText:     responseText,
@@ -256,30 +211,6 @@ class MoodPipelineService {
       userConfirmed:    userConfirmed,
       timestamp:        now,
     );
-  }
-
-  // ── Quick-track summary generation ──────────────────────────────────────────
-
-  /// Queries ISAR for the last 14 days of mood + 7 days of fitness, builds
-  /// the template block, appends a Gemma insight, and overwrites mood_summary.txt.
-  Future<void> _generateAndWriteMoodSummary() async {
-    try {
-      final entries       = await IsarService.instance.getRecentMoodEntries(days: 14);
-      final fitnessScores = await IsarService.instance.getLastNDaysFitnessScores(14);
-      final template      = QuickTrackService.buildMoodTemplate(entries, fitnessScores);
-
-      String summary = template;
-      try {
-        final insight = await _gemma.generateSummaryInsight(template: template);
-        summary = '$template\n\n$insight';
-      } on StateError catch (e) {
-        debugPrint('[MoodPipeline] Gemma not ready for summary insight: $e');
-      }
-
-      await _quickTrack.writeMoodSummary(summary);
-    } catch (e) {
-      debugPrint('[MoodPipeline] Mood summary write failed: $e');
-    }
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────

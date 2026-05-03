@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.9.0
+  sdk: ^3.10.7
 
 dependencies:
   flutter:
@@ -28,8 +28,9 @@ dependencies:
   # ── ONNX Runtime (MobileBERT, DisEmbed, Fitness MLP) ──────────────────────
   onnxruntime: ^1.4.0
 
-  # ── Gemma 2 2B IT on-device ────────────────────────────────────────────────
-  flutter_gemma: ^0.12.3
+  # ── On-device LLM (MiniGen GGUF via llama.cpp) ─────────────────────────────
+  llamadart: ^0.6.11
+  dio: ^5.0.0
 
   # ── Networking (Weaviate + Gemini) ─────────────────────────────────────────
   http: ^1.2.1
@@ -71,6 +72,10 @@ flutter:
   #  - assets/models/fitness_model.onnx
     - assets/models/for MVP/fitness_model_v9.onnx
     - assets/models/vocab.txt
+  # ── MiniGen ONNX assets (deprecated — replaced by GGUF OTA download) ──────
+  #  - assets/models/minigen_int8.onnx
+  #  - assets/models/tokenizer.json
+  #  - assets/models/genai_config.json
     - lib/assets/minime/body.glb
     - lib/assets/minime/hair/hair.glb
     - lib/assets/minime/hair/hair_male.glb

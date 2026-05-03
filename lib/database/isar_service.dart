@@ -136,7 +136,8 @@ class IsarService {
         .findAll();
   }
 
-  /// Raw log texts for the last [days] days — used for Gemma2b context injection.
+  /// Raw log texts for the last [days] days — used for MiniGen context injection.
+  /// NOTE: logic may be incorrect -- this is replacing our old version.
   Future<List<String>> getRecentRawLogs({int days = 3}) async {
     final entries = await getRecentMoodEntries(days: days);
     return entries.map((e) => e.rawLog).toList();
@@ -480,7 +481,7 @@ class IsarService {
 // ─────────────────────────────────────────────
 
 /// A full data snapshot for a single day.
-/// Used by the EOD pipeline to build Gemma2b/Gemini context.
+/// Used by the EOD pipeline to build MiniGen/Gemini context.
 class DaySnapshot {
   final String date;
   final List<MoodEntry> moods;

@@ -1,4 +1,3 @@
-import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
@@ -19,17 +18,7 @@ class MiniMeSuggestionAggregator {
       days: days,
     );
 
-    // ── Quick-track plaintext summaries ──────────────────────────────────────
-    final moodSummary = await AppServices.quickTrack.buildMoodContext();
-    final symptomSummary = await AppServices.quickTrack.buildSymptomContext();
-    final conversationSummary = await AppServices.quickTrack
-        .buildConversationContext();
-    final summaryContext = <String>[
-      if (moodSummary.trim().isNotEmpty) 'Mood summary:\n$moodSummary',
-      if (symptomSummary.trim().isNotEmpty) 'Symptom summary:\n$symptomSummary',
-      if (conversationSummary.trim().isNotEmpty)
-        'Conversation summary:\n$conversationSummary',
-    ].join('\n\n');
+    const summaryContext = '';
 
     // ── Recent ISAR chat history (last session, up to 20 messages) ───────────
     final recentSessions = await IsarService.instance.getRecentChatSessions(

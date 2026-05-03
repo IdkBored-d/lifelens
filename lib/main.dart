@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'app/app_root.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:background_fetch/background_fetch.dart';
 import 'services/background_eod_service.dart';
 import 'package:provider/provider.dart';
@@ -39,20 +36,6 @@ void main() async {
     ),
   );
 
-  // Initialize FlutterGemma after the first frame so startup is not blocked
-  // on native model setup or first paint.
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(_initializeFlutterGemma());
-  });
-}
-
-Future<void> _initializeFlutterGemma() async {
-  try {
-    await FlutterGemma.initialize();
-    debugPrint('[main] FlutterGemma initialized');
-  } catch (e) {
-    debugPrint('[main] FlutterGemma.initialize() failed: $e');
-  }
 }
 
 class MyApp extends StatelessWidget {

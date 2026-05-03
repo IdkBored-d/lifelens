@@ -1,35 +1,26 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/widgets.dart' show WidgetsBindingObserver;
-import 'package:flutter_gemma/flutter_gemma.dart' show PreferredBackend;
 
 import 'mobilebert_service.dart';
 import 'disembed_service.dart';
 import 'fitness_mlp_service.dart';
-import 'gemma_service.dart';
-import 'gemma_model_manager.dart';
+import 'minigen_service.dart';
+import 'minigen_downloader.dart';
 
 /// Identifies each on-device AI model.
-enum ModelType { mobileBert, disEmbed, fitnessMlp, gemma }
+enum ModelType { mobileBert, disEmbed, fitnessMlp, miniGen }
 
 /// Conservative model lifecycle manager.
 ///
 /// Policy:
-///   - ONNX models (MobileBERT ~35 MB, DisEmbed ~55 MB, FitnessMLP ~8 MB)
-///     are loaded at app startup and **never unloaded** automatically.
-///     Their combined footprint (~98 MB) is negligible on modern devices.
+///   - Models (MobileBERT ~35 MB, DisEmbed ~55 MB, FitnessMLP ~8 MB,
+///     MiniGen ~96 MB) are loaded at app startup and never unloaded
+///     automatically. MiniGen's memory is managed by llama.cpp internally.
 ///
-///   - Gemma (~1.4 GB) **is** unloaded under OS memory pressure via
-///     [WidgetsBindingObserver.didHaveMemoryPressure].
-///     A 60-second keep-alive prevents thrashing if the user just used MiniMe
-///     and immediately triggered a memory warning.
+/// NOTE: logic may be incorrect -- this is replacing our old version.
 ///
 /// Call [init] once from AppServices after all model services are constructed.
-/// Register the singleton as a [WidgetsBindingObserver] at the same time:
-///
-/// ```dart
-/// ModelLifecycleService.instance.init(...);
-/// WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
-/// ```
+/// Register the singleton as a [WidgetsBindingObserver] at the same time.
 class ModelLifecycleService with WidgetsBindingObserver {
   ModelLifecycleService._();
   static final ModelLifecycleService instance = ModelLifecycleService._();
@@ -39,17 +30,14 @@ class ModelLifecycleService with WidgetsBindingObserver {
     ModelType.mobileBert: 35,
     ModelType.disEmbed:   55,
     ModelType.fitnessMlp: 8,
-    ModelType.gemma:      1400,
+    ModelType.miniGen:    96,  // F16 GGUF; actual runtime memory managed by llama.cpp
   };
-
-  /// Minimum time Gemma must be idle before it can be evicted under pressure.
-  static const Duration _kGemmaKeepAlive = Duration(seconds: 60);
 
   // ── Service references ───────────────────────────────────────────────────────
   late MobileBertService _mobileBert;
   late DisEmbedService   _disEmbed;
   late FitnessMlpService _fitnessMlp;
-  late GemmaService      _gemma;
+  late MiniGenService    _miniGen;
 
   bool _initialised = false;
 
@@ -58,17 +46,16 @@ class ModelLifecycleService with WidgetsBindingObserver {
 
   // ── Initialisation ───────────────────────────────────────────────────────────
 
-  /// Wire up service references. Must be called once from AppServices.init().
   void init({
     required MobileBertService mobileBert,
     required DisEmbedService   disEmbed,
     required FitnessMlpService fitnessMlp,
-    required GemmaService      gemma,
+    required MiniGenService    miniGen,
   }) {
     _mobileBert  = mobileBert;
     _disEmbed    = disEmbed;
     _fitnessMlp  = fitnessMlp;
-    _gemma       = gemma;
+    _miniGen     = miniGen;
     _initialised = true;
   }
 
@@ -76,21 +63,17 @@ class ModelLifecycleService with WidgetsBindingObserver {
 
   bool get isInitialised => _initialised;
 
-  /// The backend (GPU or CPU) that Gemma was loaded on. Null when not loaded.
-  PreferredBackend? get gemmaBackend => _initialised ? _gemma.activeBackend : null;
-
   bool isLoaded(ModelType type) {
     _assertInitialised();
     return switch (type) {
       ModelType.mobileBert => _mobileBert.isLoaded,
       ModelType.disEmbed   => _disEmbed.isLoaded,
       ModelType.fitnessMlp => _fitnessMlp.isLoaded,
-      ModelType.gemma      => _gemma.isLoaded,
+      ModelType.miniGen    => _miniGen.isLoaded,
     };
   }
 
   /// Ensure all [types] are loaded before a pipeline call.
-  /// Updates [_lastUsed] so the keep-alive window resets on each use.
   Future<void> ensureLoaded(List<ModelType> types) async {
     _assertInitialised();
     for (final type in types) {
@@ -109,8 +92,8 @@ class ModelLifecycleService with WidgetsBindingObserver {
         .fold(0, (sum, t) => sum + _kEstimatedMB[t]!);
   }
 
-  /// Explicitly load a model. ONNX models reload from cached asset path.
-  /// Gemma reloads from the path saved in [GemmaModelManager].
+  /// Explicitly load a model. All models call [reload] on their cached asset
+  /// path (Rule #9 — never pass the asset path again after initial load).
   Future<void> loadModel(ModelType type) async {
     _assertInitialised();
     switch (type) {
@@ -120,63 +103,29 @@ class ModelLifecycleService with WidgetsBindingObserver {
         await _disEmbed.reload();
       case ModelType.fitnessMlp:
         await _fitnessMlp.reload();
-      case ModelType.gemma:
-        final path = await GemmaModelManager.getSavedPath();
-        if (path.isNotEmpty) {
-          await _gemma.load(path);
-          _lastUsed[ModelType.gemma] = DateTime.now();
-        } else {
-          debugPrint('[ModelLifecycle] Gemma reload skipped — no saved path.');
-        }
+      case ModelType.miniGen:
+        // MiniGen reload requires the model path; use downloader to get it.
+        final path = await MiniGenDownloader.ensureModel();
+        await _miniGen.reload(path);
+        _lastUsed[ModelType.miniGen] = DateTime.now();
     }
   }
 
-  /// Explicitly unload a model.
-  /// For ONNX models this is a no-op in the conservative policy — they are
-  /// kept loaded at all times. Gemma can be unloaded freely.
+  /// Unload a model explicitly. Conservative policy: ONNX models are kept
+  /// loaded at all times — this is a no-op for all current model types.
   Future<void> unloadModel(ModelType type) async {
     _assertInitialised();
-    switch (type) {
-      case ModelType.mobileBert:
-      case ModelType.disEmbed:
-      case ModelType.fitnessMlp:
-        // Conservative policy: ONNX models are never auto-evicted.
-        debugPrint('[ModelLifecycle] unloadModel($type) skipped — ONNX models stay loaded.');
-      case ModelType.gemma:
-        if (_gemma.isLoaded) {
-          await _gemma.unload();
-          debugPrint('[ModelLifecycle] Gemma unloaded.');
-        }
-    }
+    debugPrint('[ModelLifecycle] unloadModel($type) — conservative policy, skipped.');
   }
 
   // ── Memory pressure ──────────────────────────────────────────────────────────
 
-  /// Called automatically by [WidgetsBindingObserver] when the OS signals low
-  /// memory. Only evicts Gemma, and only if it has been idle for the keep-alive
-  /// window (default 60 s).
+  /// MiniGen at 96 MB (F16 GGUF) does not warrant eviction under memory pressure.
+  /// Override present for future policy changes.
   @override
   void didHaveMemoryPressure() {
     debugPrint('[ModelLifecycle] Memory pressure received. '
-        'Current usage: ${getMemoryUsageMB()} MB.');
-    _evictGemmaIfIdle();
-  }
-
-  void _evictGemmaIfIdle() {
-    if (!_gemma.isLoaded) return;
-    final lastUsed = _lastUsed[ModelType.gemma];
-    final idleLong = lastUsed == null ||
-        DateTime.now().difference(lastUsed) > _kGemmaKeepAlive;
-    if (idleLong) {
-      // Fire-and-forget — we're in a synchronous observer callback.
-      _gemma.unload().then((_) {
-        debugPrint('[ModelLifecycle] Gemma evicted under memory pressure.');
-      }).catchError((Object e) {
-        debugPrint('[ModelLifecycle] Gemma eviction failed: $e');
-      });
-    } else {
-      debugPrint('[ModelLifecycle] Gemma recently used — skipping eviction.');
-    }
+        'Current usage: ${getMemoryUsageMB()} MB. No models evicted (all under threshold).');
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────

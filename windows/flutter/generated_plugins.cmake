@@ -10,7 +10,6 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_auth
   firebase_core
   firebase_storage
-  flutter_gemma
   isar_flutter_libs
   permission_handler_windows
   share_plus

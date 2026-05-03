@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 ///
 /// Only invoked when:
 ///   1. Device is online
-///   2. User is on Gemma2b result AND requests more information / another opinion
-///   OR base model + Gemma2b both failed confidence
+///   2. User is on MiniGen (on-device) result AND requests more information / another opinion
+///   OR base model + MiniGen both failed confidence
+///
+/// NOTE: logic may be incorrect -- this is replacing our old version.
 ///
 /// Uses gemini-2.5-flash.
 /// Token limits (Gemini 2.5 Flash):
@@ -121,18 +123,18 @@ class GeminiService {
     required String userLog,
     required String context,
     String? rejectedMood,
-    String? previousGemmaResponse,
+    String? previousOnDeviceResponse,
   }) async {
     final rejectionNote = rejectedMood != null
         ? 'Previous suggestion "$rejectedMood" was rejected by the user.'
         : '';
-    final gemmaNote = previousGemmaResponse != null
-        ? '\nPrevious on-device analysis: "$previousGemmaResponse"'
+    final onDeviceNote = previousOnDeviceResponse != null
+        ? '\nPrevious on-device analysis: "$previousOnDeviceResponse"'
         : '';
 
     return generate('''
 You are a warm, supportive personal health assistant with deep emotional intelligence.
-$rejectionNote$gemmaNote
+$rejectionNote$onDeviceNote
 
 User log: "$userLog"
 
@@ -148,7 +150,8 @@ End with: MOOD_LABEL: [single mood word]
   // ── SYMPTOM ─────────────────────────────────────────────────────────────────
 
   /// Deep symptom analysis with RAG grounding.
-  /// Called when the user wants a second opinion after seeing Gemma2b's results.
+  /// Called when the user wants a second opinion after seeing MiniGen's results.
+  /// NOTE: logic may be incorrect -- this is replacing our old version.
   Future<String> analyzeSymptoms({
     required String userSymptoms,
     required String context,

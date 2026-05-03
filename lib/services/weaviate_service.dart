@@ -26,14 +26,16 @@ class WeaviateDisease {
     );
   }
 
-  /// Format as a grounding block for Gemma2b / Gemini prompts.
+  /// Format as a grounding block for MiniGen / Gemini prompts.
+  /// NOTE: logic may be incorrect -- this is replacing our old version.
   String toPromptBlock() =>
       '• $disease: $description\n  Symptoms: $symptoms';
 }
 
 /// Thin Weaviate Cloud client.
 /// Only used when the device is online.
-/// Gemma2b and Gemini call this to ground their responses.
+/// MiniGen and Gemini call this to ground their responses.
+/// NOTE: logic may be incorrect -- this is replacing our old version.
 class WeaviateService {
   final String _host;       // e.g. "https://your-cluster.weaviate.network"
   final String _apiKey;     // Weaviate Cloud API key

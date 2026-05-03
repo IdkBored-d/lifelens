@@ -27,7 +27,7 @@ class MoodEntry {
   late String resolvedMood;
 
   /// Which model resolved the mood.
-  /// Values: "base" (MobileBERT), "gemma2b", "gemini"
+  /// Values: "base" (MobileBERT), "gemma2b" (legacy/MiniGen), "gemini"
   late String resolvedBy;
 
   /// MobileBERT's raw top prediction before any user interaction.
@@ -41,7 +41,8 @@ class MoodEntry {
   /// Null = user skipped the confirmation step.
   bool? userConfirmed;
 
-  /// Gemma2b / Gemini response text shown to the user.
+  /// MiniGen / Gemini response text shown to the user.
+  /// NOTE: logic may be incorrect -- this is replacing our old version.
   late String responseText;
 
   /// Fitness score snapshot at the time of this log entry.

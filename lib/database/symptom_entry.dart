@@ -28,14 +28,15 @@ class SymptomEntry {
   /// Null if DisEmbed was escalated or skipped.
   double? disEmbedScore;
 
-  /// Full JSON string of all 5 diagnoses from Gemma2b / Gemini.
+  /// Full JSON string of all 5 diagnoses from MiniGen / Gemini.
+  /// NOTE: logic may be incorrect -- this is replacing our old version.
   /// Stored as JSON string for ISAR compatibility.
   /// Schema per entry:
   ///   {"disease": "...", "reasoning": "...", "next_steps": "...", "is_urgent": false}
   late String diagnosesJson;
 
   /// Which model resolved the final diagnosis.
-  /// Values: "base" (DisEmbed→Gemma2b), "gemma2b", "gemini"
+  /// Values: "base" (DisEmbed→MiniGen), "gemma2b" (legacy/MiniGen), "gemini"
   late String resolvedBy;
 
   /// Whether Weaviate RAG was used to ground the response.
