@@ -41,6 +41,21 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   int _loggedWeek = 0;
   LogButtonVisualState _logButtonState = LogButtonVisualState.idle;
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  List<Map<String, String>> _filterHistoryToToday(
+    List<Map<String, String>> history,
+  ) {
+    final today = DateTime.now();
+    return history.where((record) {
+      final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
+      if (timestamp == null) return false;
+      return _isSameDay(timestamp, today);
+    }).toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -101,7 +116,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _exerciseById = {for (final exercise in exercises) exercise.id: exercise};
       _lastFilterQuery = '';
       _cachedFilteredExercises = const <ExerciseModel>[];
-      _history = history;
+      _history = _filterHistoryToToday(history);
       _loggedToday = activity.isEmpty ? 0 : activity.first;
       _loggedWeek = activity.fold(0, (sum, value) => sum + value);
     });
@@ -185,7 +200,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
 
     if (!mounted) return;
     setState(() {
-      _history = history;
+      _history = _filterHistoryToToday(history);
       _loggedToday = activity.isEmpty ? 0 : activity.first;
       _loggedWeek = activity.fold(0, (sum, value) => sum + value);
       _logButtonState = LogButtonVisualState.success;
@@ -278,7 +293,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               }
 
               return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                 children: [
                   _TrackerSummary(
                     loggedToday: _loggedToday,

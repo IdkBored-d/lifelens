@@ -87,10 +87,16 @@ class _LogHubScreenState extends State<LogHubScreen> {
   }
 
   Future<void> _openSelectedDayLogs(DateTime date) async {
-    _selectedHistoryDate = date;
+    setState(() {
+      _selectedHistoryDate = date;
+    });
     await _openTracker(
       HistoryCalendarScreen(initialDate: date, showCalendar: false),
     );
+    if (!mounted) return;
+    setState(() {
+      _selectedHistoryDate = DateTime.now();
+    });
   }
 
   Future<bool> _hasAnyExerciseLogsToday() async {

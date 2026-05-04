@@ -18,6 +18,10 @@ import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
 
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
 class MoodLogScreen extends StatefulWidget {
   const MoodLogScreen({super.key, this.source = LogSource.quickAction});
   final LogSource source;
@@ -730,6 +734,9 @@ class _PreviousMoodLogsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final avatarSelection = context.select<AvatarStore, _MoodAvatarSelection>(
+      (avatarStore) => _MoodAvatarSelection.fromStore(avatarStore),
+    );
     final historySelection = context
         .select<MoodLogStore, _MoodHistorySelection>(
           (moodStore) => _MoodHistorySelection.fromStore(moodStore),
@@ -751,7 +758,10 @@ class _PreviousMoodLogsSection extends StatelessWidget {
           .map(
             (item) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _PreviousMoodLogCard(item: item),
+              child: _PreviousMoodLogCard(
+                item: item,
+                avatarSelection: avatarSelection,
+              ),
             ),
           )
           .toList(growable: false),
@@ -760,9 +770,13 @@ class _PreviousMoodLogsSection extends StatelessWidget {
 }
 
 class _PreviousMoodLogCard extends StatelessWidget {
-  const _PreviousMoodLogCard({required this.item});
+  const _PreviousMoodLogCard({
+    required this.item,
+    required this.avatarSelection,
+  });
 
   final MoodCheckIn item;
+  final _MoodAvatarSelection avatarSelection;
 
   @override
   Widget build(BuildContext context) {
@@ -771,10 +785,10 @@ class _PreviousMoodLogCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
@@ -782,12 +796,25 @@ class _PreviousMoodLogCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(item.emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 10),
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: MiniMePortraitAvatar(
+                  bodyModel: avatarSelection.bodyModel,
+                  hairModel: avatarSelection.hairModel,
+                  shirtModel: avatarSelection.shirtModel,
+                  bodyWidthScale: avatarSelection.bodyWidthScale,
+                  companionId: avatarSelection.companionId,
+                  moodLabel: item.moodLabel,
+                  degradationLevel: avatarSelection.degradationLevel,
+                  size: 44,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '${item.moodLabel} • ${item.intensity}/5',
-                  style: theme.textTheme.bodyMedium?.copyWith(
+                  item.moodLabel,
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -867,7 +894,11 @@ class _MoodHistorySelection {
   });
 
   factory _MoodHistorySelection.fromStore(MoodLogStore moodStore) {
-    final items = moodStore.items.take(10).toList(growable: false);
+    final today = DateTime.now();
+    final items = moodStore.items
+        .where((item) => _isSameDay(item.createdAt, today))
+        .take(10)
+        .toList(growable: false);
     final signature = items
         .map(
           (item) =>

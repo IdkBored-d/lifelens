@@ -157,15 +157,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final content = <Widget>[
-      if (widget.showIntro) ...[
-        Text(
-          'Look back at previous days',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 14),
-      ],
       if (widget.showCalendar) ...[
         _CalendarCard(
           visibleMonth: _visibleMonth,
@@ -226,12 +217,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
           emptyLabel: 'No exercise logs for this day.',
           children: _buildExerciseTiles(_dayData!.exercises),
         ),
-        const SizedBox(height: 16),
-        _DetailSection(
-          title: 'Day Summary',
-          emptyLabel: 'No end-of-day summary for this day.',
-          children: _buildEodTiles(_dayData!.eod),
-        ),
       ],
     ];
 
@@ -259,8 +244,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         .map(
           (entry) => _InfoTile(
             title: _titleCase(entry.resolvedMood),
-            subtitle:
-                '${_timeLabel(entry.timestamp)}${entry.condensedLog.trim().isEmpty ? '' : '  •  ${entry.condensedLog.trim()}'}',
+            subtitle: _timeLabel(entry.timestamp),
             body: entry.rawLog.trim().isEmpty ? null : entry.rawLog.trim(),
           ),
         )
@@ -287,8 +271,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
             title: entry.symptomList.isEmpty
                 ? 'Symptom entry'
                 : entry.symptomList.map(_titleCase).join(', '),
-            subtitle:
-                '${_timeLabel(entry.timestamp)}  •  ${_titleCase(entry.status)}',
+            subtitle: _timeLabel(entry.timestamp),
             body: entry.rawSymptoms.trim().isEmpty
                 ? null
                 : entry.rawSymptoms.trim(),
@@ -321,18 +304,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
           );
         })
         .toList(growable: false);
-  }
-
-  List<Widget> _buildEodTiles(EodEntry? eod) {
-    if (eod == null) return const <Widget>[];
-    return [
-      _InfoTile(
-        title: eod.flagged ? 'Flagged day summary' : 'Daily summary',
-        subtitle:
-            '${eod.moodEntryCount} mood entr${eod.moodEntryCount == 1 ? 'y' : 'ies'}',
-        body: eod.summaryText.trim(),
-      ),
-    ];
   }
 }
 
@@ -543,9 +514,9 @@ class _DetailSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cs.surface,
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -588,8 +559,9 @@ class _InfoTile extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.28),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.38),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.28)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

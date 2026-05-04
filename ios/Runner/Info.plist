@@ -6,6 +6,11 @@
 	<string>LifeLens reads your health data to pre-fill symptom logs.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>LifeLens may write health-related entries you choose to save.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>LifeLens uses the camera so you can capture a community banner image.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

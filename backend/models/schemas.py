@@ -419,3 +419,12 @@ class ErrorResponse(BaseModel):
     error: str
     detail: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class NotifySphereMembersRequest(BaseModel):
+    """Request to push a notification to other sphere members."""
+    sphere_id: str = Field(..., min_length=1, max_length=128)
+    sphere_name: str = Field(..., min_length=1, max_length=128)
+    sender_user_id: str = Field(..., min_length=1, max_length=128)
+    sender_nickname: str = Field(..., min_length=1, max_length=64)
+    text: str = Field(..., min_length=1, max_length=2000)

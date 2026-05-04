@@ -183,6 +183,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
 
+              const SizedBox(height: 24),
+
               _ProfileSection(
                 title: 'Developer',
                 children: [
@@ -204,43 +206,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              _ProfileSection(
-                title: 'Actions',
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Log out'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: theme.colorScheme.error,
-                      foregroundColor: theme.colorScheme.onError,
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-
-                    onPressed: () async {
-                      await FirebaseAuth.instance.signOut();
-                      if (!context.mounted) return;
-                      RestartWidget.restartApp(context);
-                    },
+              ElevatedButton.icon(
+                icon: const Icon(Icons.logout),
+                label: const Text('Log out'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.error,
+                  foregroundColor: theme.colorScheme.onError,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
                   ),
-
-                  const SizedBox(height: 12),
-
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Reset preferences'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-
-                    onPressed: () async => _resetPreferences(context),
-                  ),
-                ],
+                ),
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  RestartWidget.restartApp(context);
+                },
               ),
             ],
           ),
@@ -647,33 +628,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _resetPreferences(BuildContext context) async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-
-    try {
-      context.read<ThemeController>().setDarkMode(true);
-      await TrackingReminderService.instance.setNotificationsEnabled(true);
-      if (mounted && !_notificationsEnabled) {
-        setState(() => _notificationsEnabled = true);
-      }
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'notificationsEnabled': true,
-      }, SetOptions(merge: true));
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Preferences reset to defaults')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not reset preferences: $e')),
-        );
-      }
-    }
-  }
 }
 
 class _ProfileSection extends StatelessWidget {

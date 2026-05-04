@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
@@ -42,6 +45,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   static const double _maxTimeRevealOffset = 76.0;
   double _timeRevealOffset = 0.0;
   late final AnimationController _timeRevealController;
+  final Set<String> _pendingDeletePostIds = <String>{};
+  Timer? _typingTimer;
+  bool _isCurrentlyTyping = false;
 
   DocumentReference<Map<String, dynamic>> get _sphereRef =>
       FirebaseFirestore.instance.collection('spheres').doc(widget.sphere.id);
@@ -57,6 +63,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       _postsRef.orderBy('createdAt', descending: true).snapshots();
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _membersStream =
       _membersRef.snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _typingStream =
+      _membersRef.where('isTyping', isEqualTo: true).snapshots();
 
   bool get _isSleepSphere {
     final normalized = widget.sphere.name.trim().toLowerCase();
@@ -93,6 +101,42 @@ class _SphereChatScreenState extends State<SphereChatScreen>
         });
       });
     _bootstrapSphere();
+  }
+
+  void _onComposerChanged(String text) {
+    setState(() {});
+    if (text.trim().isNotEmpty) {
+      _reportTyping();
+    } else {
+      _clearTyping();
+    }
+  }
+
+  void _reportTyping() {
+    final userId = _userId;
+    if (userId == null || _userNickname == null) return;
+    _typingTimer?.cancel();
+    if (!_isCurrentlyTyping) {
+      _isCurrentlyTyping = true;
+      _membersRef.doc(userId).update({
+        'isTyping': true,
+        'typingAt': FieldValue.serverTimestamp(),
+      }).catchError((_) {});
+    }
+    _typingTimer = Timer(const Duration(seconds: 3), _clearTyping);
+  }
+
+  void _clearTyping() {
+    _typingTimer?.cancel();
+    _typingTimer = null;
+    if (!_isCurrentlyTyping) return;
+    _isCurrentlyTyping = false;
+    final userId = _userId;
+    if (userId == null) return;
+    _membersRef.doc(userId).update({
+      'isTyping': FieldValue.delete(),
+      'typingAt': FieldValue.delete(),
+    }).catchError((_) {});
   }
 
   Future<void> _bootstrapSphere() async {
@@ -207,6 +251,38 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     });
   }
 
+  /// Calls the backend to push notifications to other sphere members.
+  /// Runs fire-and-forget — failures are silently ignored so they never
+  /// block the message send flow.
+  Future<void> _notifySphereMembersInBackground({
+    required String sphereId,
+    required String sphereName,
+    required String senderUserId,
+    required String senderNickname,
+    required String text,
+  }) async {
+    const String _backendBase = String.fromEnvironment(
+      'LIFELENS_API_BASE_URL',
+      defaultValue: 'http://localhost:8000',
+    );
+    try {
+      final uri = Uri.parse('$_backendBase/api/v1/notify/sphere_message');
+      await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'sphere_id': sphereId,
+          'sphere_name': sphereName,
+          'sender_user_id': senderUserId,
+          'sender_nickname': senderNickname,
+          'text': text,
+        }),
+      ).timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Non-fatal — notification delivery is best-effort.
+    }
+  }
+
   Future<void> _syncMemberMiniMe() async {
     final userId = _userId;
     if (userId == null) return;
@@ -270,9 +346,16 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     }, SetOptions(merge: true));
 
     await _touchMemberActivity();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post shared with the sphere')),
+
+    // Fire-and-forget: ask the backend to push a notification to other members.
+    unawaited(
+      _notifySphereMembersInBackground(
+        sphereId: widget.sphere.id,
+        sphereName: widget.sphere.name,
+        senderUserId: userId,
+        senderNickname: nickname,
+        text: text,
+      ),
     );
   }
 
@@ -294,18 +377,19 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       return;
     }
 
-    setState(() => _isSendingPost = true);
+    final replyTarget = _composerReplyTarget;
+    _clearTyping();
+    setState(() {
+      _isSendingPost = true;
+      _composerController.clear();
+      _composerReplyTarget = null;
+    });
     try {
       await _createPost(
         type: 'check_in',
         text: message,
-        replyTarget: _composerReplyTarget,
+        replyTarget: replyTarget,
       );
-      if (!mounted) return;
-      setState(() {
-        _composerController.clear();
-        _composerReplyTarget = null;
-      });
     } finally {
       if (mounted) {
         setState(() => _isSendingPost = false);
@@ -630,14 +714,33 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
   Future<void> _reportPost({
     required String postId,
+    required String reportedUserId,
     required String text,
     required String reason,
   }) async {
     final userId = _userId;
-    if (userId == null) return;
+    if (userId == null || reportedUserId.isEmpty) return;
+    if (userId == reportedUserId) return;
+
+    // Prevent the same user from reporting the same person more than once.
+    final existing = await _sphereRef
+        .collection('reports')
+        .where('reportedUserId', isEqualTo: reportedUserId)
+        .where('reportedBy', isEqualTo: userId)
+        .limit(1)
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You have already reported this user.')),
+      );
+      return;
+    }
 
     await _sphereRef.collection('reports').add({
       'postId': postId,
+      'reportedUserId': reportedUserId,
       'sphereId': widget.sphere.id,
       'reportedBy': userId,
       'reason': reason,
@@ -646,42 +749,70 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       'createdAt': FieldValue.serverTimestamp(),
     });
 
+    // Increment the report counter on the reported member's doc.
+    final memberRef = _membersRef.doc(reportedUserId);
+    await memberRef.update({'reportCount': FieldValue.increment(1)});
+
+    final memberDoc = await memberRef.get();
+    final reportCount = (memberDoc.data()?['reportCount'] as num?)?.toInt() ?? 0;
+
+    if (reportCount >= 3) {
+      await _kickUserFromSphere(
+        reportedUserId,
+        reason: 'Received 3 reports from community members',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'User has been removed from the sphere after 3 reports.',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
+
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Report submitted')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Report submitted')));
   }
 
   Future<void> _deletePost(String postId) async {
+    setState(() => _pendingDeletePostIds.add(postId));
     final postRef = _postsRef.doc(postId);
     final postSnapshot = await postRef.get();
     final sphereSnapshot = await _sphereRef.get();
     final pinnedPostId = sphereSnapshot.data()?['pinnedPostId'] as String?;
 
-    final replies = await postRef.collection('replies').get();
-    for (final reply in replies.docs) {
-      await reply.reference.delete();
-    }
+    try {
+      final replies = await postRef.collection('replies').get();
+      for (final reply in replies.docs) {
+        await reply.reference.delete();
+      }
 
-    final reactions = await postRef.collection('reactions').get();
-    for (final reaction in reactions.docs) {
-      await reaction.reference.delete();
-    }
+      final reactions = await postRef.collection('reactions').get();
+      for (final reaction in reactions.docs) {
+        await reaction.reference.delete();
+      }
 
-    await postRef.delete();
-    if (pinnedPostId == postId || postSnapshot.data()?['isPinned'] == true) {
-      await _sphereRef.set({
-        'pinnedTitle': 'Community focus',
-        'pinnedBody':
-            widget.sphere.pinnedBody ??
-            'Introduce yourself, protect your privacy, and keep replies practical and kind.',
-        'pinnedPostId': null,
-      }, SetOptions(merge: true));
+      await postRef.delete();
+      if (pinnedPostId == postId || postSnapshot.data()?['isPinned'] == true) {
+        await _sphereRef.set({
+          'pinnedTitle': 'Community focus',
+          'pinnedBody':
+              widget.sphere.pinnedBody ??
+              'Introduce yourself, protect your privacy, and keep replies practical and kind.',
+          'pinnedPostId': null,
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _pendingDeletePostIds.remove(postId));
+      }
+      rethrow;
     }
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Post deleted')));
   }
 
   Future<void> _handleContentViolation(
@@ -705,7 +836,10 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       });
 
       if (newWarningCount >= 3) {
-        await _kickUserFromSphere(userId);
+        await _kickUserFromSphere(
+          userId,
+          reason: 'Exceeded warning limit (3 warnings): ${detectedWords.join(", ")}',
+        );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -741,31 +875,35 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     }
   }
 
-  Future<void> _kickUserFromSphere(String userId) async {
-    try {
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final sphereDoc = await transaction.get(_sphereRef);
-        final memberRef = _membersRef.doc(userId);
-        final memberDoc = await transaction.get(memberRef);
-        if (!memberDoc.exists) return;
-        final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
-        transaction.delete(memberRef);
-        transaction.update(_sphereRef, {
-          'memberCount': currentCount > 0 ? currentCount - 1 : 0,
-        });
+  Future<void> _kickUserFromSphere(
+    String userId, {
+    String reason = 'Exceeded warning limit (3 warnings)',
+  }) async {
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final sphereDoc = await transaction.get(_sphereRef);
+      final memberRef = _membersRef.doc(userId);
+      final memberDoc = await transaction.get(memberRef);
+      if (!memberDoc.exists) return;
+      final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
+      transaction.delete(memberRef);
+      transaction.update(_sphereRef, {
+        'memberCount': currentCount > 0 ? currentCount - 1 : 0,
       });
-      await _sphereRef.collection('moderation_actions').add({
-        'action': 'kicked',
-        'userId': userId,
-        'reason': 'Exceeded warning limit (3 warnings)',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint('Error kicking user: $e');
-    }
+    });
+    await _sphereRef.collection('moderation_actions').add({
+      'action': 'kicked',
+      'userId': userId,
+      'performedBy': _userId,
+      'reason': reason,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
   }
 
-  void _showReportDialog({required String postId, required String text}) {
+  void _showReportDialog({
+    required String postId,
+    required String reportedUserId,
+    required String text,
+  }) {
     final controller = TextEditingController();
 
     showDialog<void>(
@@ -787,7 +925,12 @@ class _SphereChatScreenState extends State<SphereChatScreen>
               final reason = controller.text.trim();
               if (reason.isEmpty) return;
               Navigator.pop(context);
-              await _reportPost(postId: postId, text: text, reason: reason);
+              await _reportPost(
+                postId: postId,
+                reportedUserId: reportedUserId,
+                text: text,
+                reason: reason,
+              );
             },
             child: const Text('Submit'),
           ),
@@ -798,6 +941,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
   void _showMembersSheet() {
     final cs = Theme.of(context).colorScheme;
+    final isOwner = _userId != null && _userId == widget.sphere.creatorId;
 
     showModalBottomSheet<void>(
       context: context,
@@ -838,6 +982,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                         final member = members[index].data();
                         final memberNickname = member['nickname'] as String?;
                         final displayNickname = isMe ? 'You' : (memberNickname ?? 'Anonymous');
+                        final isMemberOwner = (member['role'] ?? 'member') == 'owner' ||
+                            memberId == widget.sphere.creatorId;
                         final miniMe = Map<String, dynamic>.from(
                           member['miniMe'] as Map? ?? {},
                         );
@@ -867,9 +1013,21 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                           subtitle: Text(
                             'Joined ${_timeLabel((member['joinedAt'] as Timestamp?)?.toDate())}',
                           ),
-                          trailing: (member['role'] ?? 'member') == 'owner'
+                          trailing: isMemberOwner
                               ? const Text('Owner')
-                              : null,
+                              : isOwner && !isMe
+                                  ? IconButton(
+                                      tooltip: 'Kick member',
+                                      icon: Icon(
+                                        Icons.remove_circle_outline,
+                                        color: cs.error,
+                                      ),
+                                      onPressed: () => _confirmKickMember(
+                                        memberId: memberId,
+                                        nickname: memberNickname ?? 'this member',
+                                      ),
+                                    )
+                                  : null,
                         );
                       },
                     );
@@ -883,57 +1041,191 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     );
   }
 
+  Future<void> _confirmKickMember({
+    required String memberId,
+    required String nickname,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Kick Member'),
+        content: Text(
+          'Remove "$nickname" from the sphere? They will be able to re-join unless you delete the sphere.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Kick'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Close the members sheet first so we don't hold a stale context.
+    Navigator.pop(context);
+
+    try {
+      await _kickUserFromSphere(
+        memberId,
+        reason: 'Removed by sphere owner',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"$nickname" has been removed from the sphere.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to kick member: $e')),
+      );
+    }
+  }
+
   void _showChangeNicknameDialog() {
     final nicknameController = TextEditingController(text: _userNickname);
     final cs = Theme.of(context).colorScheme;
 
     showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Nickname'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Current: $_userNickname',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+      builder: (context) {
+        String? errorText;
+        bool isChecking = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Change Nickname'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Current nickname',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: cs.outlineVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Text(
+                    _userNickname ?? 'Unknown',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'New nickname',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: nicknameController,
+                  decoration: InputDecoration(
+                    hintText: 'Enter new nickname...',
+                  ),
+                  maxLength: 20,
+                  onChanged: (_) {
+                    if (errorText != null) {
+                      setDialogState(() => errorText = null);
+                    }
+                  },
+                ),
+                Text(
+                  'Do not use your real name.',
+                  style: TextStyle(
+                    color: cs.error,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    errorText!,
+                    style: TextStyle(
+                      color: cs.error,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'DO NOT use your real name',
-              style: TextStyle(
-                color: cs.error,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nicknameController,
-              decoration: const InputDecoration(
-                hintText: 'Enter new nickname...',
+              FilledButton(
+                onPressed: () async {
+                  final newNickname = nicknameController.text.trim();
+                  if (newNickname.isEmpty) return;
+                  if (newNickname == (_userNickname ?? '').trim()) {
+                    setDialogState(() {
+                      errorText = "You can't use your current nickname.";
+                    });
+                    return;
+                  }
+                  if (isChecking) return;
+                  setDialogState(() => isChecking = true);
+                  final taken = await _membersRef
+                      .where('nickname', isEqualTo: newNickname)
+                      .limit(1)
+                      .get();
+                  if (!context.mounted) return;
+                  final takenByOther = taken.docs.isNotEmpty &&
+                      taken.docs.first.id != _userId;
+                  if (takenByOther) {
+                    setDialogState(() {
+                      isChecking = false;
+                      errorText =
+                          'That nickname is already taken in this sphere.';
+                    });
+                    return;
+                  }
+                  setDialogState(() => isChecking = false);
+                  Navigator.pop(context);
+                  await _changeNickname(newNickname);
+                },
+                child: isChecking
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save'),
               ),
-              maxLength: 20,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            ],
           ),
-          FilledButton(
-            onPressed: () async {
-              final newNickname = nicknameController.text.trim();
-              if (newNickname.isEmpty) return;
-              Navigator.pop(context);
-              await _changeNickname(newNickname);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -949,9 +1241,6 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     });
     if (!mounted) return;
     setState(() => _userNickname = newNickname);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Nickname updated successfully')),
-    );
   }
 
   void _showLeaveSphereDialog() {
@@ -1127,7 +1416,12 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                         }
                         return true;
                       }).toList(growable: false);
-                        final posts = seededPosts;
+                          final posts = seededPosts
+                            .where(
+                            (doc) =>
+                              !_pendingDeletePostIds.contains(doc.id),
+                            )
+                            .toList(growable: false);
                       if (posts.isEmpty) {
                         return Padding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
@@ -1185,6 +1479,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                               },
                               onReport: () => _showReportDialog(
                                 postId: postDoc.id,
+                                reportedUserId:
+                                    (postDoc.data()['userId'] ?? '').toString(),
                                 text: postDoc.data()['text'] ?? '',
                               ),
                               onDelete: () => _deletePost(postDoc.id),
@@ -1196,13 +1492,25 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                   ),
                   ),
                 ),
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: _typingStream,
+                  builder: (context, typingSnapshot) {
+                    final currentUid = _userId;
+                    final typers = (typingSnapshot.data?.docs ?? [])
+                        .where((doc) => doc.id != currentUid)
+                        .map((doc) =>
+                            (doc.data()['nickname'] as String?) ?? 'Someone')
+                        .toList();
+                    return _TypingIndicatorBanner(typers: typers);
+                  },
+                ),
                 _ComposerDock(
                   userNickname: _userNickname,
                   controller: _composerController,
                   focusNode: _composerFocusNode,
                   replyTarget: _composerReplyTarget,
                   isSending: _isSendingPost,
-                  onChanged: (_) => setState(() {}),
+                  onChanged: _onComposerChanged,
                   onOpenQuickShare: _showQuickShareOptions,
                   onSend: _submitInlinePost,
                   onCancelReply: () {
@@ -1217,6 +1525,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
   @override
   void dispose() {
+    _clearTyping();
+    _typingTimer?.cancel();
     _timeRevealController.dispose();
     _scrollController.dispose();
     _composerController.dispose();
@@ -1270,6 +1580,105 @@ class _EmptyCommunityState extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TypingIndicatorBanner extends StatefulWidget {
+  const _TypingIndicatorBanner({required this.typers});
+
+  final List<String> typers;
+
+  @override
+  State<_TypingIndicatorBanner> createState() => _TypingIndicatorBannerState();
+}
+
+class _TypingIndicatorBannerState extends State<_TypingIndicatorBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _dotController;
+
+  @override
+  void initState() {
+    super.initState();
+    _dotController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _dotController.dispose();
+    super.dispose();
+  }
+
+  String _label() {
+    if (widget.typers.isEmpty) return '';
+    if (widget.typers.length == 1) return '${widget.typers[0]} is typing';
+    if (widget.typers.length == 2) {
+      return '${widget.typers[0]} and ${widget.typers[1]} are typing';
+    }
+    return '${widget.typers[0]} and ${widget.typers.length - 1} others are typing';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = widget.typers.isNotEmpty;
+    final cs = Theme.of(context).colorScheme;
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeInOut,
+      child: visible
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Row(
+                children: [
+                  // Bouncing dots
+                  SizedBox(
+                    width: 28,
+                    height: 18,
+                    child: AnimatedBuilder(
+                      animation: _dotController,
+                      builder: (context, _) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: List.generate(3, (i) {
+                            final phase = (i / 3.0);
+                            final t = (_dotController.value - phase) % 1.0;
+                            final bounce =
+                                (t < 0.5 ? t * 2 : 2 - t * 2).clamp(0.0, 1.0);
+                            final offset = -4.0 * bounce;
+                            return Transform.translate(
+                              offset: Offset(0, offset),
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: cs.primary.withValues(
+                                      alpha: 0.5 + 0.5 * bounce),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            );
+                          }),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _label(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
+                ],
+              ),
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
@@ -1541,11 +1950,6 @@ class _ChatMessageTile extends StatelessWidget {
         onReply();
       case _MessageAction.copy:
         await Clipboard.setData(ClipboardData(text: text));
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Message copied')),
-          );
-        }
       case _MessageAction.delete:
         onDelete();
       case _MessageAction.report:

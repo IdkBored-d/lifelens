@@ -32,12 +32,14 @@ from models.schemas import (
     MiniMeExerciseRecommendationItem,
     IntelligenceAnalyzeRequest,
     IntelligenceAnalyzeResponse,
+    NotifySphereMembersRequest,
 )
 from services.gemini_service import get_analysis_service, GeminiAnalysisService
 from services.intelligence import analyze_logs_in_order
 from services.intelligence_policy import get_intelligence_policy
 from services.memory_compiler import compile_minime_memory_with_diff
 from services.memory_logging import log_memory_event
+from services.notification_service import send_sphere_message_notification
 from config.settings import get_settings
 from google.genai import types
 
@@ -1384,6 +1386,23 @@ async def delete_knowledge(
             status_code=500,
             detail=f"Failed to delete: {str(e)}"
         )
+
+
+@app.post("/api/v1/notify/sphere_message", status_code=202)
+async def notify_sphere_message(request: NotifySphereMembersRequest):
+    """
+    Sends a push notification to all sphere members except the sender.
+    Called by the Flutter client after posting a message.
+    Returns 202 immediately; notification delivery is best-effort.
+    """
+    await send_sphere_message_notification(
+        sphere_id=request.sphere_id,
+        sphere_name=request.sphere_name,
+        sender_user_id=request.sender_user_id,
+        sender_nickname=request.sender_nickname,
+        text=request.text,
+    )
+    return {"status": "queued"}
 
 
 # Run with: uvicorn main:app --reload

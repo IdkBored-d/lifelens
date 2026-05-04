@@ -215,12 +215,19 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Describe how you're feeling, you can get into detail with your Mini-Me",
+                  'Log your symptoms',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 6),
+                Text(
+                  'Add a quick list or a short note. Use commas to separate symptoms.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 18),
                 _SectionCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,35 +241,32 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                           _WordLimitTextInputFormatter(_symptomWordLimit),
                         ],
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          hintText: 'headache, nausea, fatigue',
-                        ),
+                        decoration: const InputDecoration(),
                       ),
                       const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          '${_wordCount(_symptomsController.text)}/$_symptomWordLimit',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 16,
                             color: cs.onSurfaceVariant,
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer.withValues(alpha: 0.45),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Text(
-                          "Note: separate your symptoms with ','",
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onPrimaryContainer,
-                            fontWeight: FontWeight.w700,
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              "Example: headache, nausea, fatigue",
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
                           ),
-                        ),
+                          Text(
+                            '${_wordCount(_symptomsController.text)}/$_symptomWordLimit',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -420,6 +424,19 @@ class _SymptomHistoryList extends StatelessWidget {
   final Stream<List<SymptomEntry>> entriesStream;
   final String Function(DateTime date) formatDateTime;
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool _isTodayEntry(SymptomEntry entry) {
+    final today = DateTime.now();
+    final entryDate = DateTime.tryParse(entry.date);
+    if (entryDate != null) {
+      return _isSameDay(entryDate, today);
+    }
+    return _isSameDay(entry.timestamp, today);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -444,8 +461,19 @@ class _SymptomHistoryList extends StatelessWidget {
           );
         }
 
-        final entries = snapshot.data!.toList(growable: false)
+        final entries = snapshot.data!
+            .where(_isTodayEntry)
+            .toList(growable: false)
           ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+        if (entries.isEmpty) {
+          return Text(
+            'No symptom entries yet today. Save one above and it will show up here.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          );
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

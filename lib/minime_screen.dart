@@ -3907,15 +3907,6 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
                   );
                 }).toList(),
               ),
-              if (streak.message.trim().isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  streak.message,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
               const SizedBox(height: 4),
               Text(
                 'Best streak: ${streak.bestStreak} day${streak.bestStreak == 1 ? '' : 's'}',

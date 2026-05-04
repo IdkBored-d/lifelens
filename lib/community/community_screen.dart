@@ -21,6 +21,7 @@ class CommunityScreen extends StatefulWidget {
 class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<String> _searchQuery = ValueNotifier<String>('');
+  final Set<String> _pendingDeleteIds = <String>{};
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _spheresStream =
       FirebaseFirestore.instance
           .collection('spheres')
@@ -76,6 +77,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
     } catch (_) {
       // Keep the UI responsive even if bootstrap fails.
     }
+  }
+
+  void _setSpherePendingDelete(String sphereId, bool isPending) {
+    setState(() {
+      if (isPending) {
+        _pendingDeleteIds.add(sphereId);
+      } else {
+        _pendingDeleteIds.remove(sphereId);
+      }
+    });
   }
 
 
@@ -166,10 +177,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             .map((doc) => Sphere.fromFirestore(doc))
                             .where(
                               (sphere) =>
-                                  searchQuery.isEmpty ||
-                                  sphere.name.toLowerCase().contains(
-                                    searchQuery,
-                                  ),
+                                  !_pendingDeleteIds.contains(sphere.id) &&
+                                  (searchQuery.isEmpty ||
+                                      sphere.name.toLowerCase().contains(
+                                        searchQuery,
+                                      )),
                             ),
                       );
 
@@ -335,14 +347,6 @@ class _SphereCard extends StatelessWidget {
                   ? 'No recent activity'
                   : _communityRelativeTimeLabel(sphere.lastActivityAt!);
               final previewText = sphere.lastActivityText;
-              final previewShadow = highlightPreview
-                  ? [
-                      Shadow(
-                        color: cs.primary.withValues(alpha: 0.45),
-                        blurRadius: 12,
-                      ),
-                    ]
-                  : null;
               final bannerUrl = sphere.bannerUrl?.trim();
               final hasBanner =
                   bannerUrl != null &&
@@ -375,7 +379,18 @@ class _SphereCard extends StatelessWidget {
                             ? _SphereBannerImage(imageSource: bannerUrl)
                             : _DefaultSphereBanner(
                                 sphereName: sphere.name,
-                                templateKey: hasTemplateBanner ? bannerTemplate : null,
+                                templateKey:
+                                    hasTemplateBanner ? bannerTemplate : null,
+                                titleOverride: (!sphere.isPremade &&
+                                        hasTemplateBanner)
+                                    ? sphere.name
+                                    : null,
+                                subtitleOverride: (!sphere.isPremade &&
+                                        hasTemplateBanner)
+                                    ? _shortBannerDescription(
+                                      sphere.description,
+                                    )
+                                    : null,
                               ),
                       ),
                     ),
@@ -483,50 +498,79 @@ class _SphereCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        if (previewText != null) Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  previewText,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: highlightPreview
-                                        ? cs.primary
-                                        : cs.onSurfaceVariant,
-                                    fontWeight: highlightPreview
-                                        ? FontWeight.w800
-                                        : FontWeight.w400,
-                                    shadows: previewShadow,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (highlightPreview) ...[
-                                const SizedBox(width: 10),
-                                Container(
-                                  width: 9,
-                                  height: 9,
-                                  decoration: BoxDecoration(
-                                    color: cs.primary,
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: cs.primary.withValues(alpha: 0.55),
-                                        blurRadius: 10,
-                                        spreadRadius: 1,
+                        if (previewText != null) ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: highlightPreview
+                                  ? cs.primaryContainer.withValues(alpha: 0.55)
+                                  : cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                              borderRadius: BorderRadius.circular(12),
+                              border: highlightPreview
+                                  ? Border(
+                                      left: BorderSide(
+                                        color: cs.primary,
+                                        width: 3,
                                       ),
-                                    ],
+                                    )
+                                  : null,
+                            ),
+                            padding: EdgeInsets.fromLTRB(
+                              highlightPreview ? 9 : 10,
+                              9,
+                              10,
+                              9,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  highlightPreview
+                                      ? Icons.mark_chat_unread_rounded
+                                      : Icons.chat_bubble_outline_rounded,
+                                  size: 14,
+                                  color: highlightPreview
+                                      ? cs.primary
+                                      : cs.onSurfaceVariant.withValues(alpha: 0.45),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    previewText,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: highlightPreview
+                                          ? cs.onPrimaryContainer
+                                          : cs.onSurfaceVariant,
+                                      fontWeight: highlightPreview
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      height: 1.35,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                if (highlightPreview) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: cs.primary,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: cs.primary.withValues(alpha: 0.5),
+                                          blurRadius: 6,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                         ),
                       ],
@@ -775,6 +819,7 @@ extension on _CommunityScreenState {
   }
 
   Future<void> _deleteSphere(Sphere sphere) async {
+    _setSpherePendingDelete(sphere.id, true);
     try {
       final sphereRef = FirebaseFirestore.instance
           .collection('spheres')
@@ -817,12 +862,10 @@ extension on _CommunityScreenState {
 
       await sphereRef.delete();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sphere deleted successfully')),
-        );
-      }
     } catch (e) {
+      if (mounted) {
+        _setSpherePendingDelete(sphere.id, false);
+      }
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -1042,10 +1085,17 @@ class _DefaultBannerPalette {
 }
 
 class _DefaultSphereBanner extends StatelessWidget {
-  const _DefaultSphereBanner({required this.sphereName, this.templateKey});
+  const _DefaultSphereBanner({
+    required this.sphereName,
+    this.templateKey,
+    this.titleOverride,
+    this.subtitleOverride,
+  });
 
   final String sphereName;
   final String? templateKey;
+  final String? titleOverride;
+  final String? subtitleOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -1057,6 +1107,9 @@ class _DefaultSphereBanner extends StatelessWidget {
       );
     }
 
+    final title = (titleOverride ?? '').trim().isEmpty
+      ? palette.title
+      : titleOverride!.trim();
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -1112,18 +1165,10 @@ class _DefaultSphereBanner extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        palette.title,
+                        title,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        palette.subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.95),
-                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -1136,6 +1181,25 @@ class _DefaultSphereBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _shortBannerDescription(String? description) {
+  final text = (description ?? '').trim();
+  if (text.isEmpty) return null;
+
+  final periodIndex = text.indexOf('.');
+  if (periodIndex > 0 && periodIndex < 60) {
+    return text.substring(0, periodIndex).trim();
+  }
+
+  const maxLength = 60;
+  if (text.length <= maxLength) return text;
+
+  final slice = text.substring(0, maxLength);
+  final lastSpace = slice.lastIndexOf(' ');
+  final trimmed = (lastSpace > 20 ? slice.substring(0, lastSpace) : slice)
+      .trim();
+  return '$trimmed...';
 }
 
 class _CreateSphereScreen extends StatefulWidget {

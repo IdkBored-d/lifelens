@@ -13,6 +13,10 @@ class SleepScreen extends StatefulWidget {
   State<SleepScreen> createState() => _SleepScreenState();
 }
 
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
 class _SleepScreenState extends State<SleepScreen> {
   @override
   void initState() {
@@ -73,7 +77,11 @@ class _SleepScreenSelection {
   const _SleepScreenSelection({required this.items, required this.signature});
 
   factory _SleepScreenSelection.fromItems(List<Sleep> items) {
-    final visibleItems = items.take(20).toList(growable: false);
+    final today = DateTime.now();
+    final visibleItems = items
+        .where((item) => _isSameDay(item.date, today))
+        .take(20)
+        .toList(growable: false);
     final signature = visibleItems
         .map(
           (item) =>
