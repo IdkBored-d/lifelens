@@ -697,28 +697,40 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
 
     await _exerciseStore.ensureReady();
-    final hasExerciseToday = _exerciseStore
-        .getRecentExerciseHistory(limit: 40)
-        .any((item) {
-          final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
-          return timestamp != null && _isSameDay(timestamp, today);
-        });
+    final exerciseHistory = _exerciseStore.getRecentExerciseHistory(limit: 40);
+    final hasExerciseToday = exerciseHistory.any((item) {
+      final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
+      return timestamp != null && _isSameDay(timestamp, today);
+    });
 
-    final missing = <String>[
-      if (!hasMoodToday) 'mood',
-      if (!hasSleepToday) 'sleep',
-      if (!hasExerciseToday) 'exercise',
-    ];
+    final hasMoodEver = moodStore.items.isNotEmpty;
+    final hasSleepEver = sleepStore.items.isNotEmpty;
+    final hasExerciseEver = exerciseHistory.isNotEmpty;
+    final needsInitialSetup = !(hasMoodEver && hasSleepEver && hasExerciseEver);
 
-    if (missing.length == 3) {
-      return 'Hello $firstName. Start logging to get started';
+    if (needsInitialSetup) {
+      final missingInitial = <String>[
+        if (!hasMoodToday) 'mood',
+        if (!hasSleepToday) 'sleep',
+        if (!hasExerciseToday) 'exercise',
+      ];
+
+      if (missingInitial.length == 3) {
+        return 'Hello $firstName. For your first setup, log mood, sleep, and exercise once to get started.';
+      }
+
+      if (missingInitial.isEmpty) {
+        return null;
+      }
+
+      return 'For first-time setup, also log your ${_joinLogLabels(missingInitial)}.';
     }
 
-    if (missing.isEmpty) {
-      return null;
+    if (!hasMoodToday) {
+      return 'Log your mood to get a fresh Mini-Me suggestion. Sleep and exercise are optional but help with accuracy.';
     }
 
-    return 'Make sure you log your ${_joinLogLabels(missing)} as well';
+    return null;
   }
 
   bool _isSameDay(DateTime left, DateTime right) {
@@ -810,6 +822,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         }
         return;
       }
+
+      avatarStore.updateAdaptiveHealthAppearance(
+        mood: payloadMood,
+        sleep: payloadSleep,
+        exercise: payloadExercise,
+        symptomCount: payloadSymptoms,
+      );
 
       final response = await MiniMeBackendService.instance.analyzeIntelligence(
         sleep: payloadSleep,
@@ -1534,8 +1553,14 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       (intelligence?.miniMeLinkage['animation_state'] as String?) ?? '',
       intelligence?.trendClassification.values.join('|') ?? '',
     ].join('~');
+    final avatarStore = context.read<AvatarStore>();
+    final adaptationSignature = [
+      avatarStore.fatigueAppearanceLevel.toStringAsFixed(3),
+      avatarStore.healthTrendScore.toStringAsFixed(3),
+      avatarStore.effectiveBodyWidthScale.toStringAsFixed(3),
+    ].join('~');
     return '${moodItems.length}::${moodSignature}__${sleepItems.length}::${sleepSignature}__'
-        '$intelligenceSignature';
+        '${intelligenceSignature}__$adaptationSignature';
   }
 
   // ignore: unused_element
@@ -1544,6 +1569,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     required List<Sleep> sleepItems,
     required String? effectiveMoodLabel,
   }) {
+    final avatarStore = context.read<AvatarStore>();
+    final longTermFatigue = avatarStore.fatigueAppearanceLevel;
+    final longTermRecovery = avatarStore.healthTrendScore.clamp(0.0, 1.0);
     final now = DateTime.now();
     final recentMoodItems = moodItems.take(6).toList(growable: false);
     final recentSleepItems = sleepItems.take(6).toList(growable: false);
@@ -1562,9 +1590,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
     final hasRecentMoodData = recentMoodItems.isNotEmpty;
     final hasRecentSleepData = recentSleepItems.isNotEmpty;
-    final sleepDebt = hasRecentSleepData
+    final baseSleepDebt = hasRecentSleepData
         ? ((7.5 - avgSleepRecent) / 3.5).clamp(0.0, 1.0)
         : 0.0;
+    final sleepDebt =
+        (baseSleepDebt + longTermFatigue * 0.36 - longTermRecovery * 0.12)
+            .clamp(0.0, 1.0);
     final symptomLevel = (_activeSymptomCount / 5).clamp(0.0, 1.0);
     final consistency = _trackingConsistency(
       now: now,
@@ -1606,6 +1637,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     distressLevel += moodDrop * 0.24;
     if (_intelligence?.lowSleep == true) distressLevel += 0.14;
     if (_intelligence?.lowMood == true) distressLevel += 0.16;
+    distressLevel += longTermFatigue * 0.18;
+    distressLevel -= longTermRecovery * 0.1;
     distressLevel = distressLevel.clamp(0.0, 1.0);
 
     var recoveryLevel = 0.0;
@@ -1624,6 +1657,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
     recoveryLevel += streakStrength * 0.26;
     recoveryLevel += consistency * 0.16;
+    recoveryLevel += longTermRecovery * 0.22;
     if (_containsAny(moodLabel, const ['calm', 'happy', 'joy', 'peaceful'])) {
       recoveryLevel += 0.16;
     }
@@ -1650,14 +1684,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final wateryEyes =
         (_containsAny(moodLabel, const ['sad', 'distressed', 'overwhelmed']) &&
             distressLevel > 0.42) ||
-        symptomLevel > 0.7;
+        symptomLevel > 0.7 ||
+        longTermFatigue > 0.58;
     final messyHair =
-        (sleepDebt * 0.56 + distressLevel * 0.26 + symptomLevel * 0.14).clamp(
-          0.0,
-          1.0,
-        );
+        (sleepDebt * 0.56 +
+                distressLevel * 0.22 +
+                symptomLevel * 0.12 +
+                longTermFatigue * 0.14)
+            .clamp(0.0, 1.0);
     final postureSlump =
-        (sleepDebt * 0.46 + distressLevel * 0.24 + (1 - energyLevel) * 0.22)
+        (sleepDebt * 0.42 +
+                distressLevel * 0.2 +
+                longTermFatigue * 0.18 +
+                (1 - energyLevel) * 0.2)
             .clamp(0.0, 1.0);
     final positiveMoodTrend = avgMoodRecent > 0
         ? ((avgMoodRecent - 3.0) / 2.0).clamp(0.0, 1.0)

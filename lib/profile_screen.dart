@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'restart.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
-import 'dev_test_screen.dart';
 import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 
@@ -185,27 +184,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              _ProfileSection(
-                title: 'Developer',
-                children: [
-                  _ProfileTile(
-                    icon: Icons.science_outlined,
-                    label: 'Pipeline Tests',
-                    value: 'Open',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const DevTestScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
               ElevatedButton.icon(
                 icon: const Icon(Icons.logout),
                 label: const Text('Log out'),
@@ -236,10 +214,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     final firstName = (profileData?['firstName'] ?? '').toString().trim();
     final lastName = (profileData?['lastName'] ?? '').toString().trim();
-    final fullName = [firstName, lastName]
-        .where((value) => value.isNotEmpty)
-        .join(' ')
-        .trim();
+    final fullName = [
+      firstName,
+      lastName,
+    ].where((value) => value.isNotEmpty).join(' ').trim();
 
     if (fullName.isNotEmpty) {
       return fullName;
@@ -627,7 +605,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
   }
-
 }
 
 class _ProfileSection extends StatelessWidget {

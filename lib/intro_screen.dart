@@ -468,7 +468,7 @@ class _IntroScreenState extends State<IntroScreen> {
                           importedSource: _importedHealthSnapshot?.source,
                           selectedHealthImportSource:
                               _selectedHealthImportSource,
-                            availableHealthImportSources:
+                          availableHealthImportSources:
                               _availableHealthImportSources(),
                           onImportHealth: _importHealthInformation,
                         ),
@@ -622,6 +622,7 @@ class _WelcomeStep extends StatelessWidget {
       ],
     );
   }
+
 }
 
 class _HealthFormStep extends StatelessWidget {

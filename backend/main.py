@@ -435,16 +435,24 @@ def _memory_state_to_structured_context(memory_state: MiniMeMemoryState) -> str:
 
 
 def _build_opening_fallback(chat_input: MiniMeChatRequest) -> str:
-    mood = chat_input.latest_mood_label or 'neutral'
+    raw_mood = (chat_input.latest_mood_label or 'neutral').strip().lower()
+    mood_text = {
+        'joy': 'positive',
+        'love': 'connected',
+        'anger': 'frustrated',
+        'fear': 'stress-sensitive',
+        'surprise': 'mixed',
+        'sadness': 'low',
+    }.get(raw_mood, raw_mood)
     symptoms = ', '.join(chat_input.active_symptoms[:2]) if chat_input.active_symptoms else ''
     if symptoms:
         return (
-            f"Based on your recent {mood} mood and symptoms ({symptoms}), start with one gentle reset: "
+            f"Based on your recent mood trend ({mood_text}) and symptoms ({symptoms}), start with one gentle reset: "
             "drink water, take 5 slow breaths, and do a 10-minute low-stress task. "
             "After that, check if your symptoms are easing."
         )
     return (
-        f"Your current mood trend looks {mood}. Start with one small win: a 5-minute pause, "
+        f"Your recent mood trend appears {mood_text}. Start with one small win: take a 5-minute pause, "
         "name your top priority, and complete just the first step."
     )
 
@@ -495,6 +503,58 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
         if item.role == 'user' and item.text.strip()
     ]
     last_turn = recent_user_turns[-1] if recent_user_turns else ''
+    recent_assistant_turns = [
+        item.text.strip().lower()
+        for item in chat_input.chat_history[-6:]
+        if item.role == 'assistant' and item.text.strip()
+    ]
+    last_assistant_turn = recent_assistant_turns[-1] if recent_assistant_turns else ''
+
+    def _extract_goal_statement(message: str) -> str:
+        raw = (message or '').strip()
+        lowered = raw.lower().strip()
+        if not lowered:
+            return ''
+
+        prefixes = [
+            'i want to ',
+            'i need to ',
+            'i am going to ',
+            "i'm going to ",
+            'im going to ',
+            'i will ',
+            "i'll ",
+            'my goal is to ',
+            'today i will ',
+            'i plan to ',
+            'i am focusing on ',
+            "i'm focusing on ",
+            'i am working on ',
+            "i'm working on ",
+        ]
+        for prefix in prefixes:
+            if lowered.startswith(prefix):
+                goal = raw[len(prefix):].strip(' .!')
+                goal_lower = goal.lower()
+                if goal_lower.startswith('focus on '):
+                    goal = goal[len('focus on '):].strip(' .!')
+                return goal
+
+        # Common natural phrasing: "I want to focus on ..."
+        special = 'i want to focus on '
+        if lowered.startswith(special):
+            goal = raw[len(special):].strip(' .!')
+            return goal
+
+        if 'focus on' in lowered:
+            idx = lowered.find('focus on')
+            goal = raw[idx + len('focus on'):].strip(' .!')
+            if goal:
+                return goal
+
+        return ''
+
+    goal_statement = _extract_goal_statement(text)
 
     def _compose(reason: str, step: str, safety: str = '', ask_update: bool = True) -> str:
         prefix = f"I hear you. {reason}"
@@ -547,7 +607,9 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
         token in lower
         for token in [
             'i did', 'done', 'completed', 'finished', 'worked',
-            'i followed', 'i did it', 'that helped', 'it helped'
+            'i followed', 'i did it', 'that helped', 'it helped',
+            'feel better', 'feeling better', 'more relaxed', 'calmer',
+            'less stressed', 'more calm', 'better now'
         ]
     )
     completion_negative = any(
@@ -557,6 +619,19 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
             'didnt help', 'doesnt help', 'too hard', 'not working'
         ]
     )
+
+    if completion_positive and _mentions('relaxed', 'calmer', 'less stressed', 'better'):
+        if goal_statement:
+            return _compose(
+                "Great update, that means the reset helped.",
+                f"Use this calmer window for one focused 20-minute block on {goal_statement}, then take a short break.",
+                ask_update=False,
+            )
+        return _compose(
+            "Great update, that means the reset helped.",
+            "Use this calmer window for one focused 20-minute task, then take a 5-minute break and send me one line on what moved forward.",
+            ask_update=False,
+        )
 
     if completion_negative and last_step:
         return _compose(
@@ -570,10 +645,12 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
                 "Nice follow-through on that step.",
                 "Keep the same direction and add one gentle check-in in 1 hour: symptom intensity 0-10 plus energy level.",
                 "If symptoms escalate or become alarming, seek medical care promptly.",
+                ask_update=False,
             )
         return _compose(
             "Great job doing the last step.",
             "Use a progression: repeat it once more today, then add one small challenge (5-10 extra minutes or one extra action).",
+            ask_update=False,
         )
 
     if asks_repeat and last_step:
@@ -597,6 +674,22 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
         return _compose(
             "You are ready for the next step.",
             "Keep momentum: repeat the previous step once, then add one follow-up action focused on recovery and consistency.",
+        )
+
+    if goal_statement:
+        if any(
+            token in last_assistant_turn
+            for token in ['one concrete goal', 'give me one concrete goal']
+        ):
+            return _compose(
+                "Great, that is a clear goal.",
+                f"Run one focused 25-minute block on {goal_statement}. Then take a 5-minute reset, and send me this update: done or blocked plus one blocker.",
+                ask_update=False,
+            )
+        return _compose(
+            "Good commitment.",
+            f"Start now with one focused 20-25 minute block on {goal_statement}, then take a short reset and report what changed.",
+            ask_update=False,
         )
 
     if _mentions('sleep', 'insomnia', 'tired', 'exhausted', 'rest', 'wake', 'bedtime'):
@@ -644,7 +737,7 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
 
     if asks_plan:
         return _compose(
-            f"Your recent trend looks {mood}.",
+            f"Your recent pattern looks {mood}.",
             "Use a 3-step plan for the next 2 hours: hydrate, one focused task, then a short reset.",
         )
 
@@ -657,8 +750,8 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
         )
 
     return _compose(
-        f"I am tracking your recent {mood} trend.",
-        "Give me one concrete goal for the next hour and I will break it into a simple step-by-step plan.",
+        "Thanks for the update.",
+        "Share one concrete goal for the next hour, and I will break it into simple step-by-step actions.",
     )
 
 
@@ -755,6 +848,58 @@ Recent multi-log timeline (use this as evidence for cross-log patterns):
 
 Mini-Me conversation history:
 {history_text}
+"""
+
+
+def _build_suggestions_refinement_prompt(
+        suggestion_input: MiniMeSuggestionsRequest,
+        base_suggestions: List[MiniMeSuggestionItem],
+) -> str:
+        suggestion_window = (suggestion_input.suggestion_window or '').strip().lower() or 'unspecified'
+        latest_mood = (suggestion_input.latest_mood_label or 'unknown').strip()
+        intensity = suggestion_input.latest_mood_intensity
+        summary_context = (suggestion_input.summary_context or '').strip() or 'No summary context available.'
+        active_symptoms = suggestion_input.active_symptoms or []
+        symptoms_text = ', '.join(active_symptoms[:20]) if active_symptoms else 'None reported currently'
+
+        lines = []
+        for index, item in enumerate(base_suggestions, start=1):
+                lines.append(
+                        f"{index}. action: {item.action}\n"
+                        f"   reason: {item.reason}"
+                )
+        base_text = '\n'.join(lines)
+
+        target_count = len(base_suggestions)
+        return f"""You are editing Mini-Me suggestions for readability only.
+
+Task:
+- Rewrite each suggestion so it is clearer and more natural for users.
+- Preserve the original intent and practical next step.
+- Keep the same number of suggestions ({target_count}).
+- Keep each action and reason concise, warm, and easy to understand.
+- Do not add medical diagnosis or new high-risk guidance.
+- Do not invent new goals unrelated to the original suggestions.
+- Return valid JSON only.
+
+Return exactly this JSON shape:
+{{
+    "suggestions": [
+        {{"action": "Refined action sentence.", "reason": "Refined reason sentence."}},
+        {{"action": "Refined action sentence.", "reason": "Refined reason sentence."}},
+        {{"action": "Refined action sentence.", "reason": "Refined reason sentence."}}
+    ]
+}}
+
+Context:
+- Delivery window: {suggestion_window}
+- Latest mood: {latest_mood}
+- Mood intensity: {intensity if intensity is not None else 'unknown'} / 5
+- Active symptoms: {symptoms_text}
+- Summary context: {summary_context}
+
+Base suggestions to refine (keep same intent/order/count):
+{base_text}
 """
 
 
@@ -1109,20 +1254,24 @@ async def minime_suggestions(
     suggestion_input: MiniMeSuggestionsRequest,
     analysis_service: GeminiAnalysisService = Depends(get_analysis_service)
 ):
-    """Generate user-specific Mini-Me suggestions from logs and chat history."""
+    """Generate deterministic suggestions, then optionally refine wording with Gemini."""
+    base_response = _build_suggestions_fallback(suggestion_input)
     try:
         if (not _is_gemini_enabled()) or analysis_service.client is None:
-            return _build_suggestions_fallback(suggestion_input)
+            return base_response
 
-        prompt = _build_suggestions_prompt(suggestion_input)
+        prompt = _build_suggestions_refinement_prompt(
+            suggestion_input,
+            base_response.suggestions,
+        )
         response = analysis_service.client.models.generate_content(
             model='gemini-2.5-flash-lite',
             contents=prompt,
             config=types.GenerateContentConfig(
-                temperature=0.9,
-                top_p=0.95,
+                temperature=0.35,
+                top_p=0.9,
                 top_k=40,
-                max_output_tokens=700,
+                max_output_tokens=500,
                 candidate_count=1,
                 response_mime_type='application/json',
             ),
@@ -1139,27 +1288,23 @@ async def minime_suggestions(
                 action=(item.get('action') or '').strip(),
                 reason=(item.get('reason') or '').strip(),
             )
-            for item in raw_suggestions[:3]
+            for item in raw_suggestions[:len(base_response.suggestions)]
             if (item.get('action') or '').strip() and (item.get('reason') or '').strip()
         ]
 
         if not suggestions:
-            raise ValueError('No valid suggestions returned from Gemini')
+            raise ValueError('No valid refinement returned from Gemini')
+
+        while len(suggestions) < len(base_response.suggestions):
+            suggestions.append(base_response.suggestions[len(suggestions)])
 
         return MiniMeSuggestionsResponse(
             suggestions=suggestions,
-            source='gemini',
+            source='fallback',
         )
     except Exception as e:
-        logger.warning(f"Mini-Me suggestions fallback used: {e}")
-        try:
-            return _build_suggestions_fallback(suggestion_input)
-        except Exception as fallback_error:
-            logger.error(f"Mini-Me suggestions fallback failed: {fallback_error}")
-            raise HTTPException(
-                status_code=503,
-                detail="Mini-Me suggestions are temporarily unavailable.",
-            )
+        logger.warning(f"Mini-Me suggestion refinement skipped; using deterministic fallback: {e}")
+        return base_response
 
 
 @app.post(

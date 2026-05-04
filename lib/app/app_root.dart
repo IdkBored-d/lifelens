@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../auth/signup_login.dart';
 import '../loading_screen.dart';
 import '../home_screen.dart';
@@ -45,6 +46,12 @@ class _AppRootState extends State<AppRoot> {
         if (initSnapshot.hasError) {
           return _InitErrorScreen(
             error: initSnapshot.error.toString(),
+            onRetry: () => setState(() => _initFuture = initializeApp()),
+          );
+        }
+
+        if (Firebase.apps.isEmpty) {
+          return _FirebaseUnavailableScreen(
             onRetry: () => setState(() => _initFuture = initializeApp()),
           );
         }
@@ -183,6 +190,41 @@ class _InitErrorScreen extends StatelessWidget {
                 error,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FirebaseUnavailableScreen extends StatelessWidget {
+  const _FirebaseUnavailableScreen({required this.onRetry});
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_outlined, size: 48),
+              const SizedBox(height: 16),
+              const Text(
+                'Firebase Not Configured',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This build is missing Firebase configuration for this platform.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13),
               ),
               const SizedBox(height: 24),
               FilledButton(onPressed: onRetry, child: const Text('Retry')),

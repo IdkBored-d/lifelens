@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -24,22 +25,29 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  final firebaseReady = await _initializeFirebaseSafely();
 
-  // Register FCM background handler before runApp.
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  if (firebaseReady) {
+    // Register FCM background handler before runApp.
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // Request notification permission + persist FCM token.
-  unawaited(FcmTokenService.instance.init());
+    // Request notification permission + persist FCM token.
+    unawaited(FcmTokenService.instance.init());
+  } else {
+    debugPrint(
+      '[main] Firebase initialization failed; continuing without Firebase services.',
+    );
+  }
 
   debugPaintSizeEnabled = false;
   debugPaintBaselinesEnabled = false;
   debugPaintPointersEnabled = false;
   debugRepaintRainbowEnabled = false;
 
-  // Register the headless background fetch callback for when the app is terminated.
-  // Must be called before runApp().
-  BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
+  // Register headless background fetch only on platforms that support it.
+  if (Platform.isAndroid || Platform.isIOS) {
+    BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
+  }
   runApp(
     MultiProvider(
       providers: [
@@ -52,6 +60,16 @@ void main() async {
       child: const MyApp(),
     ),
   );
+}
+
+Future<bool> _initializeFirebaseSafely() async {
+  try {
+    await Firebase.initializeApp();
+    return true;
+  } catch (e) {
+    debugPrint('[main] Firebase.initializeApp() failed: $e');
+    return false;
+  }
 }
 
 class MyApp extends StatelessWidget {

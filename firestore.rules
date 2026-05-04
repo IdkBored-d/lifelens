@@ -31,7 +31,8 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read, create, update, delete: if isSelf(userId);
+      allow read: if signedIn();
+      allow create, update, delete: if isSelf(userId);
 
       match /sleep_logs/{logId} {
         allow read, create, update, delete: if isSelf(userId);
@@ -48,6 +49,46 @@ service cloud.firestore {
       match /streaks/{streakId} {
         allow read, create, update, delete: if isSelf(userId);
       }
+
+      match /friends/{friendId} {
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId) ||
+          request.resource.data.userId == request.auth.uid;
+        allow delete: if isSelf(userId) ||
+          resource.data.userId == request.auth.uid;
+      }
+
+      match /sphere_invites/{inviteId} {
+        allow read: if isSelf(userId);
+        allow create: if signedIn() &&
+          request.resource.data.fromUserId == request.auth.uid &&
+          request.resource.data.toUserId == userId;
+        allow update, delete: if isSelf(userId);
+      }
+    }
+
+    match /usernames/{usernameLower} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /friend_requests/{requestId} {
+      allow read: if signedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+
+      allow create: if signedIn() &&
+        request.resource.data.fromUserId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+
+      allow update: if signedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+
+      allow delete: if false;
     }
 
     match /symptom_entries/{entryId} {

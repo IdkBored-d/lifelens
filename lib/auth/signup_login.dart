@@ -23,7 +23,8 @@ class _SignupLoginState extends State<SignupLogin> {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _usernameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _signupUsernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final ValueNotifier<bool> _rememberMe = ValueNotifier<bool>(false);
@@ -40,7 +41,8 @@ class _SignupLoginState extends State<SignupLogin> {
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
-    _usernameController.dispose();
+    _emailController.dispose();
+    _signupUsernameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _rememberMe.dispose();
@@ -60,12 +62,24 @@ class _SignupLoginState extends State<SignupLogin> {
         : '';
 
     if (_rememberMe.value == savedRememberMe &&
-        _usernameController.text == nextEmail) {
+        _emailController.text == nextEmail) {
       return;
     }
 
     _rememberMe.value = savedRememberMe;
-    _usernameController.text = nextEmail;
+    _emailController.text = nextEmail;
+  }
+
+  String _normalizeUsername(String input) {
+    var value = input.trim().toLowerCase();
+    if (value.startsWith('@')) {
+      value = value.substring(1);
+    }
+    return value;
+  }
+
+  bool _isValidUsername(String input) {
+    return RegExp(r'^[a-z0-9_.]{3,24}$').hasMatch(_normalizeUsername(input));
   }
 
   Future<void> _submit() async {
@@ -75,7 +89,9 @@ class _SignupLoginState extends State<SignupLogin> {
     setState(() => _isSubmitting = true);
 
     try {
-      final email = _usernameController.text.trim();
+      final email = _emailController.text.trim();
+      final desiredUsername = _signupUsernameController.text.trim();
+      final usernameLower = _normalizeUsername(desiredUsername);
       final password = _passwordController.text;
 
       final prefs = await SharedPreferences.getInstance();
@@ -86,24 +102,72 @@ class _SignupLoginState extends State<SignupLogin> {
           password: password,
         );
       } else {
+        if (!_isValidUsername(desiredUsername)) {
+          throw FirebaseAuthException(
+            code: 'invalid-username',
+            message:
+                'Username must be 3-24 characters using letters, numbers, ., _.',
+          );
+        }
+
         final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email,
           password: password,
         );
 
-        await VerificationEmailService.send(cred.user!);
+        final usernameRef = FirebaseFirestore.instance
+            .collection('usernames')
+            .doc(usernameLower);
+
+        try {
+          await FirebaseFirestore.instance.runTransaction((tx) async {
+            final existing = await tx.get(usernameRef);
+            if (existing.exists) {
+              final owner = (existing.data()?['uid'] ?? '').toString();
+              if (owner != cred.user!.uid) {
+                throw FirebaseAuthException(
+                  code: 'username-taken',
+                  message: 'That username is already taken.',
+                );
+              }
+            }
+
+            tx.set(usernameRef, {
+              'uid': cred.user!.uid,
+              'username': desiredUsername,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          });
+        } on FirebaseAuthException catch (e) {
+          // Username conflict should rollback the newly-created auth user.
+          if (e.code == 'username-taken') {
+            await cred.user?.delete();
+          }
+          rethrow;
+        } on FirebaseException catch (e) {
+          // If username registry rules are not deployed yet, continue by saving
+          // username directly on users/{uid}. This keeps sign-up + verification
+          // working instead of bouncing the user back to login.
+          if (e.code != 'permission-denied') {
+            rethrow;
+          }
+        }
 
         await FirebaseFirestore.instance
             .collection('users')
             .doc(cred.user!.uid)
             .set({
               'email': email,
+              'username': desiredUsername,
+              'usernameLower': usernameLower,
               'firstName': _firstNameController.text.trim(),
               'lastName': _lastNameController.text.trim(),
               'createdAt': FieldValue.serverTimestamp(),
               'displayName': '',
               'onboardingComplete': false,
             });
+
+        await VerificationEmailService.send(cred.user!);
       }
 
       if (isLogin && _rememberMe.value) {
@@ -121,6 +185,14 @@ class _SignupLoginState extends State<SignupLogin> {
           content: Text(e.message ?? 'Authentication error'),
         ),
       );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(e.message ?? 'Could not save your profile.'),
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _isSubmitting = false);
@@ -129,7 +201,7 @@ class _SignupLoginState extends State<SignupLogin> {
   }
 
   Future<void> _forgotPassword() async {
-    final email = _usernameController.text.trim();
+    final email = _emailController.text.trim();
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -167,7 +239,8 @@ class _SignupLoginState extends State<SignupLogin> {
       _hideConfirm.value = true;
       _firstNameController.clear();
       _lastNameController.clear();
-      _usernameController.clear();
+      _emailController.clear();
+      _signupUsernameController.clear();
       _passwordController.clear();
       _confirmPasswordController.clear();
     });
@@ -228,13 +301,15 @@ class _SignupLoginState extends State<SignupLogin> {
                                         firstNameController:
                                             _firstNameController,
                                         lastNameController: _lastNameController,
+                                        usernameController:
+                                            _signupUsernameController,
                                         isSignupMode: !isLogin,
                                       ),
                               ),
                               if (!isLogin) const SizedBox(height: 14),
                               _CredentialsCard(
                                 isLogin: isLogin,
-                                usernameController: _usernameController,
+                                emailController: _emailController,
                                 passwordController: _passwordController,
                                 confirmPasswordController:
                                     _confirmPasswordController,
@@ -608,11 +683,13 @@ class _IdentityCard extends StatelessWidget {
   const _IdentityCard({
     required this.firstNameController,
     required this.lastNameController,
+    required this.usernameController,
     required this.isSignupMode,
   });
 
   final TextEditingController firstNameController;
   final TextEditingController lastNameController;
+  final TextEditingController usernameController;
   final bool isSignupMode;
 
   @override
@@ -672,6 +749,29 @@ class _IdentityCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (isSignupMode) ...[
+              const SizedBox(height: 10),
+              _AuthField(
+                controller: usernameController,
+                label: 'Username',
+                hint: '@yourname',
+                icon: Icons.alternate_email_rounded,
+                textInputAction: TextInputAction.next,
+                validator: (value) {
+                  var v = (value ?? '').trim().toLowerCase();
+                  if (v.startsWith('@')) {
+                    v = v.substring(1);
+                  }
+                  if (v.isEmpty) {
+                    return 'Required';
+                  }
+                  if (!RegExp(r'^[a-z0-9_.]{3,24}$').hasMatch(v)) {
+                    return 'Use 3-24 chars: a-z, 0-9, ., _';
+                  }
+                  return null;
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -682,7 +782,7 @@ class _IdentityCard extends StatelessWidget {
 class _CredentialsCard extends StatelessWidget {
   const _CredentialsCard({
     required this.isLogin,
-    required this.usernameController,
+    required this.emailController,
     required this.passwordController,
     required this.confirmPasswordController,
     required this.hidePasswordListenable,
@@ -691,7 +791,7 @@ class _CredentialsCard extends StatelessWidget {
   });
 
   final bool isLogin;
-  final TextEditingController usernameController;
+  final TextEditingController emailController;
   final TextEditingController passwordController;
   final TextEditingController confirmPasswordController;
   final ValueNotifier<bool> hidePasswordListenable;
@@ -717,7 +817,7 @@ class _CredentialsCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             _AuthField(
-              controller: usernameController,
+              controller: emailController,
               label: 'Email',
               hint: 'you@example.com',
               icon: Icons.alternate_email_rounded,

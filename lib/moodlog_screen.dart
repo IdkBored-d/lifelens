@@ -11,6 +11,8 @@ import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/moodlog_store.dart';
+import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
+import 'package:lifelens/sleep_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
@@ -60,7 +62,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     "Health",
     "Partner",
     "Finances",
-    "Hobby"
+    "Hobby",
   ];
 
   @override
@@ -518,7 +520,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 moodEntry,
                               );
                               if (context.mounted) {
-                                context.read<MoodLogStore>().add(
+                                final moodStore = context.read<MoodLogStore>();
+                                moodStore.add(
                                   MoodCheckIn(
                                     moodLabel: m.label,
                                     emoji: m.emoji,
@@ -527,6 +530,14 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                     notes: notes,
                                     createdAt: now,
                                   ),
+                                );
+                                unawaited(
+                                  context
+                                      .read<MiniMeSuggestionsInbox>()
+                                      .refresh(
+                                        moodStore: moodStore,
+                                        sleepStore: context.read<SleepStore>(),
+                                      ),
                                 );
                               }
                               await TrackingReminderService.instance

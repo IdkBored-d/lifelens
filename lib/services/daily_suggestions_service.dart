@@ -56,11 +56,13 @@ class DailySuggestionsSnapshot {
 
 class _RequiredLogStatus {
   const _RequiredLogStatus({
+    required this.requiresInitialSetup,
     required this.hasAnyRequiredLogsToday,
     required this.hasAllRequiredLogsToday,
     required this.missingRequiredLogs,
   });
 
+  final bool requiresInitialSetup;
   final bool hasAnyRequiredLogsToday;
   final bool hasAllRequiredLogsToday;
   final List<String> missingRequiredLogs;
@@ -228,15 +230,30 @@ class DailySuggestionsService {
           _isSameDay(item.date, today) || _isSameDay(item.wakeTime, today),
     );
 
-    final missing = <String>[
-      if (!hasMoodToday) 'mood',
-      if (!hasSleepToday) 'sleep',
-      if (todayExerciseCount <= 0) 'exercise',
-    ];
+    final exerciseStore = ExerciseStore();
+    await exerciseStore.ensureReady();
+    final hasExerciseEver = exerciseStore
+        .getRecentExerciseHistory(limit: 1)
+        .isNotEmpty;
+
+    final hasMoodEver = moodStore.items.isNotEmpty;
+    final hasSleepEver = sleepStore.items.isNotEmpty;
+    final requiresInitialSetup =
+        !(hasMoodEver && hasSleepEver && hasExerciseEver);
+
+    final missing = requiresInitialSetup
+        ? <String>[
+            if (!hasMoodToday) 'mood',
+            if (!hasSleepToday) 'sleep',
+            if (todayExerciseCount <= 0) 'exercise',
+          ]
+        : <String>[if (!hasMoodToday) 'mood'];
 
     return _RequiredLogStatus(
-      hasAnyRequiredLogsToday:
-          hasMoodToday || hasSleepToday || todayExerciseCount > 0,
+      requiresInitialSetup: requiresInitialSetup,
+      hasAnyRequiredLogsToday: requiresInitialSetup
+          ? (hasMoodToday || hasSleepToday || todayExerciseCount > 0)
+          : hasMoodToday,
       hasAllRequiredLogsToday: missing.isEmpty,
       missingRequiredLogs: missing,
     );

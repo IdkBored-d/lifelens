@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../avatar_store.dart';
 import '../models/sphere.dart';
+import 'social_features.dart';
 import '../services/content_moderation_service.dart';
 import '../services/exercise_store.dart';
 import '../sleep_store.dart';
@@ -118,10 +119,10 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     _typingTimer?.cancel();
     if (!_isCurrentlyTyping) {
       _isCurrentlyTyping = true;
-      _membersRef.doc(userId).update({
-        'isTyping': true,
-        'typingAt': FieldValue.serverTimestamp(),
-      }).catchError((_) {});
+      _membersRef
+          .doc(userId)
+          .update({'isTyping': true, 'typingAt': FieldValue.serverTimestamp()})
+          .catchError((_) {});
     }
     _typingTimer = Timer(const Duration(seconds: 3), _clearTyping);
   }
@@ -133,10 +134,13 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     _isCurrentlyTyping = false;
     final userId = _userId;
     if (userId == null) return;
-    _membersRef.doc(userId).update({
-      'isTyping': FieldValue.delete(),
-      'typingAt': FieldValue.delete(),
-    }).catchError((_) {});
+    _membersRef
+        .doc(userId)
+        .update({
+          'isTyping': FieldValue.delete(),
+          'typingAt': FieldValue.delete(),
+        })
+        .catchError((_) {});
   }
 
   Future<void> _bootstrapSphere() async {
@@ -267,17 +271,19 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     );
     try {
       final uri = Uri.parse('$_backendBase/api/v1/notify/sphere_message');
-      await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'sphere_id': sphereId,
-          'sphere_name': sphereName,
-          'sender_user_id': senderUserId,
-          'sender_nickname': senderNickname,
-          'text': text,
-        }),
-      ).timeout(const Duration(seconds: 8));
+      await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'sphere_id': sphereId,
+              'sphere_name': sphereName,
+              'sender_user_id': senderUserId,
+              'sender_nickname': senderNickname,
+              'text': text,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
     } catch (_) {
       // Non-fatal — notification delivery is best-effort.
     }
@@ -418,21 +424,24 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                 leading: const Icon(Icons.emoji_events_outlined),
                 title: const Text('Milestone'),
                 subtitle: const Text('Share a personal win'),
-                onTap: () => Navigator.of(context).pop(_QuickShareAction.milestone),
+                onTap: () =>
+                    Navigator.of(context).pop(_QuickShareAction.milestone),
               ),
               if (_isSleepSphere)
                 ListTile(
                   leading: const Icon(Icons.support_agent_outlined),
                   title: const Text('Sleep help request'),
                   subtitle: const Text('Only for rough nights (under 6 hours)'),
-                  onTap: () => Navigator.of(context).pop(_QuickShareAction.sleepHelp),
+                  onTap: () =>
+                      Navigator.of(context).pop(_QuickShareAction.sleepHelp),
                 ),
               if (_isExerciseSphere)
                 ListTile(
                   leading: const Icon(Icons.fitness_center_outlined),
                   title: const Text('Share exercise log'),
                   subtitle: const Text('Post your latest exercise entry'),
-                  onTap: () => Navigator.of(context).pop(_QuickShareAction.exercise),
+                  onTap: () =>
+                      Navigator.of(context).pop(_QuickShareAction.exercise),
                 ),
             ],
           ),
@@ -480,15 +489,15 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                       Text(
                         'Achievement card',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Fill out each box, then post your milestone to the sphere.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       const SizedBox(height: 14),
                       _MilestoneInputField(
@@ -522,7 +531,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                             final safeDescription = description.trim();
                             if (safeTitle.isEmpty || safeDescription.isEmpty) {
                               setModalState(() {
-                                errorText = 'Please fill out all boxes before sharing.';
+                                errorText =
+                                    'Please fill out all boxes before sharing.';
                               });
                               return;
                             }
@@ -565,7 +575,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (!_isSleepSphere) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sleep help requests can only be shared in the Sleep sphere.')),
+        const SnackBar(
+          content: Text(
+            'Sleep help requests can only be shared in the Sleep sphere.',
+          ),
+        ),
       );
       return;
     }
@@ -587,7 +601,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Sleep help request is only for short sleep nights (under 6 hours).'),
+          content: Text(
+            'Sleep help request is only for short sleep nights (under 6 hours).',
+          ),
         ),
       );
       return;
@@ -618,7 +634,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (!_isExerciseSphere) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Exercise logs can only be shared in the Exercise sphere.')),
+        const SnackBar(
+          content: Text(
+            'Exercise logs can only be shared in the Exercise sphere.',
+          ),
+        ),
       );
       return;
     }
@@ -670,10 +690,10 @@ class _SphereChatScreenState extends State<SphereChatScreen>
           ].join(' • ');
 
     final text = workoutItems.isNotEmpty
-      ? detail
-      : detail.isEmpty
-      ? 'Exercise log: Completed a workout session.'
-      : 'Exercise log: $detail';
+        ? detail
+        : detail.isEmpty
+        ? 'Exercise log: Completed a workout session.'
+        : 'Exercise log: $detail';
 
     await _postQuickShare(
       type: 'exercise_log',
@@ -754,7 +774,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     await memberRef.update({'reportCount': FieldValue.increment(1)});
 
     final memberDoc = await memberRef.get();
-    final reportCount = (memberDoc.data()?['reportCount'] as num?)?.toInt() ?? 0;
+    final reportCount =
+        (memberDoc.data()?['reportCount'] as num?)?.toInt() ?? 0;
 
     if (reportCount >= 3) {
       await _kickUserFromSphere(
@@ -775,8 +796,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     }
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Report submitted')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Report submitted')));
   }
 
   Future<void> _deletePost(String postId) async {
@@ -838,7 +860,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       if (newWarningCount >= 3) {
         await _kickUserFromSphere(
           userId,
-          reason: 'Exceeded warning limit (3 warnings): ${detectedWords.join(", ")}',
+          reason:
+              'Exceeded warning limit (3 warnings): ${detectedWords.join(", ")}',
         );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -981,8 +1004,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                         final isMe = memberId == _userId;
                         final member = members[index].data();
                         final memberNickname = member['nickname'] as String?;
-                        final displayNickname = isMe ? 'You' : (memberNickname ?? 'Anonymous');
-                        final isMemberOwner = (member['role'] ?? 'member') == 'owner' ||
+                        final displayNickname = isMe
+                            ? 'You'
+                            : (memberNickname ?? 'Anonymous');
+                        final isMemberOwner =
+                            (member['role'] ?? 'member') == 'owner' ||
                             memberId == widget.sphere.creatorId;
                         final miniMe = Map<String, dynamic>.from(
                           member['miniMe'] as Map? ?? {},
@@ -1016,18 +1042,18 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                           trailing: isMemberOwner
                               ? const Text('Owner')
                               : isOwner && !isMe
-                                  ? IconButton(
-                                      tooltip: 'Kick member',
-                                      icon: Icon(
-                                        Icons.remove_circle_outline,
-                                        color: cs.error,
-                                      ),
-                                      onPressed: () => _confirmKickMember(
-                                        memberId: memberId,
-                                        nickname: memberNickname ?? 'this member',
-                                      ),
-                                    )
-                                  : null,
+                              ? IconButton(
+                                  tooltip: 'Kick member',
+                                  icon: Icon(
+                                    Icons.remove_circle_outline,
+                                    color: cs.error,
+                                  ),
+                                  onPressed: () => _confirmKickMember(
+                                    memberId: memberId,
+                                    nickname: memberNickname ?? 'this member',
+                                  ),
+                                )
+                              : null,
                         );
                       },
                     );
@@ -1074,19 +1100,18 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     Navigator.pop(context);
 
     try {
-      await _kickUserFromSphere(
-        memberId,
-        reason: 'Removed by sphere owner',
-      );
+      await _kickUserFromSphere(memberId, reason: 'Removed by sphere owner');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"$nickname" has been removed from the sphere.')),
+        SnackBar(
+          content: Text('"$nickname" has been removed from the sphere.'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to kick member: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to kick member: $e')));
     }
   }
 
@@ -1200,8 +1225,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                       .limit(1)
                       .get();
                   if (!context.mounted) return;
-                  final takenByOther = taken.docs.isNotEmpty &&
-                      taken.docs.first.id != _userId;
+                  final takenByOther =
+                      taken.docs.isNotEmpty && taken.docs.first.id != _userId;
                   if (takenByOther) {
                     setDialogState(() {
                       isChecking = false;
@@ -1294,6 +1319,32 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     ).showSnackBar(const SnackBar(content: Text('Left sphere successfully')));
   }
 
+  Future<void> _inviteFriendsToSphere() async {
+    final selected = await SocialFeatures.showFriendPicker(
+      context,
+      title: 'Invite friends to ${widget.sphere.name}',
+      actionLabel: 'Send invites',
+    );
+    if (!mounted || selected == null || selected.isEmpty) return;
+
+    try {
+      final sent = await SocialFeatures.sendSphereInvites(
+        sphereId: widget.sphere.id,
+        sphereName: widget.sphere.name,
+        friendUserIds: selected,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sent $sent invite${sent == 1 ? '' : 's'}.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not send invites: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1327,6 +1378,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
             onSelected: (value) {
               if (value == 'change_nickname') {
                 _showChangeNicknameDialog();
+              } else if (value == 'invite_friends') {
+                _inviteFriendsToSphere();
               } else if (value == 'leave_sphere') {
                 _showLeaveSphereDialog();
               }
@@ -1339,6 +1392,16 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                     Icon(Icons.edit_outlined),
                     SizedBox(width: 12),
                     Text('Change Nickname'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'invite_friends',
+                child: Row(
+                  children: [
+                    Icon(Icons.person_add_alt_rounded),
+                    SizedBox(width: 12),
+                    Text('Invite Friends'),
                   ],
                 ),
               ),
@@ -1364,7 +1427,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
               removeRight: true,
               child: Column(
                 children: [
-                  if (_bannerUrl != null || _defaultChatBannerPaletteForSphere(widget.sphere.name) != null)
+                  if (_bannerUrl != null ||
+                      _defaultChatBannerPaletteForSphere(widget.sphere.name) !=
+                          null)
                     SizedBox(
                       height: 170,
                       child: LayoutBuilder(
@@ -1398,128 +1463,144 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                       child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                         stream: _postsStream,
                         builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Center(child: Text('Error: ${snapshot.error}'));
-                      }
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Text('Error: ${snapshot.error}'),
+                            );
+                          }
 
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                          if (!snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
 
-                      final seededPosts = snapshot.data!.docs.where((doc) {
-                        final data = doc.data();
-                        final seedVersion =
-                            (data['seedVersion'] as num?)?.toInt() ?? -1;
-                        if (_activeChatSeedVersion > 0 &&
-                            seedVersion != _activeChatSeedVersion) {
-                          return false;
-                        }
-                        return true;
-                      }).toList(growable: false);
+                          final seededPosts = snapshot.data!.docs
+                              .where((doc) {
+                                final data = doc.data();
+                                final seedVersion =
+                                    (data['seedVersion'] as num?)?.toInt() ??
+                                    -1;
+                                if (_activeChatSeedVersion > 0 &&
+                                    seedVersion != _activeChatSeedVersion) {
+                                  return false;
+                                }
+                                return true;
+                              })
+                              .toList(growable: false);
                           final posts = seededPosts
-                            .where(
-                            (doc) =>
-                              !_pendingDeletePostIds.contains(doc.id),
-                            )
-                            .toList(growable: false);
-                      if (posts.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
-                          child: _EmptyCommunityState(
-                            sphereName: widget.sphere.name,
-                            onCreatePost: _focusInlineComposer,
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        controller: _scrollController,
-                        reverse: true,
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
-                        itemCount: posts.length,
-                        itemBuilder: (context, index) {
-                          final postDoc = posts[index];
-                          final postData = postDoc.data();
-                          final postType =
-                              (postData['type'] ?? 'check_in').toString();
-
-                          if (postType == 'system_join') {
+                              .where(
+                                (doc) =>
+                                    !_pendingDeletePostIds.contains(doc.id),
+                              )
+                              .toList(growable: false);
+                          if (posts.isEmpty) {
                             return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _SystemEventNotice(
-                                text: (postData['text'] ?? '').toString(),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                12,
+                                16,
+                                104,
+                              ),
+                              child: _EmptyCommunityState(
+                                sphereName: widget.sphere.name,
+                                onCreatePost: _focusInlineComposer,
                               ),
                             );
                           }
 
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _ChatMessageTile(
-                              postDoc: postDoc,
-                              currentUserId: _userId,
-                              timeRevealOffset: _timeRevealOffset,
-                              onReply: () {
-                                final postData = postDoc.data();
-                                final replyTargetName =
-                                    (postData['nickname'] ??
-                                            postData['miniMeName'] ??
-                                            'friend')
-                                        .toString();
-                                final replyTarget = _ReplyTarget(
-                                  postId: postDoc.id,
-                                  userId:
-                                      (postData['userId'] ?? '').toString(),
-                                  userName: replyTargetName,
-                                  text: (postData['text'] ?? '').toString(),
+                          return ListView.builder(
+                            controller: _scrollController,
+                            reverse: true,
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
+                            itemCount: posts.length,
+                            itemBuilder: (context, index) {
+                              final postDoc = posts[index];
+                              final postData = postDoc.data();
+                              final postType = (postData['type'] ?? 'check_in')
+                                  .toString();
+
+                              if (postType == 'system_join') {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _SystemEventNotice(
+                                    text: (postData['text'] ?? '').toString(),
+                                  ),
                                 );
-                                setState(
-                                  () => _composerReplyTarget = replyTarget,
-                                );
-                                _focusInlineComposer();
-                              },
-                              onReport: () => _showReportDialog(
-                                postId: postDoc.id,
-                                reportedUserId:
-                                    (postDoc.data()['userId'] ?? '').toString(),
-                                text: postDoc.data()['text'] ?? '',
-                              ),
-                              onDelete: () => _deletePost(postDoc.id),
-                            ),
+                              }
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _ChatMessageTile(
+                                  postDoc: postDoc,
+                                  currentUserId: _userId,
+                                  timeRevealOffset: _timeRevealOffset,
+                                  onReply: () {
+                                    final postData = postDoc.data();
+                                    final replyTargetName =
+                                        (postData['nickname'] ??
+                                                postData['miniMeName'] ??
+                                                'friend')
+                                            .toString();
+                                    final replyTarget = _ReplyTarget(
+                                      postId: postDoc.id,
+                                      userId: (postData['userId'] ?? '')
+                                          .toString(),
+                                      userName: replyTargetName,
+                                      text: (postData['text'] ?? '').toString(),
+                                    );
+                                    setState(
+                                      () => _composerReplyTarget = replyTarget,
+                                    );
+                                    _focusInlineComposer();
+                                  },
+                                  onReport: () => _showReportDialog(
+                                    postId: postDoc.id,
+                                    reportedUserId:
+                                        (postDoc.data()['userId'] ?? '')
+                                            .toString(),
+                                    text: postDoc.data()['text'] ?? '',
+                                  ),
+                                  onDelete: () => _deletePost(postDoc.id),
+                                ),
+                              );
+                            },
                           );
                         },
-                      );
+                      ),
+                    ),
+                  ),
+                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _typingStream,
+                    builder: (context, typingSnapshot) {
+                      final currentUid = _userId;
+                      final typers = (typingSnapshot.data?.docs ?? [])
+                          .where((doc) => doc.id != currentUid)
+                          .map(
+                            (doc) =>
+                                (doc.data()['nickname'] as String?) ??
+                                'Someone',
+                          )
+                          .toList();
+                      return _TypingIndicatorBanner(typers: typers);
                     },
                   ),
+                  _ComposerDock(
+                    userNickname: _userNickname,
+                    controller: _composerController,
+                    focusNode: _composerFocusNode,
+                    replyTarget: _composerReplyTarget,
+                    isSending: _isSendingPost,
+                    onChanged: _onComposerChanged,
+                    onOpenQuickShare: _showQuickShareOptions,
+                    onSend: _submitInlinePost,
+                    onCancelReply: () {
+                      setState(() => _composerReplyTarget = null);
+                    },
                   ),
-                ),
-                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: _typingStream,
-                  builder: (context, typingSnapshot) {
-                    final currentUid = _userId;
-                    final typers = (typingSnapshot.data?.docs ?? [])
-                        .where((doc) => doc.id != currentUid)
-                        .map((doc) =>
-                            (doc.data()['nickname'] as String?) ?? 'Someone')
-                        .toList();
-                    return _TypingIndicatorBanner(typers: typers);
-                  },
-                ),
-                _ComposerDock(
-                  userNickname: _userNickname,
-                  controller: _composerController,
-                  focusNode: _composerFocusNode,
-                  replyTarget: _composerReplyTarget,
-                  isSending: _isSendingPost,
-                  onChanged: _onComposerChanged,
-                  onOpenQuickShare: _showQuickShareOptions,
-                  onSend: _submitInlinePost,
-                  onCancelReply: () {
-                    setState(() => _composerReplyTarget = null);
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
     );
   }
 
@@ -1647,8 +1728,10 @@ class _TypingIndicatorBannerState extends State<_TypingIndicatorBanner>
                           children: List.generate(3, (i) {
                             final phase = (i / 3.0);
                             final t = (_dotController.value - phase) % 1.0;
-                            final bounce =
-                                (t < 0.5 ? t * 2 : 2 - t * 2).clamp(0.0, 1.0);
+                            final bounce = (t < 0.5 ? t * 2 : 2 - t * 2).clamp(
+                              0.0,
+                              1.0,
+                            );
                             final offset = -4.0 * bounce;
                             return Transform.translate(
                               offset: Offset(0, offset),
@@ -1657,7 +1740,8 @@ class _TypingIndicatorBannerState extends State<_TypingIndicatorBanner>
                                 height: 6,
                                 decoration: BoxDecoration(
                                   color: cs.primary.withValues(
-                                      alpha: 0.5 + 0.5 * bounce),
+                                    alpha: 0.5 + 0.5 * bounce,
+                                  ),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -1671,9 +1755,9 @@ class _TypingIndicatorBannerState extends State<_TypingIndicatorBanner>
                   Text(
                     _label(),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
-                        ),
+                      color: cs.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ],
               ),
@@ -1801,16 +1885,15 @@ class _ComposerDock extends StatelessWidget {
                         duration: const Duration(milliseconds: 170),
                         switchInCurve: Curves.easeOut,
                         switchOutCurve: Curves.easeIn,
-                        transitionBuilder: (child, animation) => ScaleTransition(
-                          scale: animation,
-                          child: child,
-                        ),
+                        transitionBuilder: (child, animation) =>
+                            ScaleTransition(scale: animation, child: child),
                         child: hasText
                             ? IconButton.filled(
                                 key: const ValueKey('send_button'),
                                 visualDensity: VisualDensity.compact,
-                                onPressed:
-                                    (isSending || !canType) ? null : onSend,
+                                onPressed: (isSending || !canType)
+                                    ? null
+                                    : onSend,
                                 icon: isSending
                                     ? const SizedBox(
                                         width: 16,
@@ -1927,15 +2010,13 @@ class _ChatMessageTile extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.delete_outline_rounded),
                   title: const Text('Delete'),
-                  onTap: () =>
-                      Navigator.of(context).pop(_MessageAction.delete),
+                  onTap: () => Navigator.of(context).pop(_MessageAction.delete),
                 ),
               if (!isMine)
                 ListTile(
                   leading: const Icon(Icons.flag_outlined),
                   title: const Text('Report'),
-                  onTap: () =>
-                      Navigator.of(context).pop(_MessageAction.report),
+                  onTap: () => Navigator.of(context).pop(_MessageAction.report),
                 ),
             ],
           ),
@@ -2013,33 +2094,36 @@ class _ChatMessageTile extends StatelessWidget {
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: _quickReactionEmojis.map((emoji) {
-                          final selected = emoji == activeEmoji;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => Navigator.of(context).pop(emoji),
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
+                        children: _quickReactionEmojis
+                            .map((emoji) {
+                              final selected = emoji == activeEmoji;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: InkWell(
                                   borderRadius: BorderRadius.circular(12),
-                                  color: selected
-                                      ? cs.primaryContainer.withValues(alpha: 0.7)
-                                      : cs.surfaceContainerHighest.withValues(
-                                          alpha: 0.55,
-                                        ),
+                                  onTap: () => Navigator.of(context).pop(emoji),
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      color: selected
+                                          ? cs.primaryContainer.withValues(
+                                              alpha: 0.7,
+                                            )
+                                          : cs.surfaceContainerHighest
+                                                .withValues(alpha: 0.55),
+                                    ),
+                                    child: Text(
+                                      emoji,
+                                      style: const TextStyle(fontSize: 22),
+                                    ),
+                                  ),
                                 ),
-                                child: Text(
-                                  emoji,
-                                  style: const TextStyle(fontSize: 22),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(growable: false),
+                              );
+                            })
+                            .toList(growable: false),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -2112,8 +2196,8 @@ class _ChatMessageTile extends StatelessWidget {
           (key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0),
         );
 
-        final previousEmoji =
-            (reactionSnapshot.data()?['emoji'] as String?)?.trim();
+        final previousEmoji = (reactionSnapshot.data()?['emoji'] as String?)
+            ?.trim();
 
         if (previousEmoji == emoji) {
           tx.delete(reactionRef);
@@ -2166,8 +2250,8 @@ class _ChatMessageTile extends StatelessWidget {
     final isMine = data['userId'] == currentUserId;
     final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
     final postType = (data['type'] ?? 'check_in').toString();
-    final rawDisplayName = (data['nickname'] ?? data['miniMeName'] ?? 'Anonymous')
-        .toString();
+    final rawDisplayName =
+        (data['nickname'] ?? data['miniMeName'] ?? 'Anonymous').toString();
     final displayName = isMine ? 'You' : rawDisplayName;
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
     final text = (data['text'] ?? '').toString();
@@ -2190,11 +2274,8 @@ class _ChatMessageTile extends StatelessWidget {
           bottomLeft: Radius.circular(isMine ? 20 : 8),
           bottomRight: Radius.circular(isMine ? 8 : 20),
         ),
-        onLongPress: () => _showMessageActions(
-          context,
-          isMine: isMine,
-          text: text,
-        ),
+        onLongPress: () =>
+            _showMessageActions(context, isMine: isMine, text: text),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
@@ -2233,7 +2314,11 @@ class _ChatMessageTile extends StatelessWidget {
                   postType == 'sleep_help_request')
                 _SleepLogPostContent(data: data, isMine: isMine)
               else if (postType == 'exercise_log')
-                _ExerciseLogPostContent(data: data, isMine: isMine, fallbackText: text)
+                _ExerciseLogPostContent(
+                  data: data,
+                  isMine: isMine,
+                  fallbackText: text,
+                )
               else if (postType == 'milestone_card')
                 _MilestoneAchievementCard(data: data, isMine: isMine)
               else
@@ -2265,7 +2350,9 @@ class _ChatMessageTile extends StatelessWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                        color: cs.surfaceContainerHighest.withValues(
+                          alpha: 0.5,
+                        ),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
                           color: cs.outlineVariant.withValues(alpha: 0.35),
@@ -2286,8 +2373,8 @@ class _ChatMessageTile extends StatelessWidget {
                 .doc(currentUserId)
                 .snapshots(),
       builder: (context, snapshot) {
-        final selectedEmoji =
-            (snapshot.data?.data()?['emoji'] as String?)?.trim();
+        final selectedEmoji = (snapshot.data?.data()?['emoji'] as String?)
+            ?.trim();
         final hasActiveReaction =
             selectedEmoji != null && selectedEmoji.isNotEmpty;
 
@@ -2306,10 +2393,8 @@ class _ChatMessageTile extends StatelessWidget {
                 size: 18,
                 color: hasActiveReaction ? cs.primary : cs.onSurfaceVariant,
               ),
-              onPressed: () => _showReactionPicker(
-                context,
-                activeEmoji: selectedEmoji,
-              ),
+              onPressed: () =>
+                  _showReactionPicker(context, activeEmoji: selectedEmoji),
             ),
           ],
         );
@@ -2353,8 +2438,8 @@ class _ChatMessageTile extends StatelessWidget {
                     bodyModel: miniMe['bodyModel'] as String?,
                     hairModel: miniMe['hairModel'] as String?,
                     shirtModel: miniMe['shirtModel'] as String?,
-                    bodyWidthScale:
-                        (miniMe['bodyWidthScale'] as num?)?.toDouble(),
+                    bodyWidthScale: (miniMe['bodyWidthScale'] as num?)
+                        ?.toDouble(),
                     companionId: miniMe['companionId'] as String?,
                     isHatched: miniMe['isHatched'] as bool? ?? true,
                     degradationLevel:
@@ -2434,14 +2519,18 @@ class _SleepLogPostContent extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    final duration =
-      (data['restDuration'] ?? data['sleepDuration'] ?? '').toString().trim();
-    final quality =
-      (data['restQuality'] ?? data['sleepQuality'] ?? '').toString().trim();
-    final bed =
-      (data['restBedTime'] ?? data['sleepBedTime'] ?? '').toString().trim();
-    final wake =
-      (data['restWakeTime'] ?? data['sleepWakeTime'] ?? '').toString().trim();
+    final duration = (data['restDuration'] ?? data['sleepDuration'] ?? '')
+        .toString()
+        .trim();
+    final quality = (data['restQuality'] ?? data['sleepQuality'] ?? '')
+        .toString()
+        .trim();
+    final bed = (data['restBedTime'] ?? data['sleepBedTime'] ?? '')
+        .toString()
+        .trim();
+    final wake = (data['restWakeTime'] ?? data['sleepWakeTime'] ?? '')
+        .toString()
+        .trim();
     final energy = (data['restEnergy'] ?? '').toString().trim();
     final blocker = (data['restBlocker'] ?? '').toString().trim();
     final helped = (data['restHelped'] ?? '').toString().trim();
@@ -2450,8 +2539,9 @@ class _SleepLogPostContent extends StatelessWidget {
     final ask = (data['restAsk'] ?? '').toString().trim();
     final hoursRaw = data['restHours'];
     final restHours = hoursRaw is num ? hoursRaw.toDouble() : null;
-    final note =
-      (data['restNote'] ?? data['sleepNote'] ?? '').toString().trim();
+    final note = (data['restNote'] ?? data['sleepNote'] ?? '')
+        .toString()
+        .trim();
     final kind = (data['sleepCardKind'] ?? 'checkin').toString().trim();
     final title = switch (kind) {
       'help' => 'Sleep help request',
@@ -2461,8 +2551,8 @@ class _SleepLogPostContent extends StatelessWidget {
 
     final primaryTextColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
     final secondaryTextColor = isMine
-      ? cs.onPrimaryContainer.withValues(alpha: 0.86)
-      : cs.onSurfaceVariant;
+        ? cs.onPrimaryContainer.withValues(alpha: 0.86)
+        : cs.onSurfaceVariant;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2504,8 +2594,9 @@ class _SleepLogPostContent extends StatelessWidget {
           if (bed.isNotEmpty || wake.isNotEmpty)
             _SleepMetricLine(
               label: 'Time',
-              value:
-                  bed.isEmpty || wake.isEmpty ? '$bed$wake' : '$bed to $wake',
+              value: bed.isEmpty || wake.isEmpty
+                  ? '$bed$wake'
+                  : '$bed to $wake',
               isMine: isMine,
             ),
           if (energy.isNotEmpty)
@@ -2590,10 +2681,7 @@ class _SleepHelpRequestChart extends StatelessWidget {
             border: Border.all(color: borderColor),
           ),
           child: Table(
-            columnWidths: const {
-              0: FlexColumnWidth(),
-              1: FlexColumnWidth(),
-            },
+            columnWidths: const {0: FlexColumnWidth(), 1: FlexColumnWidth()},
             border: TableBorder(
               horizontalInside: BorderSide(color: borderColor),
               verticalInside: BorderSide(color: borderColor),
@@ -2615,7 +2703,11 @@ class _SleepHelpRequestChart extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        _SleepMetricLine(label: 'Ask community', value: safeAsk, isMine: isMine),
+        _SleepMetricLine(
+          label: 'Ask community',
+          value: safeAsk,
+          isMine: isMine,
+        ),
         if (note.isNotEmpty)
           _SleepMetricLine(label: 'Context', value: note, isMine: isMine),
       ],
@@ -2644,8 +2736,8 @@ class _MilestoneAchievementCard extends StatelessWidget {
         : cs.tertiary.withValues(alpha: 0.3);
     final headerColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
     final captionColor = isMine
-      ? cs.onPrimaryContainer.withValues(alpha: 0.76)
-      : cs.onSurfaceVariant;
+        ? cs.onPrimaryContainer.withValues(alpha: 0.76)
+        : cs.onSurfaceVariant;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2772,10 +2864,7 @@ class _ExerciseLogPostContent extends StatelessWidget {
               runSpacing: 12,
               children: items
                   .map(
-                    (item) => _ExerciseWorkoutChip(
-                      item: item,
-                      isMine: isMine,
-                    ),
+                    (item) => _ExerciseWorkoutChip(item: item, isMine: isMine),
                   )
                   .toList(growable: false),
             ),
@@ -2849,6 +2938,7 @@ class _ExerciseWorkoutChip extends StatelessWidget {
     );
   }
 }
+
 class _MilestoneInputField extends StatelessWidget {
   const _MilestoneInputField({
     required this.label,
@@ -2866,7 +2956,9 @@ class _MilestoneInputField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       maxLines: maxLines,
-      textInputAction: maxLines == 1 ? TextInputAction.next : TextInputAction.newline,
+      textInputAction: maxLines == 1
+          ? TextInputAction.next
+          : TextInputAction.newline,
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
@@ -3009,17 +3101,10 @@ class _SleepAmountChart extends StatelessWidget {
   }
 }
 
-enum _QuickShareAction {
-  milestone,
-  sleepHelp,
-  exercise,
-}
+enum _QuickShareAction { milestone, sleepHelp, exercise }
 
 class _MilestoneCardDraft {
-  const _MilestoneCardDraft({
-    required this.title,
-    required this.description,
-  });
+  const _MilestoneCardDraft({required this.title, required this.description});
 
   final String title;
   final String description;
@@ -3086,13 +3171,16 @@ List<_ExerciseWorkoutShareItem> _exerciseItemsFromPostData(
       .map(
         (item) => _ExerciseWorkoutShareItem(
           name: (item['name'] ?? '').toString().trim(),
-          sets: (item['sets'] as num?)?.toInt() ??
+          sets:
+              (item['sets'] as num?)?.toInt() ??
               int.tryParse((item['sets'] ?? '').toString()) ??
               0,
-          reps: (item['reps'] as num?)?.toInt() ??
+          reps:
+              (item['reps'] as num?)?.toInt() ??
               int.tryParse((item['reps'] ?? '').toString()) ??
               0,
-          durationMinutes: (item['durationMinutes'] as num?)?.toInt() ??
+          durationMinutes:
+              (item['durationMinutes'] as num?)?.toInt() ??
               int.tryParse((item['durationMinutes'] ?? '').toString()) ??
               0,
         ),
@@ -3161,7 +3249,9 @@ class _DefaultSphereChatBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = _defaultChatBannerPaletteForSphere(sphereName);
     if (palette == null) {
-      return ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+      return ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      );
     }
 
     return Container(
@@ -3220,10 +3310,11 @@ class _DefaultSphereChatBanner extends StatelessWidget {
                     children: [
                       Text(
                         palette.title,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
                       ),
                       const SizedBox(height: 2),
                       Text(

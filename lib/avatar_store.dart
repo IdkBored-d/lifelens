@@ -13,6 +13,10 @@ class AvatarStore extends ChangeNotifier {
   static const String _isMiniMeHatchedKey = 'isMiniMeHatched';
   static const String _degradationLevelKey = 'miniMeDegradationLevel';
   static const String _autoBodyWidthScaleKey = 'miniMe.autoBodyWidthScale';
+  static const String _trendBodyWidthScaleKey = 'miniMe.trendBodyWidthScale';
+  static const String _fatigueAppearanceLevelKey =
+      'miniMe.fatigueAppearanceLevel';
+  static const String _healthTrendScoreKey = 'miniMe.healthTrendScore';
 
   String _bodyModel = miniMeCompanionPresets.first.bodyModel;
   String _hairModel = miniMeCompanionPresets.first.hairModel;
@@ -23,6 +27,9 @@ class AvatarStore extends ChangeNotifier {
   bool _isMiniMeHatched = false;
   double _degradationLevel = 0.0;
   double _autoBodyWidthScale = 1.0;
+  double _trendBodyWidthScale = 1.0;
+  double _fatigueAppearanceLevel = 0.0;
+  double _healthTrendScore = 0.0;
 
   AvatarStore() {
     _loadFromPrefs();
@@ -33,11 +40,15 @@ class AvatarStore extends ChangeNotifier {
   String get shirtModel => _shirtModel;
   double get bodyWidthScale => _bodyWidthScale;
   double get effectiveBodyWidthScale =>
-      (_bodyWidthScale * _autoBodyWidthScale).clamp(0.7, 1.48).toDouble();
+      (_bodyWidthScale * _autoBodyWidthScale * _trendBodyWidthScale)
+          .clamp(0.7, 1.48)
+          .toDouble();
   String get miniMeName => _miniMeName;
   String get companionId => _companionId;
   bool get isMiniMeHatched => _isMiniMeHatched;
   double get degradationLevel => _degradationLevel;
+  double get fatigueAppearanceLevel => _fatigueAppearanceLevel;
+  double get healthTrendScore => _healthTrendScore;
   MiniMeCompanionPreset get selectedCompanion => miniMePresetById(_companionId);
 
   Map<String, dynamic> toCommunityAvatarMap() {
@@ -120,6 +131,104 @@ class AvatarStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateAdaptiveHealthAppearance({
+    required List<int> mood,
+    required List<int> sleep,
+    required List<int> exercise,
+    required List<int> symptomCount,
+  }) {
+    if (mood.isEmpty || sleep.isEmpty || exercise.isEmpty) {
+      return;
+    }
+
+    double average(List<int> values) {
+      if (values.isEmpty) return 0;
+      final total = values.fold<double>(0, (sum, value) => sum + value);
+      return total / values.length;
+    }
+
+    final avgMood = average(mood);
+    final avgSleep = average(sleep);
+    final avgExercise = average(exercise);
+    final avgSymptoms = average(symptomCount);
+
+    final moodHealth = ((avgMood - 1.0) / 4.0).clamp(0.0, 1.0);
+    final sleepHealth = ((avgSleep - 4.0) / 4.0).clamp(0.0, 1.0);
+    final exerciseHealth = (avgExercise / 2.0).clamp(0.0, 1.0);
+    final symptomPressure = (avgSymptoms / 6.0).clamp(0.0, 1.0);
+
+    final positivePressure =
+        (moodHealth * 0.44 + sleepHealth * 0.3 + exerciseHealth * 0.26).clamp(
+          0.0,
+          1.0,
+        );
+    final negativePressure =
+        ((1 - moodHealth) * 0.34 +
+                (1 - sleepHealth) * 0.34 +
+                (1 - exerciseHealth) * 0.2 +
+                symptomPressure * 0.12)
+            .clamp(0.0, 1.0);
+
+    final netTrend = (positivePressure - negativePressure).clamp(-1.0, 1.0);
+    final nextTrendScore = (_healthTrendScore * 0.84 + netTrend * 0.16).clamp(
+      -1.0,
+      1.0,
+    );
+
+    final underRecovery = (-nextTrendScore).clamp(0.0, 1.0);
+    final improving = nextTrendScore.clamp(0.0, 1.0);
+    final inactivity = (1.0 - exerciseHealth).clamp(0.0, 1.0);
+    final lowSleepPressure = (1.0 - sleepHealth).clamp(0.0, 1.0);
+
+    // Poor trends can shift body shape either up (inactive + poor habits)
+    // or down (high strain + symptoms), while positive trends gradually
+    // move toward a fitter silhouette.
+    final gainBias =
+        (inactivity * 0.62 + lowSleepPressure * 0.24 + (1 - moodHealth) * 0.14)
+            .clamp(0.0, 1.0);
+    final lossBias =
+        (symptomPressure * 0.52 +
+                lowSleepPressure * 0.28 +
+                (exerciseHealth * 0.2))
+            .clamp(0.0, 1.0);
+
+    final negativeShift = underRecovery * (gainBias - lossBias) * 0.14;
+    final positiveShift = -improving * (0.06 + exerciseHealth * 0.06);
+    final targetTrendBodyScale = (1.0 + negativeShift + positiveShift)
+        .clamp(0.88, 1.16)
+        .toDouble();
+    final nextTrendBodyScale =
+        (_trendBodyWidthScale * 0.82 + targetTrendBodyScale * 0.18)
+            .clamp(0.88, 1.16)
+            .toDouble();
+
+    final targetFatigue =
+        (underRecovery * 0.32 +
+                lowSleepPressure * 0.44 +
+                symptomPressure * 0.2 -
+                improving * 0.28)
+            .clamp(0.0, 1.0)
+            .toDouble();
+    final nextFatigue = (_fatigueAppearanceLevel * 0.8 + targetFatigue * 0.2)
+        .clamp(0.0, 1.0)
+        .toDouble();
+
+    final changed =
+        (_healthTrendScore - nextTrendScore).abs() > 0.0005 ||
+        (_trendBodyWidthScale - nextTrendBodyScale).abs() > 0.0005 ||
+        (_fatigueAppearanceLevel - nextFatigue).abs() > 0.0005;
+
+    if (!changed) {
+      return;
+    }
+
+    _healthTrendScore = nextTrendScore;
+    _trendBodyWidthScale = nextTrendBodyScale;
+    _fatigueAppearanceLevel = nextFatigue;
+    _saveToPrefs();
+    notifyListeners();
+  }
+
   void hydrateFromBackendSnapshot(MiniMeBackendAvatarSnapshot snapshot) {
     if (snapshot.companionId != null &&
         snapshot.companionId!.trim().isNotEmpty) {
@@ -151,6 +260,12 @@ class AvatarStore extends ChangeNotifier {
         prefs.getDouble(_degradationLevelKey) ?? _degradationLevel;
     _autoBodyWidthScale =
         prefs.getDouble(_autoBodyWidthScaleKey) ?? _autoBodyWidthScale;
+    _trendBodyWidthScale =
+        prefs.getDouble(_trendBodyWidthScaleKey) ?? _trendBodyWidthScale;
+    _fatigueAppearanceLevel =
+        prefs.getDouble(_fatigueAppearanceLevelKey) ?? _fatigueAppearanceLevel;
+    _healthTrendScore =
+        prefs.getDouble(_healthTrendScoreKey) ?? _healthTrendScore;
 
     if (hasCustomization) {
       _bodyModel = prefs.getString(_bodyModelKey) ?? _bodyModel;
@@ -180,6 +295,9 @@ class AvatarStore extends ChangeNotifier {
     await prefs.setBool(_isMiniMeHatchedKey, _isMiniMeHatched);
     await prefs.setDouble(_degradationLevelKey, _degradationLevel);
     await prefs.setDouble(_autoBodyWidthScaleKey, _autoBodyWidthScale);
+    await prefs.setDouble(_trendBodyWidthScaleKey, _trendBodyWidthScale);
+    await prefs.setDouble(_fatigueAppearanceLevelKey, _fatigueAppearanceLevel);
+    await prefs.setDouble(_healthTrendScoreKey, _healthTrendScore);
     if (markCustomized) {
       await prefs.setBool(_hasAvatarCustomizationKey, true);
     }
