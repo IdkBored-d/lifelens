@@ -52,6 +52,11 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def _is_gemini_enabled() -> bool:
+    """Gemini is enabled only when an API key is configured."""
+    return bool(settings.gemini_api_key)
+
+
 def get_rag_service_dependency() -> Any:
     """Lazy RAG dependency loader so app can run without optional RAG deps."""
     try:
@@ -164,7 +169,7 @@ async def health_check():
         "status": "degraded" if rag_error else "healthy",
         "services": {
             "api": "operational",
-            "gemini": "operational" if settings.gemini_api_key else "not configured",
+            "gemini": "operational" if _is_gemini_enabled() else "not configured",
             "weaviate": weaviate_status,
             "knowledge_base_docs": doc_count,
             "rag_error": rag_error,
@@ -442,22 +447,216 @@ def _build_opening_fallback(chat_input: MiniMeChatRequest) -> str:
     )
 
 
+def _extract_last_assistant_step(chat_input: MiniMeChatRequest) -> str:
+    """Extract the most recent assistant 'Next step' from chat history."""
+    for item in reversed(chat_input.chat_history[-12:]):
+        if item.role != 'assistant':
+            continue
+        text = (item.text or '').strip()
+        if not text:
+            continue
+
+        lowered = text.lower()
+        marker = 'next step:'
+        idx = lowered.rfind(marker)
+        if idx == -1:
+            continue
+
+        step = text[idx + len(marker):].strip()
+        if not step:
+            continue
+
+        # Keep only the first sentence/chunk so follow-up stays focused.
+        for sep in ['. ', '\n', ' If ', ' if ']:
+            if sep in step:
+                step = step.split(sep, 1)[0].strip()
+                break
+        return step.rstrip('.').strip()
+
+    return ''
+
+
 def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
     if not chat_input.user_message:
         return _build_opening_fallback(chat_input)
 
-    mood = chat_input.latest_mood_label or 'neutral'
+    text = chat_input.user_message.strip()
+    lower = text.lower()
+    mood = (chat_input.latest_mood_label or 'neutral').lower()
     symptoms = ', '.join(chat_input.active_symptoms[:3])
-    if symptoms:
+    intensity = chat_input.latest_mood_intensity
+    last_step = _extract_last_assistant_step(chat_input)
+
+    recent_user_turns = [
+        item.text.strip()
+        for item in chat_input.chat_history[-6:]
+        if item.role == 'user' and item.text.strip()
+    ]
+    last_turn = recent_user_turns[-1] if recent_user_turns else ''
+
+    def _compose(reason: str, step: str, safety: str = '', ask_update: bool = True) -> str:
+        prefix = f"I hear you. {reason}"
+        tail = f" Next step: {step}"
+        if safety:
+            tail += f" {safety}"
+        if ask_update and last_turn:
+            tail += " If that does not help, tell me what changed and I will adjust the plan."
+        return prefix + tail
+
+    def _mentions(*tokens: str) -> bool:
+        return any(token in lower for token in tokens)
+
+    # lightweight conversational tone controls
+    greeting = _mentions('hi', 'hello', 'hey', 'good morning', 'good evening') and len(lower.split()) <= 6
+    gratitude = _mentions('thanks', 'thank you', 'appreciate it')
+    confusion = _mentions('dont understand', "don't understand", 'confused', 'not sure', 'unclear', 'what do you mean')
+    asks_why = _mentions('why', 'how come')
+    asks_plan = _mentions('plan', 'routine', 'what should i do', 'help me', 'what now')
+    asks_next = _mentions('what next', 'next?', 'what should i do next')
+    asks_repeat = _mentions('repeat', 'say that again', 'can you repeat', 'summarize')
+
+    # recognize quick acknowledgements for smoother back-and-forth
+    if greeting:
         return (
-            f"I hear you. With your recent {mood} mood and symptoms ({symptoms}), "
-            "let us keep your next step simple: choose one low-effort action now, "
-            "then reassess how you feel in 20 minutes. If symptoms worsen or feel alarming, seek medical care."
+            "Hi, I am with you. Tell me what feels hardest right now and I will give you one clear next step "
+            "you can do in the next 10 minutes."
         )
 
-    return (
-        f"I hear you. With your recent {mood} mood trend, pick one concrete next step you can finish in 10 minutes, "
-        "then send me what changed and I will help you adjust."
+    if gratitude:
+        return (
+            "You are welcome. If you want, send a quick update in one line: what you tried and how it felt from 0-10, "
+            "and I will tailor the next step."
+        )
+
+    if confusion:
+        if last_step:
+            return (
+                f"Good call asking for clarity. The last step in plain terms was: {last_step}. "
+                "If that feels too big, do a 2-minute version first."
+            )
+        return (
+            "Thanks for saying that. In plain terms, pick one tiny action you can finish in 2-5 minutes, "
+            "then tell me what happened and I will refine it."
+        )
+
+    high_strain = (intensity is not None and intensity >= 4) or mood in {'fear', 'anger', 'sadness'}
+
+    completion_positive = any(
+        token in lower
+        for token in [
+            'i did', 'done', 'completed', 'finished', 'worked',
+            'i followed', 'i did it', 'that helped', 'it helped'
+        ]
+    )
+    completion_negative = any(
+        token in lower
+        for token in [
+            "didn't", 'did not', 'could not', "couldn't", 'not helping',
+            'didnt help', 'doesnt help', 'too hard', 'not working'
+        ]
+    )
+
+    if completion_negative and last_step:
+        return _compose(
+            "Thanks for telling me that the previous step did not land.",
+            "Scale down to a 2-minute version of the same goal and remove friction (set a timer, one location, one action only).",
+        )
+
+    if completion_positive and last_step:
+        if symptoms:
+            return _compose(
+                "Nice follow-through on that step.",
+                "Keep the same direction and add one gentle check-in in 1 hour: symptom intensity 0-10 plus energy level.",
+                "If symptoms escalate or become alarming, seek medical care promptly.",
+            )
+        return _compose(
+            "Great job doing the last step.",
+            "Use a progression: repeat it once more today, then add one small challenge (5-10 extra minutes or one extra action).",
+        )
+
+    if asks_repeat and last_step:
+        return (
+            f"Short version: {last_step}. "
+            "Start there, then message me with what changed so I can choose the next move."
+        )
+
+    if asks_why:
+        if symptoms:
+            return (
+                f"Because your recent mood is {mood} and you reported {symptoms}, the goal is to reduce strain first, "
+                "then build momentum safely."
+            )
+        return (
+            "Because your recent pattern suggests stress load, the first step is intentionally small so it is easier to complete "
+            "and gives us a clean signal for what to do next."
+        )
+
+    if asks_next and last_step:
+        return _compose(
+            "You are ready for the next step.",
+            "Keep momentum: repeat the previous step once, then add one follow-up action focused on recovery and consistency.",
+        )
+
+    if _mentions('sleep', 'insomnia', 'tired', 'exhausted', 'rest', 'wake', 'bedtime'):
+        return _compose(
+            "Your message sounds sleep-related.",
+            "Do a 20-minute wind-down now: dim lights, no scrolling, and 6 slow breaths before bed.",
+            "If sleep stays very short for several nights, consider checking in with a clinician.",
+        )
+
+    if _mentions('anxious', 'anxiety', 'stress', 'overwhelmed', 'panic', 'spiraling', 'tense'):
+        return _compose(
+            "This sounds like a high-stress moment.",
+            "Name one stressor in a sentence, then pick one 10-minute action you can finish right now.",
+            "If distress spikes or feels unsafe, reach out to a trusted person or professional support.",
+        )
+
+    if _mentions('sad', 'low', 'down', 'empty', 'hopeless', 'unmotivated', 'numb'):
+        return _compose(
+            "Your mood sounds heavy right now.",
+            "Choose one tiny reset: water + sunlight, or a short walk + one supportive text message.",
+            "If this keeps worsening, it is important to seek professional support.",
+        )
+
+    if _mentions('pain', 'headache', 'nausea', 'dizzy', 'sore', 'symptom', 'hurt'):
+        return _compose(
+            "It sounds like your body needs a lower-load plan right now.",
+            "Do a gentle reset: hydrate, reduce stimulation, and track symptom intensity 0-10 after 20 minutes.",
+            "Seek urgent care if symptoms escalate quickly or feel severe.",
+        )
+
+    if _mentions('workout', 'exercise', 'gym', 'walk', 'run', 'steps', 'training'):
+        step = (
+            "Do a 10-minute easy movement block and stop while it still feels manageable."
+            if high_strain
+            else "Do a 15-minute moderate session and log how your energy feels after."
+        )
+        return _compose("You are asking about movement.", step)
+
+    if symptoms:
+        return _compose(
+            f"Given your recent mood ({mood}) and active symptoms ({symptoms}), keeping effort low is a good call.",
+            "Pick one low-effort action now, then reassess in 20 minutes.",
+            "If symptoms worsen or feel alarming, seek medical care promptly.",
+        )
+
+    if asks_plan:
+        return _compose(
+            f"Your recent trend looks {mood}.",
+            "Use a 3-step plan for the next 2 hours: hydrate, one focused task, then a short reset.",
+        )
+
+    # If the user asks a direct question and we did not match a domain intent,
+    # return a concise clarifying path instead of a generic canned line.
+    if '?' in text:
+        return (
+            "Good question. Give me one detail about your goal right now (sleep, mood, symptoms, or exercise), "
+            "and I will answer with a specific next step that fits your current state."
+        )
+
+    return _compose(
+        f"I am tracking your recent {mood} trend.",
+        "Give me one concrete goal for the next hour and I will break it into a simple step-by-step plan.",
     )
 
 
@@ -835,7 +1034,17 @@ async def minime_chat(
         logger.warning(f"Mini-Me memory logging failed (chat): {e}")
 
     try:
+        if (not _is_gemini_enabled()) or analysis_service.client is None:
+            fallback_opening = _build_opening_fallback(chat_input)
+            return MiniMeChatResponse(
+                opening_suggestion=fallback_opening if is_opening_request else '',
+                reply=_build_reply_fallback(chat_input),
+                source='fallback',
+                memory_state=memory_state,
+            )
+
         prompt = _build_minime_prompt(chat_input, memory_state)
+
         response = analysis_service.client.models.generate_content(
             model='gemini-2.5-flash-lite',
             contents=prompt,
@@ -900,6 +1109,9 @@ async def minime_suggestions(
 ):
     """Generate user-specific Mini-Me suggestions from logs and chat history."""
     try:
+        if (not _is_gemini_enabled()) or analysis_service.client is None:
+            return _build_suggestions_fallback(suggestion_input)
+
         prompt = _build_suggestions_prompt(suggestion_input)
         response = analysis_service.client.models.generate_content(
             model='gemini-2.5-flash-lite',
@@ -960,6 +1172,9 @@ async def minime_exercise_recommendations(
 ):
     """Generate exercise picks grounded in mood logs, symptoms, and chat history."""
     try:
+        if (not _is_gemini_enabled()) or analysis_service.client is None:
+            return _build_exercise_recommendations_fallback(recommendation_input)
+
         prompt = _build_exercise_recommendations_prompt(recommendation_input)
         response = analysis_service.client.models.generate_content(
             model='gemini-2.5-flash-lite',

@@ -163,7 +163,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   String _resolveCheckupSymptomName(SymptomEntry entry) {
     final predicted = entry.predictedAilment.trim();
     final normalized = predicted.toLowerCase();
-    final isTrackingOnly = normalized == 'tracking-only' || normalized == 'tracking only';
+    final isTrackingOnly =
+        normalized == 'tracking-only' || normalized == 'tracking only';
     if (predicted.isNotEmpty && !isTrackingOnly) {
       return predicted;
     }
@@ -204,8 +205,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (!mounted) return;
     setState(() {
       _hasSymptomCheckupPending = active.isNotEmpty;
-      _pendingCheckupSymptomName =
-          active.isNotEmpty ? _resolveCheckupSymptomName(active.first) : null;
+      _pendingCheckupSymptomName = active.isNotEmpty
+          ? _resolveCheckupSymptomName(active.first)
+          : null;
     });
   }
 
@@ -610,9 +612,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
               userMessage: greetingPrompt,
               moodLabel: moodContext.label,
               user: widget.userName,
-              moodLog: moodContext.recentMoodSummary
-                  .take(3)
-                  .join(', '),
+              moodLog: moodContext.recentMoodSummary.take(3).join(', '),
               symptoms: ctx['symptoms'],
               trends: ctx['trends'],
             )
@@ -630,20 +630,29 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         _showCrisisOverlay(e.type);
         return;
       } catch (_) {
-        // fall through to Gemini
+        // fall through to backend fallback
       }
     }
 
-    // Tier 2: Direct Gemini greeting
-    if (await AppServices.isOnline()) {
+    // Tier 2: Backend opening suggestion
+    if (await _isOnline()) {
       try {
-        final greeting = await AppServices.gemini.generateMiniMeReply(
-          userMessage: greetingPrompt,
+        final reply = await MiniMeBackendService.instance.chat(
+          userMessage: '',
           moodLabel: moodContext.label,
-          intelligenceSummary: _buildIntelligenceSummary(),
+          moodIntensity: moodContext.intensity.clamp(0, 5),
+          moodNotes: moodContext.notes,
+          recentMoods: moodContext.recentMoodSummary,
+          activeSymptoms: await _loadActiveSymptomsForBackend(),
+          history: _buildBackendHistory(),
+          summaryContext: _buildIntelligenceSummary(),
+          intelligence: _intelligence,
         );
-        if (greeting.trim().isNotEmpty &&
-            !greeting.startsWith('Unable to reach Gemini')) {
+
+        final greeting = reply.openingSuggestion.trim().isNotEmpty
+            ? reply.openingSuggestion.trim()
+            : reply.reply.trim();
+        if (greeting.isNotEmpty) {
           if (!mounted) return;
           setState(() {
             _appendMessage(
@@ -655,7 +664,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           return;
         }
       } catch (_) {
-        // fall through to offline
+        // fall through to static offline message
       }
     }
 
@@ -984,7 +993,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     String reply;
 
     try {
-      reply = await _miniGenReplyOrFallback(userText: text, moodContext: moodContext);
+      reply = await _miniGenReplyOrFallback(
+        userText: text,
+        moodContext: moodContext,
+      );
     } catch (_) {
       reply = _buildOfflineReply(userText: text, moodLabel: moodLabel);
     }
@@ -1203,10 +1215,59 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   /// Maps chat history to MiniGen tagged format (oldest → newest).
   List<String> _buildTaggedHistory() => _messages
       .take(20)
-      .map((m) => m.role == _ChatRole.user
-          ? '<|user|>${m.text}'
-          : '<|companion|>${m.text}')
+      .map(
+        (m) => m.role == _ChatRole.user
+            ? '<|user|>${m.text}'
+            : '<|companion|>${m.text}',
+      )
       .toList();
+
+  List<MiniMeChatTurn> _buildBackendHistory({String? currentUserText}) {
+    final turns = _messages
+        .take(20)
+        .map(
+          (m) => MiniMeChatTurn(
+            role: m.role == _ChatRole.user ? 'user' : 'assistant',
+            text: m.text,
+          ),
+        )
+        .toList(growable: true);
+
+    // _sendMessage appends the latest user turn before inference.
+    // Do not duplicate the same text in both history and user_message.
+    final trimmedCurrent = currentUserText?.trim() ?? '';
+    if (trimmedCurrent.isNotEmpty && turns.isNotEmpty) {
+      final last = turns.last;
+      if (last.role == 'user' && last.text.trim() == trimmedCurrent) {
+        turns.removeLast();
+      }
+    }
+
+    return turns;
+  }
+
+  Future<List<String>> _loadActiveSymptomsForBackend() async {
+    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
+    final values = <String>{};
+
+    for (final entry in activeSymptoms) {
+      for (final symptom in entry.symptomList) {
+        final trimmed = symptom.trim();
+        if (trimmed.isNotEmpty) {
+          values.add(trimmed);
+        }
+      }
+
+      final predicted = entry.predictedAilment.trim();
+      if (predicted.isNotEmpty &&
+          predicted.toLowerCase() != 'tracking-only' &&
+          predicted.toLowerCase() != 'tracking only') {
+        values.add(predicted);
+      }
+    }
+
+    return values.toList(growable: false);
+  }
 
   /// Shows the crisis support dialog — dual-tier (988 mental health / 911 emergency).
   void _showCrisisOverlay([CrisisType type = CrisisType.mentalHealth988]) {
@@ -1222,11 +1283,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         content: Text(
           is911
               ? 'It sounds like you or someone nearby may need immediate medical help.\n\n'
-                'Call 911 right away.\n\n'
-                'If you\'re unsure, call anyway — they can help you decide.'
+                    'Call 911 right away.\n\n'
+                    'If you\'re unsure, call anyway — they can help you decide.'
               : 'If you\'re in crisis or need immediate support, please reach out:\n\n'
-                '988 Suicide & Crisis Lifeline — call or text 988\n'
-                'Crisis Text Line — text HOME to 741741',
+                    '988 Suicide & Crisis Lifeline — call or text 988\n'
+                    'Crisis Text Line — text HOME to 741741',
         ),
         actions: [
           TextButton(
@@ -1238,7 +1299,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
   }
 
-  /// MiniGen → Gemini → offline reply chain for all user-initiated turns.
+  /// MiniGen → backend Mini-Me → offline reply chain for all user-initiated turns.
   ///
   /// Crisis-triggered turns are NOT appended to history — the incomplete
   /// turn is discarded entirely.
@@ -1252,16 +1313,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         final ctx = await _buildMiniMeIsarContext();
         final history = _buildTaggedHistory();
         final buffer = StringBuffer();
-        await for (final token in AppServices.miniGenChat.generateMiniMeReplyStream(
-          userMessage: userText,
-          moodLabel: moodContext.label,
-          user: widget.userName,
-          moodLog: moodContext.recentMoodSummary.take(3).join(', '),
-          symptoms: ctx['symptoms'],
-          conditions: ctx['conditions'],
-          trends: ctx['trends'],
-          chatHistory: history,
-        )) {
+        await for (final token
+            in AppServices.miniGenChat.generateMiniMeReplyStream(
+              userMessage: userText,
+              moodLabel: moodContext.label,
+              user: widget.userName,
+              moodLog: moodContext.recentMoodSummary.take(3).join(', '),
+              symptoms: ctx['symptoms'],
+              conditions: ctx['conditions'],
+              trends: ctx['trends'],
+              chatHistory: history,
+            )) {
           buffer.write(token);
         }
         final result = buffer.toString().trim();
@@ -1269,23 +1331,35 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       } on CrisisInterventionException catch (e) {
         // Do NOT append — discard the incomplete turn entirely
         _showCrisisOverlay(e.type);
-        return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
+        return _buildOfflineReply(
+          userText: userText,
+          moodLabel: moodContext.label,
+        );
       } catch (_) {
-        // fall through to Gemini
+        // fall through to backend fallback
       }
     }
 
-    // Tier 2: Direct Gemini
+    // Tier 2: Backend Mini-Me chat
     if (await _isOnline()) {
       try {
-        final directReply = await AppServices.gemini.generateMiniMeReply(
+        final backendReply = await MiniMeBackendService.instance.chat(
           userMessage: userText,
           moodLabel: moodContext.label,
-          intelligenceSummary: _buildIntelligenceSummary(),
+          moodIntensity: moodContext.intensity.clamp(0, 5),
+          moodNotes: moodContext.notes,
+          recentMoods: moodContext.recentMoodSummary,
+          activeSymptoms: await _loadActiveSymptomsForBackend(),
+          history: _buildBackendHistory(currentUserText: userText),
+          summaryContext: _buildIntelligenceSummary(),
+          intelligence: _intelligence,
         );
-        if (directReply.trim().isNotEmpty &&
-            !directReply.startsWith('Unable to reach Gemini')) {
-          return directReply;
+
+        final text = backendReply.reply.trim().isNotEmpty
+            ? backendReply.reply.trim()
+            : backendReply.openingSuggestion.trim();
+        if (text.isNotEmpty) {
+          return text;
         }
       } catch (_) {
         // fall through to offline
@@ -1463,7 +1537,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return '${moodItems.length}::${moodSignature}__${sleepItems.length}::${sleepSignature}__'
         '$intelligenceSignature';
   }
-
 
   // ignore: unused_element
   MiniMeVisualState _buildMiniMeVisualState({
@@ -4043,8 +4116,6 @@ class _MiniMeMoodContext {
   final List<String> recentMoodSummary;
 }
 
-
-
 /// Dialog that asks the user whether they are still experiencing a symptom.
 /// Returns `true` when the user confirms (yes), `false` when they deny (no),
 /// or `null` when the dialog is dismissed without a choice.
@@ -4108,7 +4179,10 @@ class _SymptomCheckupDialog extends StatelessWidget {
                 icon: Icon(Icons.close_rounded, color: cs.error),
                 label: Text(
                   'No, all good',
-                  style: TextStyle(color: cs.error, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    color: cs.error,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: cs.errorContainer.withValues(alpha: 0.55),

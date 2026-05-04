@@ -3,6 +3,11 @@ import re
 
 from transformers import T5ForConditionalGeneration, T5Tokenizer
 
+try:
+    from .artifact_paths import default_artifact_root, training_paths
+except ImportError:
+    from artifact_paths import default_artifact_root, training_paths
+
 
 MODEL_PATH = Path(__file__).resolve().parent / "summarization_model"
 
@@ -10,12 +15,30 @@ tokenizer = None
 model = None
 
 
+def _resolve_model_path() -> Path:
+    """Resolve local summarization model path from known locations."""
+    candidates = [MODEL_PATH]
+    candidates.append(training_paths(default_artifact_root())["model_dir"])
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+
+    candidate_text = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(
+        "Summarization model directory not found. "
+        f"Expected one of: {candidate_text}. "
+        "Train/export the model first (ml/summarization/train_model.py) or place a saved model in one of these paths."
+    )
+
+
 def _ensure_model_loaded() -> None:
     global tokenizer, model
+    model_path = _resolve_model_path()
     if tokenizer is None:
-        tokenizer = T5Tokenizer.from_pretrained(str(MODEL_PATH))
+        tokenizer = T5Tokenizer.from_pretrained(str(model_path), local_files_only=True)
     if model is None:
-        model = T5ForConditionalGeneration.from_pretrained(str(MODEL_PATH))
+        model = T5ForConditionalGeneration.from_pretrained(str(model_path), local_files_only=True)
 
 
 def _trend_label(trend_rate: float, slope: float, threshold: float = 0.08) -> str:
