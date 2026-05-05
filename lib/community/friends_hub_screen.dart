@@ -61,12 +61,10 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
               final data = doc.data();
               final username = (data['username'] ?? '').toString().trim();
               final usernameLower = username.toLowerCase();
-              final displayName = (data['displayName'] ?? '').toString().trim();
               return _UserSearchResult(
                 userId: doc.id,
                 username: username,
                 usernameLower: usernameLower,
-                displayName: displayName,
               );
             })
             .where((item) => item.usernameLower.startsWith(normalizedQuery))
@@ -100,14 +98,13 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
               userId: userId,
               username: username,
               usernameLower: username.toLowerCase(),
-              displayName: '',
             );
           })
           .whereType<_UserSearchResult>()
           .toList(growable: false);
 
       for (final item in results) {
-        mergedByUserId.putIfAbsent(item.userId, () => item);
+        mergedByUserId[item.userId] = item;
       }
     } on FirebaseException {
       // Fall back to users collection scan when usernames registry is unavailable.
@@ -126,17 +123,10 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
               final data = doc.data();
               final username = (data['username'] ?? '').toString().trim();
               final usernameLower = username.toLowerCase();
-              final first = (data['firstName'] ?? '').toString().trim();
-              final last = (data['lastName'] ?? '').toString().trim();
-              final displayName = [
-                first,
-                last,
-              ].where((part) => part.isNotEmpty).join(' ').trim();
               return _UserSearchResult(
                 userId: doc.id,
                 username: username,
                 usernameLower: usernameLower,
-                displayName: displayName,
               );
             })
             .where((item) => item.usernameLower.startsWith(normalizedQuery))
@@ -144,7 +134,7 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
           ..sort((a, b) => a.usernameLower.compareTo(b.usernameLower));
 
     for (final item in results) {
-      mergedByUserId.putIfAbsent(item.userId, () => item);
+      mergedByUserId[item.userId] = item;
     }
 
     final merged = mergedByUserId.values.toList(growable: false)
@@ -157,10 +147,6 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
     setState(() => _working = true);
     try {
       await SocialFeatures.sendFriendRequest(toUserId: toUserId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Friend request sent.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -182,13 +168,11 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
         accept: accept,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            accept ? 'Friend request accepted.' : 'Request declined.',
-          ),
-        ),
-      );
+      if (!accept) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Request declined.')));
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -559,9 +543,6 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
                                           final username =
                                               (data['username'] ?? '')
                                                   .toString();
-                                          final displayName =
-                                              (data['displayName'] ?? '')
-                                                  .toString();
                                           return ListTile(
                                             contentPadding:
                                                 const EdgeInsets.symmetric(
@@ -575,9 +556,6 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
                                               child: const Icon(Icons.person),
                                             ),
                                             title: Text('@$username'),
-                                            subtitle: displayName.isEmpty
-                                                ? null
-                                                : Text(displayName),
                                           );
                                         },
                                       ),
@@ -775,9 +753,6 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
                                                 ? '(no username)'
                                                 : '@${user.username}',
                                           ),
-                                          subtitle: user.displayName.isEmpty
-                                              ? null
-                                              : Text(user.displayName),
                                           trailing: trailing,
                                         );
                                       },
@@ -854,11 +829,9 @@ class _UserSearchResult {
     required this.userId,
     required this.username,
     required this.usernameLower,
-    required this.displayName,
   });
 
   final String userId;
   final String username;
   final String usernameLower;
-  final String displayName;
 }

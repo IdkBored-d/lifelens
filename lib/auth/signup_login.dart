@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_prefs.dart';
 import 'verification_email_service.dart';
 
 class SignupLogin extends StatefulWidget {
@@ -14,8 +15,9 @@ class SignupLogin extends StatefulWidget {
 }
 
 class _SignupLoginState extends State<SignupLogin> {
-  static const _rememberEmailKey = 'signup_login_remembered_email';
-  static const _rememberMeKey = 'signup_login_remember_me';
+  static const String _passwordResetContinueUrl =
+      'https://lifelens.app/reset-password';
+  static const String _androidPackageName = 'com.example.lifelens';
 
   bool isLogin = true;
   bool _isSubmitting = false;
@@ -55,8 +57,8 @@ class _SignupLoginState extends State<SignupLogin> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
 
-    final savedRememberMe = prefs.getBool(_rememberMeKey) ?? false;
-    final savedEmail = prefs.getString(_rememberEmailKey) ?? '';
+    final savedRememberMe = prefs.getBool(kRememberMeKey) ?? false;
+    final savedEmail = prefs.getString(kRememberedEmailKey) ?? '';
     final nextEmail = savedRememberMe && savedEmail.isNotEmpty
         ? savedEmail
         : '';
@@ -71,15 +73,48 @@ class _SignupLoginState extends State<SignupLogin> {
   }
 
   String _normalizeUsername(String input) {
-    var value = input.trim().toLowerCase();
+    var value = input.trim();
     if (value.startsWith('@')) {
       value = value.substring(1);
     }
     return value;
   }
 
+  String _usernameLookupKey(String input) {
+    return _normalizeUsername(input).toLowerCase();
+  }
+
+  ActionCodeSettings _buildPasswordResetSettings() {
+    return ActionCodeSettings(
+      url: _passwordResetContinueUrl,
+      handleCodeInApp: false,
+      androidPackageName: _androidPackageName,
+      androidInstallApp: true,
+    );
+  }
+
+  bool _isActionCodeConfigurationError(String code, String? message) {
+    const configCodes = <String>{
+      'missing-continue-uri',
+      'invalid-continue-uri',
+      'unauthorized-continue-uri',
+      'invalid-dynamic-link-domain',
+      'dynamic-link-not-activated',
+      'missing-android-pkg-name',
+      'missing-ios-bundle-id',
+    };
+
+    if (configCodes.contains(code)) return true;
+
+    final msg = (message ?? '').toLowerCase();
+    return msg.contains('allowlisted') ||
+        msg.contains('allowlist') ||
+        msg.contains('continue uri') ||
+        msg.contains('dynamic link domain');
+  }
+
   bool _isValidUsername(String input) {
-    return RegExp(r'^[a-z0-9_.]{3,24}$').hasMatch(_normalizeUsername(input));
+    return RegExp(r'^[A-Za-z0-9_.]{3,24}$').hasMatch(_normalizeUsername(input));
   }
 
   Future<void> _submit() async {
@@ -91,7 +126,8 @@ class _SignupLoginState extends State<SignupLogin> {
     try {
       final email = _emailController.text.trim();
       final desiredUsername = _signupUsernameController.text.trim();
-      final usernameLower = _normalizeUsername(desiredUsername);
+      final normalizedUsername = _normalizeUsername(desiredUsername);
+      final usernameLower = _usernameLookupKey(desiredUsername);
       final password = _passwordController.text;
 
       final prefs = await SharedPreferences.getInstance();
@@ -134,7 +170,7 @@ class _SignupLoginState extends State<SignupLogin> {
 
             tx.set(usernameRef, {
               'uid': cred.user!.uid,
-              'username': desiredUsername,
+              'username': normalizedUsername,
               'updatedAt': FieldValue.serverTimestamp(),
             });
           });
@@ -158,7 +194,7 @@ class _SignupLoginState extends State<SignupLogin> {
             .doc(cred.user!.uid)
             .set({
               'email': email,
-              'username': desiredUsername,
+              'username': normalizedUsername,
               'usernameLower': usernameLower,
               'firstName': _firstNameController.text.trim(),
               'lastName': _lastNameController.text.trim(),
@@ -171,11 +207,11 @@ class _SignupLoginState extends State<SignupLogin> {
       }
 
       if (isLogin && _rememberMe.value) {
-        await prefs.setString(_rememberEmailKey, email);
-        await prefs.setBool(_rememberMeKey, true);
+        await prefs.setString(kRememberedEmailKey, email);
+        await prefs.setBool(kRememberMeKey, true);
       } else {
-        await prefs.remove(_rememberEmailKey);
-        await prefs.setBool(_rememberMeKey, false);
+        await prefs.remove(kRememberedEmailKey);
+        await prefs.setBool(kRememberMeKey, false);
       }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -213,12 +249,25 @@ class _SignupLoginState extends State<SignupLogin> {
     }
 
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      try {
+        await FirebaseAuth.instance.sendPasswordResetEmail(
+          email: email,
+          actionCodeSettings: _buildPasswordResetSettings(),
+        );
+      } on FirebaseAuthException catch (e) {
+        if (!_isActionCodeConfigurationError(e.code, e.message)) {
+          rethrow;
+        }
+        await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      }
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('Password reset email sent to $email.'),
+          content: Text(
+            'Reset email sent to $email. Open the link in your email to reset your password on the web page.',
+          ),
         ),
       );
     } on FirebaseAuthException catch (e) {
@@ -357,8 +406,8 @@ class _SignupLoginState extends State<SignupLogin> {
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              _InfoPanel(isLogin: isLogin),
                               if (!isLogin) ...[
+                                _InfoPanel(isLogin: isLogin),
                                 const SizedBox(height: 12),
                                 Text(
                                   'By creating an account, you agree to Terms and Privacy Policy.',
@@ -758,15 +807,15 @@ class _IdentityCard extends StatelessWidget {
                 icon: Icons.alternate_email_rounded,
                 textInputAction: TextInputAction.next,
                 validator: (value) {
-                  var v = (value ?? '').trim().toLowerCase();
+                  var v = (value ?? '').trim();
                   if (v.startsWith('@')) {
                     v = v.substring(1);
                   }
                   if (v.isEmpty) {
                     return 'Required';
                   }
-                  if (!RegExp(r'^[a-z0-9_.]{3,24}$').hasMatch(v)) {
-                    return 'Use 3-24 chars: a-z, 0-9, ., _';
+                  if (!RegExp(r'^[A-Za-z0-9_.]{3,24}$').hasMatch(v)) {
+                    return 'Use 3-24 chars: letters, numbers, ., _';
                   }
                   return null;
                 },

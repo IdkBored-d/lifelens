@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import 'restart.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
@@ -17,6 +18,22 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = true;
   String? _notificationPreferenceUserId;
+
+  String _normalizeUsername(String input) {
+    var value = input.trim();
+    if (value.startsWith('@')) {
+      value = value.substring(1);
+    }
+    return value;
+  }
+
+  String _usernameLookupKey(String input) {
+    return _normalizeUsername(input).toLowerCase();
+  }
+
+  bool _isValidUsername(String input) {
+    return RegExp(r'^[A-Za-z0-9_.]{3,24}$').hasMatch(_normalizeUsername(input));
+  }
 
   @override
   void initState() {
@@ -137,6 +154,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _ProfileSection(
                 title: 'Account',
                 children: [
+                  if (userId != null)
+                    StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(userId)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        final data = snapshot.data?.data();
+                        final username = (data?['username'] ?? '')
+                            .toString()
+                            .trim();
+                        final usernameValue = username.isEmpty
+                            ? 'Set username'
+                            : '@$username';
+
+                        return _ProfileTile(
+                          icon: Icons.badge_outlined,
+                          label: 'Username',
+                          value: usernameValue,
+                          onTap: () => _showChangeUsernameDialog(
+                            context,
+                            currentUsername: username,
+                          ),
+                        );
+                      },
+                    ),
+
                   _ProfileTile(
                     icon: Icons.email_outlined,
                     label: 'Email',
@@ -336,6 +380,232 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  void _showChangeUsernameDialog(
+    BuildContext context, {
+    required String currentUsername,
+  }) {
+    final usernameController = TextEditingController(text: currentUsername);
+    var saving = false;
+    String? inlineError;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Username'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: usernameController,
+                    enabled: !saving,
+                    decoration: InputDecoration(
+                      labelText: 'Username',
+                      prefixText: '@',
+                      errorText: inlineError,
+                      errorMaxLines: 3,
+                      helperText: '3-24 chars: letters, numbers, . and _',
+                      helperMaxLines: 2,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final entered = usernameController.text.trim();
+                          final newUsernameDisplay = _normalizeUsername(
+                            entered,
+                          );
+                          final normalizedCurrent = _normalizeUsername(
+                            currentUsername,
+                          );
+
+                          if (!_isValidUsername(entered)) {
+                            setDialogState(() {
+                              inlineError =
+                                  'Use 3-24 letters/numbers and . or _';
+                            });
+                            return;
+                          }
+
+                          if (newUsernameDisplay == normalizedCurrent) {
+                            setDialogState(() {
+                              inlineError =
+                                  'That is already your current username.';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            inlineError = null;
+                            saving = true;
+                          });
+                          var dialogClosed = false;
+
+                          try {
+                            await _changeUsername(
+                              newUsernameDisplay,
+                            ).timeout(const Duration(seconds: 15));
+                            if (!mounted) return;
+                            if (Navigator.of(dialogContext).canPop()) {
+                              Navigator.of(
+                                dialogContext,
+                                rootNavigator: true,
+                              ).pop();
+                              dialogClosed = true;
+                            }
+                          } on TimeoutException {
+                            setDialogState(() {
+                              saving = false;
+                              inlineError =
+                                  'Update is taking too long. Please try again.';
+                            });
+                          } on FirebaseException catch (e) {
+                            String message = 'Unable to update username.';
+                            if (e.code == 'username-taken') {
+                              message = 'That username is already taken.';
+                            } else if (e.code == 'username-same') {
+                              message =
+                                  'That is already your current username.';
+                            } else if (e.code == 'permission-denied') {
+                              message =
+                                  'Permission denied. Deploy latest Firestore rules.';
+                            }
+                            setDialogState(() {
+                              saving = false;
+                              inlineError = message;
+                            });
+                          } catch (_) {
+                            setDialogState(() {
+                              saving = false;
+                              inlineError = 'Unable to update username.';
+                            });
+                          } finally {
+                            if (mounted && !dialogClosed && saving) {
+                              setDialogState(() {
+                                saving = false;
+                              });
+                            }
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _changeUsername(String newUsernameDisplay) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid;
+    if (uid == null) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'unauthenticated',
+        message: 'You must be signed in.',
+      );
+    }
+
+    final firestore = FirebaseFirestore.instance;
+    final userRef = firestore.collection('users').doc(uid);
+    final newUsernameLower = _usernameLookupKey(newUsernameDisplay);
+
+    await firestore.runTransaction((tx) async {
+      final userSnap = await tx.get(userRef);
+      if (!userSnap.exists) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'not-found',
+          message: 'User profile not found.',
+        );
+      }
+
+      final userData = userSnap.data() ?? <String, dynamic>{};
+      final oldUsernameDisplay = (userData['username'] ?? '').toString().trim();
+      final oldUsernameLower =
+          (userData['usernameLower'] ?? userData['username'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+
+      if (oldUsernameDisplay == newUsernameDisplay) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'username-same',
+          message: 'That is already your current username.',
+        );
+      }
+
+      final newUsernameRef = firestore
+          .collection('usernames')
+          .doc(newUsernameLower);
+      final newUsernameSnap = await tx.get(newUsernameRef);
+      if (newUsernameSnap.exists) {
+        final ownerId = (newUsernameSnap.data()?['uid'] ?? '').toString();
+        if (ownerId != uid) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'username-taken',
+            message: 'That username is already taken.',
+          );
+        }
+      }
+
+      DocumentSnapshot<Map<String, dynamic>>? oldUsernameSnap;
+      DocumentReference<Map<String, dynamic>>? oldUsernameRef;
+      if (oldUsernameLower.isNotEmpty && oldUsernameLower != newUsernameLower) {
+        oldUsernameRef = firestore
+            .collection('usernames')
+            .doc(oldUsernameLower);
+        oldUsernameSnap = await tx.get(oldUsernameRef);
+      }
+
+      tx.set(newUsernameRef, {
+        'uid': uid,
+        'username': newUsernameDisplay,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (oldUsernameRef != null &&
+          oldUsernameSnap != null &&
+          oldUsernameSnap.exists) {
+        final ownerId = (oldUsernameSnap.data()?['uid'] ?? '').toString();
+        if (ownerId == uid) {
+          tx.delete(oldUsernameRef);
+        }
+      }
+
+      tx.update(userRef, {
+        'username': newUsernameDisplay,
+        'usernameLower': newUsernameLower,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 
   Future<void> _changePassword(

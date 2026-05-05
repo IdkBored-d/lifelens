@@ -84,7 +84,7 @@ class Sphere {
 
 class SphereMember {
   final String userId;
-  final String nickname;
+  final String username;
   final DateTime joinedAt;
   final int warningCount;
   final DateTime? lastReadAt;
@@ -93,7 +93,7 @@ class SphereMember {
 
   SphereMember({
     required this.userId,
-    required this.nickname,
+    required this.username,
     required this.joinedAt,
     this.warningCount = 0,
     this.lastReadAt,
@@ -105,7 +105,7 @@ class SphereMember {
     final data = doc.data() as Map<String, dynamic>;
     return SphereMember(
       userId: doc.id,
-      nickname: data['nickname'] ?? '',
+      username: (data['username'] ?? data['nickname'] ?? '').toString(),
       joinedAt: (data['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       warningCount: data['warningCount'] ?? 0,
       lastReadAt: (data['lastReadAt'] as Timestamp?)?.toDate(),
@@ -116,7 +116,7 @@ class SphereMember {
 
   Map<String, dynamic> toMap() {
     return {
-      'nickname': nickname,
+      'username': username,
       'joinedAt': Timestamp.fromDate(joinedAt),
       'warningCount': warningCount,
       'lastReadAt': lastReadAt == null ? null : Timestamp.fromDate(lastReadAt!),

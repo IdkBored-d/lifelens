@@ -117,6 +117,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
         .snapshots();
   }
 
+  Stream<QuerySnapshot<Map<String, dynamic>>> _pendingFriendRequestsStream() {
+    final uid = _currentUserId;
+    if (uid == null) {
+      return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+    }
+    return FirebaseFirestore.instance
+        .collection('friend_requests')
+        .where('toUserId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -174,10 +186,57 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      IconButton.filledTonal(
-                        tooltip: 'Friends',
-                        onPressed: _openFriendsHub,
-                        icon: const Icon(Icons.person_search_rounded),
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: _pendingFriendRequestsStream(),
+                        builder: (context, snapshot) {
+                          final count = snapshot.data?.docs.length ?? 0;
+                          final label = '$count';
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              IconButton.filledTonal(
+                                tooltip: 'Friends',
+                                onPressed: _openFriendsHub,
+                                icon: const Icon(Icons.person_search_rounded),
+                              ),
+                              if (count > 0)
+                                Positioned(
+                                  right: -2,
+                                  top: -2,
+                                  child: Container(
+                                    constraints: const BoxConstraints(
+                                      minWidth: 18,
+                                      minHeight: 18,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: cs.error,
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: cs.surface,
+                                        width: 1.2,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      label,
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: cs.onError,
+                                            fontWeight: FontWeight.w800,
+                                            height: 1,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(width: 8),
                       IconButton.filledTonal(
@@ -304,8 +363,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           final sphere = spheres[index];
                           return _SphereCard(
                             sphere: sphere,
-                            onJoinRequired: () =>
-                                _showNicknamePrompt(context, sphere),
+                            onJoinRequired: () => _joinSphere(sphere),
                             onOpen: () {
                               Navigator.push(
                                 context,
@@ -685,103 +743,12 @@ class _SphereCard extends StatelessWidget {
 }
 
 extension on _CommunityScreenState {
-  void _showNicknamePrompt(BuildContext context, Sphere sphere) {
-    final nicknameController = TextEditingController();
-    final cs = Theme.of(context).colorScheme;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          String? errorText;
-
-          return AlertDialog(
-            title: const Text('Join Sphere'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Choose a nickname for ${sphere.name}',
-                  style: TextStyle(color: cs.onSurfaceVariant),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'DO NOT use your real name',
-                  style: TextStyle(
-                    color: cs.error,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                StatefulBuilder(
-                  builder: (context, setFieldState) {
-                    return TextField(
-                      controller: nicknameController,
-                      decoration: InputDecoration(
-                        hintText: 'Enter nickname...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        errorText: errorText,
-                        errorStyle: TextStyle(color: cs.error),
-                      ),
-                      maxLength: 20,
-                      onChanged: (_) {
-                        if (errorText != null) {
-                          setDialogState(() => errorText = null);
-                        }
-                      },
-                    );
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final nickname = nicknameController.text.trim();
-                  if (nickname.isEmpty) {
-                    setDialogState(() => errorText = 'Please enter a nickname');
-                    return;
-                  }
-
-                  // Check for duplicate nickname in this sphere.
-                  final sphereRef = FirebaseFirestore.instance
-                      .collection('spheres')
-                      .doc(sphere.id);
-                  final taken = await sphereRef
-                      .collection('members')
-                      .where('nickname', isEqualTo: nickname)
-                      .limit(1)
-                      .get();
-                  if (taken.docs.isNotEmpty) {
-                    setDialogState(() => errorText = 'Nickname already taken');
-                    return;
-                  }
-
-                  if (context.mounted) Navigator.pop(context);
-                  await _joinSphere(sphere, nickname);
-                },
-                child: const Text('Join'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _joinSphere(Sphere sphere, String nickname) async {
+  Future<void> _joinSphere(Sphere sphere) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
     final avatarStore = context.read<AvatarStore>();
     final miniMeData = avatarStore.toCommunityAvatarMap();
+    final username = await _defaultCommunityUsername();
 
     try {
       final sphereRef = FirebaseFirestore.instance
@@ -789,7 +756,7 @@ extension on _CommunityScreenState {
           .doc(sphere.id);
       final memberRef = sphereRef.collection('members').doc(userId);
       await memberRef.set({
-        'nickname': nickname,
+        'username': username,
         'joinedAt': FieldValue.serverTimestamp(),
         'lastReadAt': FieldValue.serverTimestamp(),
         'lastActiveAt': FieldValue.serverTimestamp(),
@@ -798,22 +765,22 @@ extension on _CommunityScreenState {
             ? 'owner'
             : 'member',
         'miniMe': miniMeData,
-        'miniMeName': nickname,
+        'miniMeName': username,
       });
 
       await sphereRef.set({
         'memberCount': FieldValue.increment(1),
-        'lastActivityText': '$nickname has joined the sphere',
+        'lastActivityText': '$username has joined the sphere',
         'lastActivityAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       await sphereRef.collection('posts').add({
         'type': 'system_join',
-        'text': '$nickname has joined the sphere',
+        'text': '$username has joined the sphere',
         'userId': userId,
-        'nickname': nickname,
+        'username': username,
         'miniMe': miniMeData,
-        'miniMeName': nickname,
+        'miniMeName': username,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'latestActivityAt': FieldValue.serverTimestamp(),
@@ -839,7 +806,7 @@ extension on _CommunityScreenState {
     }
   }
 
-  Future<String> _defaultCommunityNickname() async {
+  Future<String> _defaultCommunityUsername() async {
     final profile = await SocialFeatures.getCurrentUserProfile();
     if (profile == null) return 'member';
     final candidate = profile.username.trim();
@@ -883,30 +850,30 @@ extension on _CommunityScreenState {
     final memberDoc = await memberRef.get();
     if (!memberDoc.exists) {
       final avatarStore = context.read<AvatarStore>();
-      final nickname = await _defaultCommunityNickname();
+      final username = await _defaultCommunityUsername();
       final miniMeData = avatarStore.toCommunityAvatarMap();
       await memberRef.set({
-        'nickname': nickname,
+        'username': username,
         'joinedAt': FieldValue.serverTimestamp(),
         'lastReadAt': FieldValue.serverTimestamp(),
         'lastActiveAt': FieldValue.serverTimestamp(),
         'warningCount': 0,
         'role': 'member',
         'miniMe': miniMeData,
-        'miniMeName': nickname,
+        'miniMeName': username,
       });
       await sphereRef.set({
         'memberCount': FieldValue.increment(1),
-        'lastActivityText': '$nickname has joined the sphere',
+        'lastActivityText': '$username has joined the sphere',
         'lastActivityAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       await sphereRef.collection('posts').add({
         'type': 'system_join',
-        'text': '$nickname has joined the sphere',
+        'text': '$username has joined the sphere',
         'userId': uid,
-        'nickname': nickname,
+        'username': username,
         'miniMe': miniMeData,
-        'miniMeName': nickname,
+        'miniMeName': username,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'latestActivityAt': FieldValue.serverTimestamp(),
@@ -974,23 +941,23 @@ extension on _CommunityScreenState {
         if (bannerTemplate.isNotEmpty) 'bannerTemplate': bannerTemplate,
         'pinnedTitle': 'Start here',
         'pinnedBody':
-            'Introduce yourself with a nickname, share what you are working on, and keep replies practical, kind, and privacy-safe.',
+            'Introduce yourself, share what you are working on, and keep replies practical, kind, and privacy-safe.',
         'lastActivityText': 'Sphere created',
         'lastActivityAt': FieldValue.serverTimestamp(),
       });
 
       final avatarStore = context.read<AvatarStore>();
-      final nickname = await _defaultCommunityNickname();
+      final username = await _defaultCommunityUsername();
       final miniMeData = avatarStore.toCommunityAvatarMap();
       await sphereRef.collection('members').doc(userId).set({
-        'nickname': nickname,
+        'username': username,
         'joinedAt': FieldValue.serverTimestamp(),
         'lastReadAt': FieldValue.serverTimestamp(),
         'lastActiveAt': FieldValue.serverTimestamp(),
         'warningCount': 0,
         'role': 'owner',
         'miniMe': miniMeData,
-        'miniMeName': nickname,
+        'miniMeName': username,
       });
 
       if (inviteFriendIds.isNotEmpty) {

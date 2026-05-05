@@ -193,7 +193,13 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (!memberDoc.exists || !mounted) return;
 
     setState(() {
-      _userNickname = memberDoc.data()?['nickname'] as String?;
+      final data = memberDoc.data() ?? <String, dynamic>{};
+      _userNickname = (data['username'] ?? data['nickname'] ?? '')
+          .toString()
+          .trim();
+      if (_userNickname!.isEmpty) {
+        _userNickname = null;
+      }
     });
   }
 
@@ -309,9 +315,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     Map<String, dynamic>? extraData,
   }) async {
     final userId = _userId;
-    final nickname = _userNickname;
+    final username = _userNickname;
     final avatarStore = context.read<AvatarStore>();
-    if (userId == null || nickname == null) return;
+    if (userId == null || username == null) return;
 
     final moderationResult = ContentModerationService.checkMessage(text);
     if (moderationResult.isViolation) {
@@ -327,7 +333,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       'type': type,
       'text': text,
       'userId': userId,
-      'nickname': nickname,
+      'username': username,
       'seedVersion': _activeChatSeedVersion,
       'miniMe': avatarStore.toCommunityAvatarMap(),
       'miniMeName': avatarStore.miniMeName,
@@ -359,7 +365,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
         sphereId: widget.sphere.id,
         sphereName: widget.sphere.name,
         senderUserId: userId,
-        senderNickname: nickname,
+        senderNickname: username,
         text: text,
       ),
     );
@@ -378,7 +384,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
     if (_userNickname == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join with a nickname to post.')),
+        const SnackBar(content: Text('Join with a username to post.')),
       );
       return;
     }
@@ -407,7 +413,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (_isSendingPost) return;
     if (_userNickname == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join with a nickname to post.')),
+        const SnackBar(content: Text('Join with a username to post.')),
       );
       return;
     }
@@ -1003,10 +1009,14 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                         final memberId = members[index].id;
                         final isMe = memberId == _userId;
                         final member = members[index].data();
-                        final memberNickname = member['nickname'] as String?;
-                        final displayNickname = isMe
+                        final memberUsername =
+                            (member['username'] ?? member['nickname'] ?? '')
+                                .toString();
+                        final displayUsername = isMe
                             ? 'You'
-                            : (memberNickname ?? 'Anonymous');
+                            : (memberUsername.isEmpty
+                                  ? 'Anonymous'
+                                  : '@$memberUsername');
                         final isMemberOwner =
                             (member['role'] ?? 'member') == 'owner' ||
                             memberId == widget.sphere.creatorId;
@@ -1033,9 +1043,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                 (miniMe['degradationLevel'] as num?)
                                     ?.toDouble() ??
                                 0,
-                            fallbackLabel: memberNickname,
+                            fallbackLabel: memberUsername,
                           ),
-                          title: Text(displayNickname),
+                          title: Text(displayUsername),
                           subtitle: Text(
                             'Joined ${_timeLabel((member['joinedAt'] as Timestamp?)?.toDate())}',
                           ),
@@ -1050,7 +1060,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                   ),
                                   onPressed: () => _confirmKickMember(
                                     memberId: memberId,
-                                    nickname: memberNickname ?? 'this member',
+                                    username: memberUsername.isEmpty
+                                        ? 'this member'
+                                        : '@$memberUsername',
                                   ),
                                 )
                               : null,
@@ -1069,14 +1081,14 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
   Future<void> _confirmKickMember({
     required String memberId,
-    required String nickname,
+    required String username,
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Kick Member'),
         content: Text(
-          'Remove "$nickname" from the sphere? They will be able to re-join unless you delete the sphere.',
+          'Remove "$username" from the sphere? They will be able to re-join unless you delete the sphere.',
         ),
         actions: [
           TextButton(
@@ -1104,7 +1116,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('"$nickname" has been removed from the sphere.'),
+          content: Text('"$username" has been removed from the sphere.'),
         ),
       );
     } catch (e) {
@@ -1113,159 +1125,6 @@ class _SphereChatScreenState extends State<SphereChatScreen>
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to kick member: $e')));
     }
-  }
-
-  void _showChangeNicknameDialog() {
-    final nicknameController = TextEditingController(text: _userNickname);
-    final cs = Theme.of(context).colorScheme;
-
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        String? errorText;
-        bool isChecking = false;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Change Nickname'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Current nickname',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  child: Text(
-                    _userNickname ?? 'Unknown',
-                    style: TextStyle(
-                      color: cs.onSurface,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'New nickname',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: nicknameController,
-                  decoration: InputDecoration(
-                    hintText: 'Enter new nickname...',
-                  ),
-                  maxLength: 20,
-                  onChanged: (_) {
-                    if (errorText != null) {
-                      setDialogState(() => errorText = null);
-                    }
-                  },
-                ),
-                Text(
-                  'Do not use your real name.',
-                  style: TextStyle(
-                    color: cs.error,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                ),
-                if (errorText != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    errorText!,
-                    style: TextStyle(
-                      color: cs.error,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final newNickname = nicknameController.text.trim();
-                  if (newNickname.isEmpty) return;
-                  if (newNickname == (_userNickname ?? '').trim()) {
-                    setDialogState(() {
-                      errorText = "You can't use your current nickname.";
-                    });
-                    return;
-                  }
-                  if (isChecking) return;
-                  setDialogState(() => isChecking = true);
-                  final taken = await _membersRef
-                      .where('nickname', isEqualTo: newNickname)
-                      .limit(1)
-                      .get();
-                  if (!context.mounted) return;
-                  final takenByOther =
-                      taken.docs.isNotEmpty && taken.docs.first.id != _userId;
-                  if (takenByOther) {
-                    setDialogState(() {
-                      isChecking = false;
-                      errorText =
-                          'That nickname is already taken in this sphere.';
-                    });
-                    return;
-                  }
-                  setDialogState(() => isChecking = false);
-                  Navigator.pop(context);
-                  await _changeNickname(newNickname);
-                },
-                child: isChecking
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Save'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _changeNickname(String newNickname) async {
-    final userId = _userId;
-    if (userId == null) return;
-
-    final avatarStore = context.read<AvatarStore>();
-    await _membersRef.doc(userId).update({
-      'nickname': newNickname,
-      'miniMe': avatarStore.toCommunityAvatarMap(),
-      'miniMeName': avatarStore.miniMeName,
-    });
-    if (!mounted) return;
-    setState(() => _userNickname = newNickname);
   }
 
   void _showLeaveSphereDialog() {
@@ -1376,25 +1235,13 @@ class _SphereChatScreenState extends State<SphereChatScreen>
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'change_nickname') {
-                _showChangeNicknameDialog();
-              } else if (value == 'invite_friends') {
+              if (value == 'invite_friends') {
                 _inviteFriendsToSphere();
               } else if (value == 'leave_sphere') {
                 _showLeaveSphereDialog();
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'change_nickname',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit_outlined),
-                    SizedBox(width: 12),
-                    Text('Change Nickname'),
-                  ],
-                ),
-              ),
               PopupMenuItem(
                 value: 'invite_friends',
                 child: Row(
@@ -1538,7 +1385,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                   onReply: () {
                                     final postData = postDoc.data();
                                     final replyTargetName =
-                                        (postData['nickname'] ??
+                                        (postData['username'] ??
+                                                postData['nickname'] ??
                                                 postData['miniMeName'] ??
                                                 'friend')
                                             .toString();
@@ -1578,6 +1426,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                           .where((doc) => doc.id != currentUid)
                           .map(
                             (doc) =>
+                                (doc.data()['username'] as String?) ??
                                 (doc.data()['nickname'] as String?) ??
                                 'Someone',
                           )
@@ -1586,7 +1435,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                     },
                   ),
                   _ComposerDock(
-                    userNickname: _userNickname,
+                    userUsername: _userNickname,
                     controller: _composerController,
                     focusNode: _composerFocusNode,
                     replyTarget: _composerReplyTarget,
@@ -1769,7 +1618,7 @@ class _TypingIndicatorBannerState extends State<_TypingIndicatorBanner>
 
 class _ComposerDock extends StatelessWidget {
   const _ComposerDock({
-    required this.userNickname,
+    required this.userUsername,
     required this.controller,
     required this.focusNode,
     required this.replyTarget,
@@ -1780,7 +1629,7 @@ class _ComposerDock extends StatelessWidget {
     required this.onCancelReply,
   });
 
-  final String? userNickname;
+  final String? userUsername;
   final TextEditingController controller;
   final FocusNode focusNode;
   final _ReplyTarget? replyTarget;
@@ -1793,7 +1642,7 @@ class _ComposerDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final canType = userNickname != null;
+    final canType = userUsername != null;
     final hasText = controller.text.trim().isNotEmpty;
 
     return Container(
@@ -1873,7 +1722,7 @@ class _ComposerDock extends StatelessWidget {
                           decoration: InputDecoration(
                             hintText: canType
                                 ? 'Write a message...'
-                                : 'Join with a nickname to post',
+                                : 'Join with a username to post',
                             border: InputBorder.none,
                             isDense: true,
                             hintStyle: TextStyle(color: cs.onSurfaceVariant),
@@ -2251,7 +2100,11 @@ class _ChatMessageTile extends StatelessWidget {
     final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
     final postType = (data['type'] ?? 'check_in').toString();
     final rawDisplayName =
-        (data['nickname'] ?? data['miniMeName'] ?? 'Anonymous').toString();
+        (data['username'] ??
+                data['nickname'] ??
+                data['miniMeName'] ??
+                'Anonymous')
+            .toString();
     final displayName = isMine ? 'You' : rawDisplayName;
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
     final text = (data['text'] ?? '').toString();

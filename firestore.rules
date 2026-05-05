@@ -140,12 +140,12 @@ service cloud.firestore {
         allow read: if signedIn();
 
         allow create: if isSelf(memberId) &&
-          request.resource.data.nickname is string;
+          request.resource.data.username is string;
 
         allow update: if (
           isSelf(memberId) &&
           affectedKeys().hasOnly([
-            'nickname',
+            'username',
             'lastReadAt',
             'lastActiveAt',
             'warningCount',
@@ -184,7 +184,7 @@ service cloud.firestore {
 
         allow create: if isSphereMember(sphereId) &&
           request.resource.data.userId == request.auth.uid &&
-          request.resource.data.nickname is string &&
+          request.resource.data.username is string &&
           request.resource.data.text is string;
 
         allow update: if isSphereMember(sphereId) && (
@@ -211,7 +211,7 @@ service cloud.firestore {
           allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
           allow create: if isSphereMember(sphereId) &&
             request.resource.data.userId == request.auth.uid &&
-            request.resource.data.nickname is string &&
+            request.resource.data.username is string &&
             request.resource.data.text is string;
           allow update: if isSphereMember(sphereId) &&
             resource.data.userId == request.auth.uid;

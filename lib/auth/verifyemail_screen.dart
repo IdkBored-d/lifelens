@@ -5,8 +5,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'verification_email_service.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
-  const VerifyEmailScreen({super.key, required this.email});
+  const VerifyEmailScreen({
+    super.key,
+    required this.email,
+    required this.onVerifiedConfirmed,
+    this.onUseAnotherAccount,
+  });
   final String email;
+  final VoidCallback onVerifiedConfirmed;
+  final VoidCallback? onUseAnotherAccount;
 
   @override
   State<VerifyEmailScreen> createState() => _VerifyEmailScreenState();
@@ -15,33 +22,6 @@ class VerifyEmailScreen extends StatefulWidget {
 class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   bool sending = false;
   bool checking = false;
-  int _resendCooldownSeconds = 0;
-  Timer? _resendTimer;
-
-  @override
-  void dispose() {
-    _resendTimer?.cancel();
-    super.dispose();
-  }
-
-  void _startResendCooldown(int seconds) {
-    _resendTimer?.cancel();
-    setState(() => _resendCooldownSeconds = seconds);
-
-    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      if (_resendCooldownSeconds <= 1) {
-        timer.cancel();
-        setState(() => _resendCooldownSeconds = 0);
-      } else {
-        setState(() => _resendCooldownSeconds--);
-      }
-    });
-  }
 
   bool _isRateLimitError(FirebaseAuthException e) {
     final code = e.code.toLowerCase();
@@ -52,39 +32,73 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         msg.contains('blocked all requests');
   }
 
-  Future<void> _resend() async {
-    if (_resendCooldownSeconds > 0) return;
+  String _friendlySendError(FirebaseAuthException e) {
+    if (_isRateLimitError(e)) {
+      return 'Too many resend attempts. Please wait a few minutes before trying again.';
+    }
+    if (e.code == 'network-request-failed') {
+      return 'Network issue while sending email. Check your connection and try again.';
+    }
+    if (e.code == 'invalid-email') {
+      return 'Your account email appears invalid. Update it and try again.';
+    }
+    return e.message ?? 'Unable to send verification email.';
+  }
 
+  Future<void> _sendVerificationEmail() async {
     setState(() => sending = true);
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+      User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await user.reload();
+        user = FirebaseAuth.instance.currentUser;
+      }
+      if (user == null) {
+        for (var i = 0; i < 6; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            await user.reload();
+            user = FirebaseAuth.instance.currentUser;
+            break;
+          }
+        }
+      }
+      if (user == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Session unavailable right now. Please stay on this screen and try resend again in a moment.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (user.emailVerified) return;
       final mode = await VerificationEmailService.send(user);
-
-      _startResendCooldown(60);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             mode == VerificationEmailSendMode.customActionLink
-                ? 'Verification email resent with your branded link.'
-                : 'Verification email resent.',
+                ? 'Verification email resent. Open the newest email link.'
+                : 'Verification email resent. Open the newest email link.',
           ),
         ),
       );
     } on FirebaseAuthException catch (e) {
-      if (_isRateLimitError(e)) {
-        _startResendCooldown(300);
-      }
-
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlySendError(e))));
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _isRateLimitError(e)
-                ? 'Too many resend attempts. Please wait a few minutes before trying again.'
-                : (e.message ?? 'Unable to resend email.'),
+            'Unable to send verification email right now. Please try again. ($e)',
           ),
         ),
       );
@@ -95,6 +109,8 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     }
   }
 
+  Future<void> _resend() => _sendVerificationEmail();
+
   Future<void> _checkVerified() async {
     setState(() => checking = true);
 
@@ -102,15 +118,12 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     await user?.reload();
 
     if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
-      await FirebaseAuth.instance.signOut();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Email verified. Please sign in to continue.'),
-          ),
+          const SnackBar(content: Text('Email verified. Continuing...')),
         );
       }
+      widget.onVerifiedConfirmed();
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -138,8 +151,14 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   cs.surface,
-                  Color.alphaBlend(cs.primary.withValues(alpha:0.10), cs.surface),
-                  Color.alphaBlend(cs.secondary.withValues(alpha:0.08), cs.surface),
+                  Color.alphaBlend(
+                    cs.primary.withValues(alpha: 0.10),
+                    cs.surface,
+                  ),
+                  Color.alphaBlend(
+                    cs.secondary.withValues(alpha: 0.08),
+                    cs.surface,
+                  ),
                 ],
               ),
             ),
@@ -150,7 +169,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
             right: -20,
             child: _GlowBubble(
               diameter: 190,
-              color: cs.primary.withValues(alpha:0.24),
+              color: cs.primary.withValues(alpha: 0.24),
             ),
           ),
           Positioned(
@@ -158,7 +177,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
             left: -20,
             child: _GlowBubble(
               diameter: 210,
-              color: cs.primaryContainer.withValues(alpha:0.30),
+              color: cs.primaryContainer.withValues(alpha: 0.30),
             ),
           ),
           SafeArea(
@@ -185,10 +204,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 FilledButton.icon(
-                                  onPressed:
-                                      (sending || _resendCooldownSeconds > 0)
-                                      ? null
-                                      : _resend,
+                                  onPressed: sending ? null : _resend,
                                   icon: sending
                                       ? const SizedBox(
                                           width: 18,
@@ -204,8 +220,6 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                                   label: Text(
                                     sending
                                         ? 'Sending verification email...'
-                                        : _resendCooldownSeconds > 0
-                                        ? 'Resend available in ${_resendCooldownSeconds}s'
                                         : 'Resend verification email',
                                   ),
                                   style: FilledButton.styleFrom(
@@ -253,11 +267,11 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: cs.surfaceContainerHighest
-                                        .withValues(alpha:0.55),
+                                        .withValues(alpha: 0.55),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: cs.outlineVariant.withValues(alpha:
-                                        0.55,
+                                      color: cs.outlineVariant.withValues(
+                                        alpha: 0.55,
                                       ),
                                     ),
                                   ),
@@ -271,9 +285,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          _resendCooldownSeconds > 0
-                                              ? 'Please wait before requesting another email. Check spam or promotions while you wait.'
-                                              : 'If you do not see the email, check your spam or promotions folder.',
+                                          'Use the latest verification email only. Older links expire after a new resend.',
                                           style: theme.textTheme.bodySmall
                                               ?.copyWith(
                                                 color: cs.onSurfaceVariant,
@@ -293,6 +305,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                         TextButton.icon(
                           onPressed: () async {
                             await FirebaseAuth.instance.signOut();
+                            widget.onUseAnotherAccount?.call();
                           },
                           icon: const Icon(Icons.logout_rounded),
                           label: const Text('Sign out and use another account'),
@@ -346,9 +359,12 @@ class _HeaderCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color.alphaBlend(cs.primary.withValues(alpha:0.58), cs.primaryContainer),
             Color.alphaBlend(
-              cs.secondary.withValues(alpha:0.42),
+              cs.primary.withValues(alpha: 0.58),
+              cs.primaryContainer,
+            ),
+            Color.alphaBlend(
+              cs.secondary.withValues(alpha: 0.42),
               cs.primaryContainer,
             ),
           ],
@@ -363,7 +379,7 @@ class _HeaderCard extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: cs.surface.withValues(alpha:0.20),
+                  color: cs.surface.withValues(alpha: 0.20),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -388,7 +404,7 @@ class _HeaderCard extends StatelessWidget {
           Text(
             'We sent a secure verification link to:',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onPrimaryContainer.withValues(alpha:0.86),
+              color: cs.onPrimaryContainer.withValues(alpha: 0.86),
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -397,10 +413,10 @@ class _HeaderCard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: cs.surface.withValues(alpha:0.22),
+              color: cs.surface.withValues(alpha: 0.22),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: cs.onPrimaryContainer.withValues(alpha:0.22),
+                color: cs.onPrimaryContainer.withValues(alpha: 0.22),
               ),
             ),
             child: Text(

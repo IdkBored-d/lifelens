@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lifelens/app_services.dart';
+import 'package:lifelens/auth/auth_prefs.dart';
 import 'package:lifelens/services/background_eod_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 
@@ -10,8 +12,7 @@ Future<void> initializeApp() async {
   // Raised to 30 s: MiniGen GGUF OTA download on first launch
   // can take longer on slow connections. NOTE: replacing old OnnxLLM asset copy.
   try {
-    await AppServices.init()
-        .timeout(const Duration(seconds: 30));
+    await AppServices.init().timeout(const Duration(seconds: 30));
   } catch (_) {
     // Non-fatal at startup; services may still finish shortly after.
   }
@@ -36,11 +37,23 @@ Future<void> initializeApp() async {
 
   // Do not block startup indefinitely waiting for auth stream on emulator.
   try {
-    await FirebaseAuth.instance
-        .authStateChanges()
-        .first
-        .timeout(const Duration(seconds: 2));
+    await FirebaseAuth.instance.authStateChanges().first.timeout(
+      const Duration(seconds: 2),
+    );
   } catch (_) {
     // Ignore timeout/errors; AppRoot handles auth state via StreamBuilder.
+  }
+
+  // If the user did not opt into "Remember me", never keep them signed in
+  // across app launches.
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final rememberMe = prefs.getBool(kRememberMeKey) ?? false;
+    final user = FirebaseAuth.instance.currentUser;
+    if (!rememberMe && user != null && user.emailVerified) {
+      await FirebaseAuth.instance.signOut();
+    }
+  } catch (_) {
+    // Non-fatal; auth state stream still drives the UI.
   }
 }

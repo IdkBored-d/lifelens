@@ -21,6 +21,9 @@ class _AppRootState extends State<AppRoot> {
   String? _cachedHomeUserId;
   String? _cachedHomeUserName;
   Widget? _cachedHomeScreen;
+  String? _verificationGateUserId;
+  String? _verificationGateEmail;
+  bool _verificationGateActive = false;
 
   void _clearHomeCache() {
     _cachedHomeUserId = null;
@@ -31,6 +34,12 @@ class _AppRootState extends State<AppRoot> {
   @override
   void initState() {
     super.initState();
+    final bootUser = FirebaseAuth.instance.currentUser;
+    if (bootUser != null && !bootUser.emailVerified) {
+      _verificationGateUserId = bootUser.uid;
+      _verificationGateEmail = bootUser.email;
+      _verificationGateActive = true;
+    }
     _initFuture = initializeApp();
   }
 
@@ -57,7 +66,7 @@ class _AppRootState extends State<AppRoot> {
         }
 
         return StreamBuilder<User?>(
-          stream: FirebaseAuth.instance.idTokenChanges(),
+          stream: FirebaseAuth.instance.authStateChanges(),
           builder: (context, authSnapshot) {
             if (authSnapshot.connectionState == ConnectionState.waiting) {
               return const LoadingScreen();
@@ -65,16 +74,56 @@ class _AppRootState extends State<AppRoot> {
 
             if (!authSnapshot.hasData) {
               _clearHomeCache();
+              if (_verificationGateActive) {
+                return VerifyEmailScreen(
+                  email: _verificationGateEmail ?? '',
+                  onVerifiedConfirmed: () {
+                    if (!mounted) return;
+                    setState(() {
+                      _verificationGateActive = false;
+                    });
+                  },
+                  onUseAnotherAccount: () {
+                    if (!mounted) return;
+                    setState(() {
+                      _verificationGateActive = false;
+                      _verificationGateUserId = null;
+                      _verificationGateEmail = null;
+                    });
+                  },
+                );
+              }
               return const SignupLogin();
             }
 
             final user = authSnapshot.data!;
+            final uid = user.uid;
 
             if (!user.emailVerified) {
-              return VerifyEmailScreen(email: user.email ?? '');
+              _verificationGateUserId = uid;
+              _verificationGateEmail = user.email ?? _verificationGateEmail;
+              _verificationGateActive = true;
             }
 
-            final uid = user.uid;
+            if (_verificationGateActive && _verificationGateUserId == uid) {
+              return VerifyEmailScreen(
+                email: user.email ?? '',
+                onVerifiedConfirmed: () {
+                  if (!mounted) return;
+                  setState(() {
+                    _verificationGateActive = false;
+                  });
+                },
+                onUseAnotherAccount: () {
+                  if (!mounted) return;
+                  setState(() {
+                    _verificationGateActive = false;
+                    _verificationGateUserId = null;
+                    _verificationGateEmail = null;
+                  });
+                },
+              );
+            }
 
             return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
               stream: FirebaseFirestore.instance
