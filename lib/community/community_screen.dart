@@ -888,10 +888,6 @@ extension on _CommunityScreenState {
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Joined $sphereName.')));
   }
 
   Future<void> _declineSphereInvite(

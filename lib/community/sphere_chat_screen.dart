@@ -1178,11 +1178,79 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     ).showSnackBar(const SnackBar(content: Text('Left sphere successfully')));
   }
 
+  Future<void> _joinSphere() async {
+    final userId = _userId;
+    if (userId == null) return;
+    final avatarStore = context.read<AvatarStore>();
+    final miniMeData = avatarStore.toCommunityAvatarMap();
+    final profile = await SocialFeatures.getCurrentUserProfile();
+    String username = profile?.username.trim() ?? '';
+    if (username.isEmpty) {
+      final display = profile?.displayName.trim() ?? '';
+      username = display.replaceAll(' ', '_').toLowerCase();
+    }
+    if (username.isEmpty) username = 'member';
+
+    try {
+      await _membersRef.doc(userId).set({
+        'username': username,
+        'joinedAt': FieldValue.serverTimestamp(),
+        'lastReadAt': FieldValue.serverTimestamp(),
+        'lastActiveAt': FieldValue.serverTimestamp(),
+        'warningCount': 0,
+        'role': (!widget.sphere.isPremade && widget.sphere.creatorId == userId)
+            ? 'owner'
+            : 'member',
+        'miniMe': miniMeData,
+        'miniMeName': username,
+      });
+
+      await _sphereRef.set({
+        'memberCount': FieldValue.increment(1),
+        'lastActivityText': '$username has joined the sphere',
+        'lastActivityAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await _postsRef.add({
+        'type': 'system_join',
+        'text': '$username has joined the sphere',
+        'userId': userId,
+        'username': username,
+        'miniMe': miniMeData,
+        'miniMeName': username,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'latestActivityAt': FieldValue.serverTimestamp(),
+        'replyCount': 0,
+        'reactionCounts': <String, int>{},
+        'isPinned': false,
+      });
+
+      if (!mounted) return;
+      setState(() => _userNickname = username);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error joining sphere: $e')),
+      );
+    }
+  }
+
   Future<void> _inviteFriendsToSphere() async {
+    // Fetch current member IDs so already-joined friends are hidden.
+    Set<String> memberIds = const <String>{};
+    try {
+      final snap = await _membersRef.get();
+      memberIds = snap.docs.map((d) => d.id).toSet();
+    } catch (_) {
+      // If the fetch fails, show all friends — don't block the invite flow.
+    }
+
     final selected = await SocialFeatures.showFriendPicker(
       context,
       title: 'Invite friends to ${widget.sphere.name}',
-      actionLabel: 'Send invites',
+      actionLabel: 'Send invite',
+      excludeUserIds: memberIds,
     );
     if (!mounted || selected == null || selected.isEmpty) return;
 
@@ -1325,9 +1393,13 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                     _inviteFriendsToSphere();
                                   } else if (value == 'leave_sphere') {
                                     _showLeaveSphereDialog();
+                                  } else if (value == 'join_sphere_menu') {
+                                    _joinSphere();
                                   }
                                 },
-                                itemBuilder: (context) => const [
+                                itemBuilder: (context) => [
+                                  if (_userNickname != null) ...
+                                  const [
                                   PopupMenuItem(
                                     value: 'invite_friends',
                                     child: Row(
@@ -1348,11 +1420,76 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                       ],
                                     ),
                                   ),
+                                  ],
+                                  if (_userNickname == null)
+                                  const PopupMenuItem(
+                                    value: 'join_sphere_menu',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.group_add_outlined),
+                                        SizedBox(width: 12),
+                                        Text('Join Sphere'),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ],
                           ),
                         ),
+                        // Bottom join bar — only shown when not a member
+                        if (!_isBootstrapping && _userNickname == null)
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.info_outline_rounded,
+                                    color: Colors.white70,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'You are not a member of this sphere',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  FilledButton(
+                                    onPressed: _joinSphere,
+                                    style: FilledButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    child: const Text('Join Sphere'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        if (!_isBootstrapping && _userNickname != null)
+                          const Positioned(
+                            bottom: 0,
+                            right: 12,
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: 6),
+                              child: _MemberBadge(),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -3196,6 +3333,32 @@ class _DefaultSphereChatBanner extends StatelessWidget {
                 color: palette.accentColor.withValues(alpha: 0.22),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberBadge extends StatelessWidget {
+  const _MemberBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_rounded, color: Colors.white70, size: 13),
+          SizedBox(width: 4),
+          Text(
+            'Member',
+            style: TextStyle(color: Colors.white70, fontSize: 11),
           ),
         ],
       ),

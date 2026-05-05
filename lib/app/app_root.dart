@@ -1,13 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../auth/signup_login.dart';
-import '../loading_screen.dart';
 import '../home_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../intro_screen.dart';
 import '../auth/verifyemail_screen.dart';
 import 'app_init.dart';
+import '../screens/brand_splash_screen.dart';
+import '../screens/startup_splash_screen.dart';
 
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
@@ -16,8 +18,19 @@ class AppRoot extends StatefulWidget {
   State<AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends State<AppRoot> {
+class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
   late Future<void> _initFuture;
+  late AnimationController _openCtrl;
+  late Animation<Offset> _contentSlide;
+  late Animation<double> _splashFade;
+  bool _openTriggered = false;
+  bool _openComplete = false;
+
+  // Parallel subscriptions used ONLY to trigger the open animation.
+  // These are independent from the FutureBuilder/StreamBuilder in _buildContent.
+  StreamSubscription<User?>? _authReadySub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _docReadySub;
+
   String? _cachedHomeUserId;
   String? _cachedHomeUserName;
   Widget? _cachedHomeScreen;
@@ -31,9 +44,95 @@ class _AppRootState extends State<AppRoot> {
     _cachedHomeScreen = null;
   }
 
+  /// Triggers the splash-dissolve animation exactly once, outside of build().
+  /// Double addPostFrameCallback ensures content is fully laid out and painted
+  /// before any pixel of the splash becomes transparent.
+  void _openContent() {
+    if (_openTriggered) return;
+    _openTriggered = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _openCtrl.forward().then((_) {
+          if (mounted) setState(() => _openComplete = true);
+        });
+      });
+    });
+  }
+
+  /// Sets up a one-shot listener chain that calls [_openContent] the first
+  /// time the data stack resolves to something renderable. Completely
+  /// independent from the FutureBuilder/StreamBuilder used for UI rendering.
+  void _listenForReadiness() {
+    _initFuture.then((_) {
+      if (!mounted) return;
+      _authReadySub = FirebaseAuth.instance.authStateChanges().listen(
+        (user) {
+          if (!mounted) return;
+          if (user == null || !user.emailVerified) {
+            // Unauthenticated, verification gate, or startup splash — ready.
+            _openContent();
+            _cancelReadinessListeners();
+          } else {
+            // Authenticated — wait for first Firestore snapshot.
+            _docReadySub?.cancel();
+            _docReadySub = FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .snapshots()
+                .listen(
+              (_) {
+                if (!mounted) return;
+                _openContent();
+                _cancelReadinessListeners();
+              },
+              onError: (_) {
+                _openContent();
+                _cancelReadinessListeners();
+              },
+            );
+          }
+        },
+        onError: (_) {
+          _openContent();
+          _cancelReadinessListeners();
+        },
+      );
+    }).catchError((_) {
+      _openContent();
+    });
+  }
+
+  void _cancelReadinessListeners() {
+    _authReadySub?.cancel();
+    _authReadySub = null;
+    _docReadySub?.cancel();
+    _docReadySub = null;
+  }
+
   @override
   void initState() {
     super.initState();
+    _openCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    // Content rises subtly — easeOutCubic gives a natural opening feel.
+    _contentSlide = Tween<Offset>(
+      begin: const Offset(0.0, 0.025),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _openCtrl, curve: Curves.easeOutCubic));
+    // Splash holds at full opacity for the first 40% of the animation
+    // (240 ms) so content is guaranteed to be painted, then dissolves
+    // smoothly with easeIn over the remaining 360 ms.
+    _splashFade = Tween<double>(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _openCtrl,
+        curve: const Interval(0.40, 1.0, curve: Curves.easeIn),
+      ),
+    );
+
     final bootUser = FirebaseAuth.instance.currentUser;
     if (bootUser != null && !bootUser.emailVerified) {
       _verificationGateUserId = bootUser.uid;
@@ -41,27 +140,47 @@ class _AppRootState extends State<AppRoot> {
       _verificationGateActive = true;
     }
     _initFuture = initializeApp();
+    _listenForReadiness();
   }
 
   @override
-  Widget build(BuildContext context) {
+  void dispose() {
+    _cancelReadinessListeners();
+    _openCtrl.dispose();
+    super.dispose();
+  }
+
+  Widget _buildContent() {
     return FutureBuilder<void>(
       future: _initFuture,
       builder: (context, initSnapshot) {
         if (initSnapshot.connectionState != ConnectionState.done) {
-          return const LoadingScreen();
+          // Overlay is still fully opaque — just show the dark bg behind it.
+          return const Scaffold(backgroundColor: Color(0xFF0F1014));
         }
 
         if (initSnapshot.hasError) {
           return _InitErrorScreen(
             error: initSnapshot.error.toString(),
-            onRetry: () => setState(() => _initFuture = initializeApp()),
+            onRetry: () => setState(() {
+              _openTriggered = false;
+              _openComplete = false;
+              _openCtrl.reset();
+              _initFuture = initializeApp();
+              _listenForReadiness();
+            }),
           );
         }
 
         if (Firebase.apps.isEmpty) {
           return _FirebaseUnavailableScreen(
-            onRetry: () => setState(() => _initFuture = initializeApp()),
+            onRetry: () => setState(() {
+              _openTriggered = false;
+              _openComplete = false;
+              _openCtrl.reset();
+              _initFuture = initializeApp();
+              _listenForReadiness();
+            }),
           );
         }
 
@@ -69,14 +188,11 @@ class _AppRootState extends State<AppRoot> {
           stream: FirebaseAuth.instance.authStateChanges(),
           builder: (context, authSnapshot) {
             if (authSnapshot.connectionState == ConnectionState.waiting) {
-              return const LoadingScreen();
+              return const Scaffold(backgroundColor: Color(0xFF0F1014));
             }
 
             if (!authSnapshot.hasData) {
               _clearHomeCache();
-              // If verification gate is active, keep showing the verify screen.
-              // The gate must only be cleared by explicit user action (callbacks),
-              // never by a transient null in the auth stream.
               if (_verificationGateActive && _verificationGateEmail != null) {
                 return VerifyEmailScreen(
                   email: _verificationGateEmail!,
@@ -103,7 +219,7 @@ class _AppRootState extends State<AppRoot> {
               _verificationGateActive = false;
               _verificationGateUserId = null;
               _verificationGateEmail = null;
-              return const SignupLogin();
+              return const StartupSplashScreen();
             }
 
             final user = authSnapshot.data!;
@@ -120,9 +236,7 @@ class _AppRootState extends State<AppRoot> {
                 email: user.email ?? '',
                 onVerifiedConfirmed: () {
                   if (!mounted) return;
-                  setState(() {
-                    _verificationGateActive = false;
-                  });
+                  setState(() => _verificationGateActive = false);
                 },
                 onUseAnotherAccount: () {
                   if (!mounted) return;
@@ -142,7 +256,7 @@ class _AppRootState extends State<AppRoot> {
                   .snapshots(),
               builder: (context, userSnapshot) {
                 if (userSnapshot.connectionState == ConnectionState.waiting) {
-                  return const LoadingScreen();
+                  return const Scaffold(backgroundColor: Color(0xFF0F1014));
                 }
 
                 if (userSnapshot.hasError) {
@@ -183,6 +297,33 @@ class _AppRootState extends State<AppRoot> {
           },
         );
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Solid dark floor prevents any OS background from showing through
+    // while the splash dissolves and content is partially transparent.
+    return ColoredBox(
+      color: const Color(0xFF0F1014),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── Content: always full opacity, lifts up as splash dissolves ──
+          SlideTransition(
+            position: _contentSlide,
+            child: _buildContent(),
+          ),
+          // ── Splash: dissolves out (easeIn) — removed when done ──────────
+          if (!_openComplete)
+            AnimatedBuilder(
+              animation: _splashFade,
+              builder: (_, child) =>
+                  Opacity(opacity: _splashFade.value, child: child),
+              child: const BrandSplashScreen(),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -1970,24 +1970,18 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         ),
         actions: [
           // Check-Up button — always visible, badge dot when pending
-          Tooltip(
-            message: 'Symptom Check-Up',
-            child: InkWell(
-              borderRadius: BorderRadius.circular(50),
-              onTap: _runSymptomCheckup,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Badge(
-                  isLabelVisible: _hasSymptomCheckupPending,
-                  backgroundColor: cs.error,
-                  smallSize: 9,
-                  child: Icon(
-                    Icons.monitor_heart_rounded,
-                    color: _hasSymptomCheckupPending
-                        ? cs.error
-                        : cs.onSurfaceVariant,
-                  ),
-                ),
+          IconButton(
+            tooltip: 'Symptom Check-Up',
+            onPressed: _runSymptomCheckup,
+            icon: Badge(
+              isLabelVisible: _hasSymptomCheckupPending,
+              backgroundColor: cs.error,
+              smallSize: 9,
+              child: Icon(
+                Icons.monitor_heart_rounded,
+                color: _hasSymptomCheckupPending
+                    ? cs.error
+                    : cs.onSurfaceVariant,
               ),
             ),
           ),

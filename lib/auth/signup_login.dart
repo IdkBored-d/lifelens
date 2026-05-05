@@ -8,7 +8,9 @@ import 'auth_prefs.dart';
 import 'verification_email_service.dart';
 
 class SignupLogin extends StatefulWidget {
-  const SignupLogin({super.key});
+  const SignupLogin({super.key, this.initialIsLogin = true});
+
+  final bool initialIsLogin;
 
   @override
   State<SignupLogin> createState() => _SignupLoginState();
@@ -19,7 +21,7 @@ class _SignupLoginState extends State<SignupLogin> {
       'https://lifelens.app/reset-password';
   static const String _androidPackageName = 'com.example.lifelens';
 
-  bool isLogin = true;
+  late bool isLogin;
   bool _isSubmitting = false;
 
   final _formKey = GlobalKey<FormState>();
@@ -36,6 +38,7 @@ class _SignupLoginState extends State<SignupLogin> {
   @override
   void initState() {
     super.initState();
+    isLogin = widget.initialIsLogin;
     _loadRememberedLogin();
   }
 
@@ -214,6 +217,12 @@ class _SignupLoginState extends State<SignupLogin> {
       } else {
         await prefs.remove(kRememberedEmailKey);
         await prefs.setBool(kRememberMeKey, false);
+      }
+
+      // If SignupLogin was pushed as a route (e.g. from the startup splash),
+      // pop back to root so AppRoot can rebuild with the new auth state.
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on FirebaseAuthException catch (e) {
       debugPrint('[Signup] FirebaseAuthException: code=${e.code} msg=${e.message}');

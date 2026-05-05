@@ -203,30 +203,37 @@ class SocialFeatures {
     var sent = 0;
     for (final friendId in friendUserIds.toSet()) {
       if (friendId == sender.uid) continue;
-      final invitesRef = _firestore
+
+      // Use a deterministic doc ID so we never need a prior read (which the
+      // Firestore rules deny) and naturally deduplicate concurrent invites.
+      final docId = '${sphereId}_${sender.uid}';
+      final inviteRef = _firestore
           .collection('users')
           .doc(friendId)
-          .collection('sphere_invites');
+          .collection('sphere_invites')
+          .doc(docId);
 
-      final duplicate = await invitesRef
-          .where('sphereId', isEqualTo: sphereId)
-          .where('fromUserId', isEqualTo: sender.uid)
-          .where('status', isEqualTo: 'pending')
-          .limit(1)
-          .get();
-      if (duplicate.docs.isNotEmpty) continue;
-
-      await invitesRef.add({
-        'sphereId': sphereId,
-        'sphereName': sphereName,
-        'fromUserId': sender.uid,
-        'fromUsername': sender.username,
-        'toUserId': friendId,
-        'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      sent += 1;
+      try {
+        await inviteRef.set({
+          'sphereId': sphereId,
+          'sphereName': sphereName,
+          'fromUserId': sender.uid,
+          'fromUsername': sender.username,
+          'toUserId': friendId,
+          'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: false));
+        sent += 1;
+      } on FirebaseException catch (e) {
+        // permission-denied means the doc already exists (update not allowed);
+        // treat that as already-invited and count it as sent.
+        if (e.code == 'permission-denied') {
+          sent += 1;
+        } else {
+          rethrow;
+        }
+      }
     }
 
     return sent;
@@ -236,6 +243,7 @@ class SocialFeatures {
     BuildContext context, {
     required String title,
     String actionLabel = 'Invite',
+    Set<String> excludeUserIds = const <String>{},
   }) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return Future.value(<String>[]);
@@ -249,6 +257,7 @@ class SocialFeatures {
           userId: uid,
           title: title,
           actionLabel: actionLabel,
+          excludeUserIds: excludeUserIds,
         );
       },
     );
@@ -260,11 +269,13 @@ class _FriendPickerSheet extends StatefulWidget {
     required this.userId,
     required this.title,
     required this.actionLabel,
+    this.excludeUserIds = const <String>{},
   });
 
   final String userId;
   final String title;
   final String actionLabel;
+  final Set<String> excludeUserIds;
 
   @override
   State<_FriendPickerSheet> createState() => _FriendPickerSheetState();
@@ -302,12 +313,22 @@ class _FriendPickerSheetState extends State<_FriendPickerSheet> {
                     if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
-                    final docs = snapshot.data!.docs;
+                    final allDocs = snapshot.data!.docs;
+                    final docs = widget.excludeUserIds.isEmpty
+                        ? allDocs
+                        : allDocs
+                              .where(
+                                (d) => !widget.excludeUserIds.contains(d.id),
+                              )
+                              .toList(growable: false);
                     if (docs.isEmpty) {
                       return Center(
                         child: Text(
-                          'No friends yet.',
+                          allDocs.isEmpty
+                              ? 'No friends yet.'
+                              : 'All your friends are already in this sphere.',
                           style: TextStyle(color: cs.onSurfaceVariant),
+                          textAlign: TextAlign.center,
                         ),
                       );
                     }

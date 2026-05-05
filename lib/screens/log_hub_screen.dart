@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
@@ -11,6 +12,7 @@ import 'package:lifelens/screens/symptoms_screen.dart';
 import 'package:lifelens/services/exercise_store.dart';
 import 'package:lifelens/sleep_store.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LogHubScreen extends StatefulWidget {
   const LogHubScreen({super.key, required this.userName, this.onOpenMiniMe});
@@ -27,13 +29,14 @@ class _LogHubScreenState extends State<LogHubScreen> {
   DateTime _selectedHistoryDate = DateTime.now();
   final ExerciseStore _exerciseStore = ExerciseStore();
   bool _isTrackersExpanded = false;
-  Future<bool>? _firstTimeUserFuture;
   Future<bool>? _hasAnyExerciseLogsTodayFuture;
+  Future<bool>? _isReturningUserFuture;
   String? _asyncStateSignature;
 
   @override
   void initState() {
     super.initState();
+    _isReturningUserFuture = _checkAndMarkReturningUser();
     _refreshAsyncState(
       moodSelection: const _MoodLogSnapshot.empty(),
       sleepSelection: const _SleepLogSnapshot.empty(),
@@ -44,10 +47,6 @@ class _LogHubScreenState extends State<LogHubScreen> {
     required _MoodLogSnapshot moodSelection,
     required _SleepLogSnapshot sleepSelection,
   }) {
-    _firstTimeUserFuture = _isFirstTimeUser(
-      moodSelection: moodSelection,
-      sleepSelection: sleepSelection,
-    );
     _hasAnyExerciseLogsTodayFuture = _hasAnyExerciseLogsToday();
   }
 
@@ -58,7 +57,6 @@ class _LogHubScreenState extends State<LogHubScreen> {
     final nextSignature =
         '${moodSelection.signature}::${sleepSelection.signature}';
     if (_asyncStateSignature == nextSignature &&
-        _firstTimeUserFuture != null &&
         _hasAnyExerciseLogsTodayFuture != null) {
       return;
     }
@@ -99,6 +97,20 @@ class _LogHubScreenState extends State<LogHubScreen> {
     });
   }
 
+  /// Returns true if the user has opened Log Hub before (returning user).
+  /// On first call per account it stores the flag so subsequent opens return true.
+  Future<bool> _checkAndMarkReturningUser() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return true; // fallback: treat as returning
+    final key = 'log_hub_seen_$uid';
+    final prefs = await SharedPreferences.getInstance();
+    final alreadySeen = prefs.getBool(key) ?? false;
+    if (!alreadySeen) {
+      await prefs.setBool(key, true);
+    }
+    return alreadySeen;
+  }
+
   Future<bool> _hasAnyExerciseLogsToday() async {
     await _exerciseStore.ensureReady();
     final today = DateTime.now();
@@ -106,26 +118,6 @@ class _LogHubScreenState extends State<LogHubScreen> {
       final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
       return timestamp != null && _isSameDay(timestamp, today);
     });
-  }
-
-  Future<bool> _isFirstTimeUser({
-    required _MoodLogSnapshot moodSelection,
-    required _SleepLogSnapshot sleepSelection,
-  }) async {
-    final hasMoodLogs = moodSelection.items.isNotEmpty;
-    final hasSleepLogs = sleepSelection.items.isNotEmpty;
-
-    await _exerciseStore.ensureReady();
-    final hasExerciseLogs = _exerciseStore
-        .getRecentExerciseHistory(limit: 1)
-        .isNotEmpty;
-
-    await AppServices.isar.init();
-    final hasSymptomLogs = (await AppServices.isar.getRecentSymptomEntries(
-      days: 3650,
-    )).isNotEmpty;
-
-    return !hasMoodLogs && !hasSleepLogs && !hasExerciseLogs && !hasSymptomLogs;
   }
 
   @override
@@ -150,20 +142,19 @@ class _LogHubScreenState extends State<LogHubScreen> {
       appBar: AppBar(title: const Text('Log Center'), centerTitle: false),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               FutureBuilder<bool>(
-                future: _firstTimeUserFuture,
+                future: _isReturningUserFuture,
                 builder: (context, snapshot) {
-                  final isFirstTimeUser = snapshot.data ?? false;
-                  final title = isFirstTimeUser
-                      ? 'Welcome, let\'s get started, $userName'
-                      : 'Welcome back, $userName';
-
+                  final isReturning = snapshot.data ?? true;
+                  final greeting = isReturning
+                      ? 'Welcome back, $userName'
+                      : 'Welcome to LifeLens, $userName';
                   return Text(
-                    title,
+                    greeting,
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -177,7 +168,7 @@ class _LogHubScreenState extends State<LogHubScreen> {
                   color: cs.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 24),
               const _SectionHeader(title: 'Calendar'),
               const SizedBox(height: 12),
               HistoryCalendarView(
