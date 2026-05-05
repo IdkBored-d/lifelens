@@ -74,14 +74,20 @@ class _AppRootState extends State<AppRoot> {
 
             if (!authSnapshot.hasData) {
               _clearHomeCache();
-              if (_verificationGateActive) {
+              // If verification gate is active, keep showing the verify screen.
+              // The gate must only be cleared by explicit user action (callbacks),
+              // never by a transient null in the auth stream.
+              if (_verificationGateActive && _verificationGateEmail != null) {
                 return VerifyEmailScreen(
-                  email: _verificationGateEmail ?? '',
+                  email: _verificationGateEmail!,
                   onVerifiedConfirmed: () {
                     if (!mounted) return;
                     setState(() {
                       _verificationGateActive = false;
+                      _verificationGateUserId = null;
+                      _verificationGateEmail = null;
                     });
+                    FirebaseAuth.instance.signOut();
                   },
                   onUseAnotherAccount: () {
                     if (!mounted) return;
@@ -90,9 +96,13 @@ class _AppRootState extends State<AppRoot> {
                       _verificationGateUserId = null;
                       _verificationGateEmail = null;
                     });
+                    FirebaseAuth.instance.signOut();
                   },
                 );
               }
+              _verificationGateActive = false;
+              _verificationGateUserId = null;
+              _verificationGateEmail = null;
               return const SignupLogin();
             }
 

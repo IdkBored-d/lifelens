@@ -151,59 +151,61 @@ class _SignupLoginState extends State<SignupLogin> {
           password: password,
         );
 
-        final usernameRef = FirebaseFirestore.instance
-            .collection('usernames')
-            .doc(usernameLower);
-
+        // Any failure after auth creation must delete the auth user so the
+        // account doesn't become orphaned (exists in Auth but not Firestore).
         try {
-          await FirebaseFirestore.instance.runTransaction((tx) async {
-            final existing = await tx.get(usernameRef);
-            if (existing.exists) {
-              final owner = (existing.data()?['uid'] ?? '').toString();
-              if (owner != cred.user!.uid) {
-                throw FirebaseAuthException(
-                  code: 'username-taken',
-                  message: 'That username is already taken.',
-                );
+          final usernameRef = FirebaseFirestore.instance
+              .collection('usernames')
+              .doc(usernameLower);
+
+          try {
+            await FirebaseFirestore.instance.runTransaction((tx) async {
+              final existing = await tx.get(usernameRef);
+              if (existing.exists) {
+                final owner = (existing.data()?['uid'] ?? '').toString();
+                if (owner != cred.user!.uid) {
+                  throw FirebaseAuthException(
+                    code: 'username-taken',
+                    message: 'That username is already taken.',
+                  );
+                }
               }
+
+              tx.set(usernameRef, {
+                'uid': cred.user!.uid,
+                'username': normalizedUsername,
+                'updatedAt': FieldValue.serverTimestamp(),
+              });
+            });
+          } on FirebaseException catch (e) {
+            // If username registry rules are not deployed yet, skip silently.
+            if (e.code != 'permission-denied') {
+              rethrow;
             }
-
-            tx.set(usernameRef, {
-              'uid': cred.user!.uid,
-              'username': normalizedUsername,
-              'updatedAt': FieldValue.serverTimestamp(),
-            });
-          });
-        } on FirebaseAuthException catch (e) {
-          // Username conflict should rollback the newly-created auth user.
-          if (e.code == 'username-taken') {
-            await cred.user?.delete();
           }
+
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(cred.user!.uid)
+              .set({
+                'email': email,
+                'username': normalizedUsername,
+                'usernameLower': usernameLower,
+                'firstName': _firstNameController.text.trim(),
+                'lastName': _lastNameController.text.trim(),
+                'createdAt': FieldValue.serverTimestamp(),
+                'displayName': '',
+                'onboardingComplete': false,
+              });
+
+          await VerificationEmailService.send(cred.user!);
+        } catch (e) {
+          // Rollback: delete the newly created auth account so the email is
+          // free to register again on next attempt.
+          debugPrint('[Signup] Post-auth setup failed, deleting auth user: $e');
+          await cred.user?.delete();
           rethrow;
-        } on FirebaseException catch (e) {
-          // If username registry rules are not deployed yet, continue by saving
-          // username directly on users/{uid}. This keeps sign-up + verification
-          // working instead of bouncing the user back to login.
-          if (e.code != 'permission-denied') {
-            rethrow;
-          }
         }
-
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(cred.user!.uid)
-            .set({
-              'email': email,
-              'username': normalizedUsername,
-              'usernameLower': usernameLower,
-              'firstName': _firstNameController.text.trim(),
-              'lastName': _lastNameController.text.trim(),
-              'createdAt': FieldValue.serverTimestamp(),
-              'displayName': '',
-              'onboardingComplete': false,
-            });
-
-        await VerificationEmailService.send(cred.user!);
       }
 
       if (isLogin && _rememberMe.value) {
@@ -214,19 +216,33 @@ class _SignupLoginState extends State<SignupLogin> {
         await prefs.setBool(kRememberMeKey, false);
       }
     } on FirebaseAuthException catch (e) {
+      debugPrint('[Signup] FirebaseAuthException: code=${e.code} msg=${e.message}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text(e.message ?? 'Authentication error'),
+          duration: const Duration(seconds: 8),
+          content: Text('[${e.code}] ${e.message ?? 'Authentication error'}'),
         ),
       );
     } on FirebaseException catch (e) {
+      debugPrint('[Signup] FirebaseException: code=${e.code} msg=${e.message}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text(e.message ?? 'Could not save your profile.'),
+          duration: const Duration(seconds: 8),
+          content: Text('[${e.code}] ${e.message ?? 'Could not save your profile.'}'),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Signup] Unknown error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 8),
+          content: Text('Signup error: $e'),
         ),
       );
     } finally {

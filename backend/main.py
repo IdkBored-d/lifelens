@@ -601,7 +601,8 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
             "then tell me what happened and I will refine it."
         )
 
-    high_strain = (intensity is not None and intensity >= 4) or mood in {'fear', 'anger', 'sadness'}
+    _negative_moods_strain = {'fear', 'anger', 'sadness', 'anxious', 'stressed', 'overwhelmed', 'disgust'}
+    high_strain = (intensity is not None and intensity >= 4 and mood in _negative_moods_strain) or mood in {'fear', 'anger', 'sadness'}
 
     completion_positive = any(
         token in lower
@@ -925,13 +926,41 @@ def _build_suggestions_fallback(
     log_text = ' '.join(recent_logs)
     context_text = f"{summary_context} {log_text} {symptom_text}".strip()
 
-    has_sleep_signal = any(
-        token in context_text
-        for token in ['sleep', 'bed', 'wake', 'insomnia', 'rest', 'night']
+    # ── Mood classification ────────────────────────────────────────────────
+    _positive_moods = {'joy', 'love', 'happy', 'excited', 'content', 'calm', 'grateful', 'hopeful'}
+    _negative_moods = {'fear', 'anger', 'sadness', 'anxious', 'stressed', 'overwhelmed', 'disgust', 'sad', 'angry', 'anxious'}
+    mood_is_positive = mood in _positive_moods
+    mood_is_negative = mood in _negative_moods
+
+    # ── Sleep quality parsing ──────────────────────────────────────────────
+    # Flutter sends "Sleep logs: average X.X hours ... Sleep quality pattern: excellent/good/fair/poor ..."
+    # and "X recent entries were under 7 hours."
+    _good_sleep_labels = {'excellent', 'great', 'very good', 'good'}
+    _bad_sleep_labels = {'poor', 'bad', 'terrible', 'awful', 'light', 'restless', 'fair'}
+    sleep_quality_is_good = any(label in summary_context for label in _good_sleep_labels)
+    sleep_quality_is_bad = any(label in summary_context for label in _bad_sleep_labels)
+    sleep_has_no_logs = 'sleep logs: none' in summary_context or 'sleep logs: none yet' in summary_context
+    sleep_has_low_hours = 'under 7 hours' in summary_context and '0 recent entries were under 7' not in summary_context
+    # Sleep needs attention only if quality is poor/bad OR hours are short
+    sleep_needs_attention = (not sleep_has_no_logs) and (sleep_quality_is_bad or sleep_has_low_hours)
+    # Sleep recently logged and already good
+    sleep_is_solid = sleep_quality_is_good and not sleep_has_low_hours and not sleep_has_no_logs
+
+    # ── Exercise parsing ───────────────────────────────────────────────────
+    # Flutter sends "Exercise logs: X today and Y in the last 7 days."
+    exercise_has_no_logs = 'exercise logs: none' in summary_context or 'exercise logs: none yet' in summary_context
+    exercise_today_zero = 'exercise logs: 0 today' in summary_context
+    exercise_week_zero = '0 in the last 7' in summary_context
+    exercise_missing = exercise_has_no_logs or (exercise_today_zero and exercise_week_zero)
+    exercise_logged = not exercise_missing and (
+        'exercise log:' in log_text or  # individual log entry
+        ('exercise logs:' in summary_context and 'none' not in summary_context.split('exercise logs:')[1][:30])
     )
-    has_exercise_signal = any(
+
+    # ── Symptom / discomfort signals ───────────────────────────────────────
+    has_physical_discomfort = any(
         token in context_text
-        for token in ['exercise', 'workout', 'walk', 'steps', 'movement', 'cardio', 'strength']
+        for token in ['pain', 'injury', 'headache', 'dizzy', 'nausea', 'sore']
     )
     has_stress_signal = any(
         token in context_text
@@ -941,12 +970,17 @@ def _build_suggestions_fallback(
         token in context_text
         for token in ['fatigue', 'tired', 'drained', 'low energy']
     )
-    has_physical_discomfort = any(
-        token in context_text
-        for token in ['pain', 'injury', 'headache', 'dizzy', 'nausea', 'sore']
-    )
 
-    cautious_mode = has_physical_discomfort or intensity >= 4
+    # ── Cautious mode: only for genuinely negative/strained states ─────────
+    _negative_moods_strain = {'fear', 'anger', 'sadness', 'anxious', 'stressed', 'overwhelmed', 'disgust'}
+    cautious_mode = has_physical_discomfort or (intensity >= 4 and mood in _negative_moods_strain)
+
+    # ── Mood context: heavier patterns from recent logs ────────────────────
+    recent_heavy_count = sum(
+        1 for log in recent_logs
+        if any(token in log for token in ['sadness', 'fear', 'anger', 'anxious', 'stressed', 'overwhelmed'])
+    )
+    mood_pattern_heavy = recent_heavy_count >= 2
 
     fallback_items: List[MiniMeSuggestionItem] = []
     seen_actions = set()
@@ -963,49 +997,103 @@ def _build_suggestions_fallback(
             )
         )
 
+    # ── Cautious / strain mode ─────────────────────────────────────────────
     if cautious_mode:
         add_item(
             'Take a gentle 3-minute reset: sip water, loosen your shoulders, and do 6 slow breaths.',
             'Your recent signals suggest higher strain, so a low-effort calming step is safer and easier to start.',
         )
 
-    if has_sleep_signal:
+    # ── Negative mood handling ─────────────────────────────────────────────
+    if mood_is_negative and not cautious_mode:
+        if mood in {'sad', 'sadness'}:
+            add_item(
+                'Pick one small mood-lift for today: 10 minutes of sunlight, a short walk, or a brief chat with someone you trust.',
+                'Low mood often responds to tiny environmental changes — small wins compound over the day.',
+            )
+        elif mood in {'fear', 'anxious', 'overwhelmed'}:
+            add_item(
+                'Write one sentence naming what is weighing on you, then choose the single smallest next step.',
+                'Naming the concern and shrinking the action reduces mental load and makes starting easier.',
+            )
+        elif mood in {'anger', 'stressed'}:
+            add_item(
+                'Take a 5-minute break from the current stressor: step away, breathe slowly, then come back with fresh eyes.',
+                'Brief physical distance from a stressor reduces reactivity and makes the next step clearer.',
+            )
+
+    if mood_pattern_heavy and not mood_is_negative:
         add_item(
-            'Set a simple sleep anchor tonight: pick one bedtime cue and keep wake time steady tomorrow.',
-            'Your recent context mentions sleep patterns, and consistency is the most practical next lever.',
+            'Your mood pattern has had some heavier moments recently — take 2 minutes to note one thing you can do today to protect your energy.',
+            'Recognizing repeated mood dips early helps you course-correct before strain builds up.',
         )
 
-    if has_exercise_signal and not cautious_mode:
+    # ── Sleep suggestions: only when sleep actually needs attention ────────
+    if sleep_needs_attention and not cautious_mode:
         add_item(
-            'Do a 10-minute movement block now (walk, stretch, or light bodyweight) and stop while it still feels easy.',
-            'Your recent logs suggest movement helps, and short sessions improve follow-through without burnout.',
+            'Set a simple sleep anchor tonight: pick one consistent bedtime cue and aim to keep your wake time steady tomorrow.',
+            'Your recent sleep data shows room to improve — bedtime consistency is the most practical lever.',
+        )
+    elif sleep_is_solid and mood_is_positive:
+        # Sleep is already great — acknowledge and build on it
+        add_item(
+            'Your sleep has been solid — protect that streak by keeping your wind-down routine consistent tonight.',
+            'Good sleep is one of the strongest contributors to mood and energy. Keeping it consistent compounds the benefit.',
         )
 
-    if mood in {'anxious', 'stressed', 'overwhelmed'} or has_stress_signal:
+    # ── Exercise suggestions: context-aware ───────────────────────────────
+    if exercise_missing and mood_is_positive and not cautious_mode:
+        add_item(
+            'Try adding a short 10-minute movement block today — a walk or light stretch is a great first step.',
+            "You haven't logged exercise yet. Even a brief session boosts mood and energy on days you're already feeling good.",
+        )
+    elif exercise_missing and not cautious_mode:
+        add_item(
+            'Even 5-10 minutes of gentle movement (walk, stretch) can help shift your energy today.',
+            'Light activity is low-risk and often improves how the rest of the day feels, regardless of current mood.',
+        )
+    elif exercise_logged and not cautious_mode:
+        add_item(
+            'Great job logging exercise. Next session, try adding 5 minutes or one more set to keep the momentum.',
+            'You have already built the habit — small progressive increases maintain improvement without burnout.',
+        )
+
+    # ── Positive reinforcement when everything looks good ─────────────────
+    if mood_is_positive and sleep_is_solid and not cautious_mode and len(fallback_items) < target_count:
+        add_item(
+            'Your mood and sleep are both in a good place — use this energy to tackle one thing you have been putting off.',
+            "High-energy windows are the best time for harder tasks. Acting now turns positive momentum into tangible progress.",
+        )
+
+    # ── Stress / low-energy fallbacks ────────────────────────────────────
+    if has_stress_signal and not mood_is_negative:
         add_item(
             'Write one sentence naming the top stressor, then choose one tiny action you can finish in 10 minutes.',
             'Breaking stress into one concrete step reduces mental load and builds momentum quickly.',
         )
 
-    if mood in {'sad', 'low', 'down'} or has_low_energy_signal:
+    if has_low_energy_signal and not cautious_mode:
         add_item(
-            'Pick one mood-lift pair for today: brief sunlight + short walk, or water + stretch break.',
-            'Low-energy patterns usually improve with very small physical and environmental boosts.',
+            'Pick a low-friction energy boost: drink a glass of water, do 5 minutes of light movement, or step outside briefly.',
+            'Low-energy patterns often respond to tiny physical resets before requiring bigger changes.',
         )
 
-    add_item(
-        'Do a quick evening reflection: one win, one challenge, and one tiny plan for tomorrow.',
-        'This keeps progress visible and helps tomorrow start with less friction.',
-    )
+    # ── Reflection as a safe filler when nothing specific fires ──────────
+    if len(fallback_items) < target_count:
+        add_item(
+            'Do a quick evening reflection: one win, one challenge, and one small plan for tomorrow.',
+            'This keeps progress visible and helps tomorrow start with less friction.',
+        )
 
-    add_item(
-        'Choose one non-negotiable wellness step for the next 2-4 hours and treat it as your baseline win.',
-        'A single clear commitment is easier to keep and still moves your overall trend in the right direction.',
-    )
+    if len(fallback_items) < target_count:
+        add_item(
+            'Choose one clear wellness step for the next 2-4 hours and treat it as your baseline win for today.',
+            'A single committed action is easier to follow through on and still moves your overall trend forward.',
+        )
 
     suggestions = fallback_items[:target_count] if fallback_items else [
         MiniMeSuggestionItem(
-            action='Take one small supportive step now: hydrate, breathe slowly for one minute, and plan your next tiny action.',
+            action='Take one small supportive step now: hydrate, breathe slowly for one minute, and name your next tiny action.',
             reason='When context is mixed, a low-friction reset helps stabilize and makes follow-through more likely.',
         ),
     ]

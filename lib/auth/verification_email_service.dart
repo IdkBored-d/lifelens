@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:firebase_auth/firebase_auth.dart';
 
 enum VerificationEmailSendMode { customActionLink, defaultFirebaseLink }
@@ -22,45 +20,21 @@ class VerificationEmailService {
   }
 
   static Future<VerificationEmailSendMode> send(User user) async {
-    FirebaseAuthException? lastAuthError;
-    for (var attempt = 0; attempt < 2; attempt++) {
-      try {
-        if (!_useCustomActionLink) {
-          await user.sendEmailVerification();
-          return VerificationEmailSendMode.defaultFirebaseLink;
-        }
+    if (!_useCustomActionLink) {
+      await user.sendEmailVerification();
+      return VerificationEmailSendMode.defaultFirebaseLink;
+    }
 
-        try {
-          await user.sendEmailVerification(_buildActionCodeSettings());
-          return VerificationEmailSendMode.customActionLink;
-        } on FirebaseAuthException catch (e) {
-          if (_isActionCodeConfigurationError(e.code, e.message)) {
-            await user.sendEmailVerification();
-            return VerificationEmailSendMode.defaultFirebaseLink;
-          }
-          rethrow;
-        }
-      } on FirebaseAuthException catch (e) {
-        lastAuthError = e;
-        final isTransient =
-            e.code == 'network-request-failed' ||
-            e.code == 'internal-error' ||
-            e.code == 'unknown';
-        final isLastAttempt = attempt == 1;
-        if (!isTransient || isLastAttempt) {
-          rethrow;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 600));
+    try {
+      await user.sendEmailVerification(_buildActionCodeSettings());
+      return VerificationEmailSendMode.customActionLink;
+    } on FirebaseAuthException catch (e) {
+      if (_isActionCodeConfigurationError(e.code, e.message)) {
+        await user.sendEmailVerification();
+        return VerificationEmailSendMode.defaultFirebaseLink;
       }
+      rethrow;
     }
-
-    if (lastAuthError != null) {
-      throw lastAuthError;
-    }
-    throw FirebaseAuthException(
-      code: 'unknown',
-      message: 'Unable to send verification email.',
-    );
   }
 
   static bool _isActionCodeConfigurationError(String code, String? message) {

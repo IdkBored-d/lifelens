@@ -133,7 +133,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
           .map(_StoredSuggestion.fromDailySuggestion)
           .toList(growable: false);
 
-      final forceSurface = cadenceDecision.window == 'log_update';
+      final forceSurface = cadenceDecision.eventOverride;
 
       var nextUnread = forceSurface
           ? currentSuggestions

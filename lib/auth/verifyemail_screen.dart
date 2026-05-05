@@ -69,7 +69,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Session unavailable right now. Please stay on this screen and try resend again in a moment.',
+              'Session unavailable right now. Please wait a moment and try again.',
             ),
           ),
         );
@@ -81,10 +81,11 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          duration: const Duration(seconds: 6),
           content: Text(
             mode == VerificationEmailSendMode.customActionLink
-                ? 'Verification email resent. Open the newest email link.'
-                : 'Verification email resent. Open the newest email link.',
+                ? 'Verification email sent to ${widget.email}. Check your inbox and spam folder.'
+                : 'Verification email sent to ${widget.email}. Check your inbox and spam folder.',
           ),
         ),
       );
@@ -118,11 +119,6 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     await user?.reload();
 
     if (FirebaseAuth.instance.currentUser?.emailVerified == true) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email verified. Continuing...')),
-        );
-      }
       widget.onVerifiedConfirmed();
     } else {
       if (!mounted) return;

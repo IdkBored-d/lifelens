@@ -1206,66 +1206,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.sphere.name),
-            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _membersStream,
-              builder: (context, snapshot) {
-                final count =
-                    snapshot.data?.docs.length ?? widget.sphere.memberCount;
-                return Text(
-                  '$count members',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                );
-              },
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Members',
-            onPressed: _showMembersSheet,
-            icon: const Icon(Icons.groups_rounded),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'invite_friends') {
-                _inviteFriendsToSphere();
-              } else if (value == 'leave_sphere') {
-                _showLeaveSphereDialog();
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'invite_friends',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_add_alt_rounded),
-                    SizedBox(width: 12),
-                    Text('Invite Friends'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'leave_sphere',
-                child: Row(
-                  children: [
-                    Icon(Icons.exit_to_app_outlined),
-                    SizedBox(width: 12),
-                    Text('Leave Sphere'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
       body: _isBootstrapping
           ? const Center(child: CircularProgressIndicator())
           : MediaQuery.removePadding(
@@ -1274,33 +1215,147 @@ class _SphereChatScreenState extends State<SphereChatScreen>
               removeRight: true,
               child: Column(
                 children: [
-                  if (_bannerUrl != null ||
-                      _defaultChatBannerPaletteForSphere(widget.sphere.name) !=
-                          null)
-                    SizedBox(
-                      height: 170,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final screenWidth = MediaQuery.of(context).size.width;
-                          return OverflowBox(
-                            minWidth: screenWidth,
-                            maxWidth: screenWidth,
-                            alignment: Alignment.center,
-                            child: SizedBox(
-                              width: screenWidth,
-                              height: 170,
-                              child: _bannerUrl != null
-                                  ? _SphereChatBannerImage(
-                                      imageSource: _bannerUrl!,
-                                    )
-                                  : _DefaultSphereChatBanner(
-                                      sphereName: widget.sphere.name,
-                                    ),
+                  // ── Unified header banner ───────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height: 170 +
+                        MediaQuery.of(context).padding.top,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Banner background
+                        _bannerUrl != null
+                            ? _SphereChatBannerImage(imageSource: _bannerUrl!)
+                            : (_defaultChatBannerPaletteForSphere(
+                                    widget.sphere.name,
+                                  ) !=
+                                  null
+                                ? _DefaultSphereChatBanner(
+                                    sphereName: widget.sphere.name,
+                                  )
+                                : ColoredBox(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceContainerHighest,
+                                  )),
+                        // Top scrim so controls are readable over any banner
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: MediaQuery.of(context).padding.top + 52,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.38),
+                                  Colors.transparent,
+                                ],
+                              ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                        // Back button + title + actions
+                        Positioned(
+                          top: MediaQuery.of(context).padding.top,
+                          left: 0,
+                          right: 0,
+                          height: 52,
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back_ios_new_rounded,
+                                  color: Colors.white,
+                                ),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      widget.sphere.name,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    StreamBuilder<
+                                      QuerySnapshot<Map<String, dynamic>>
+                                    >(
+                                      stream: _membersStream,
+                                      builder: (context, snapshot) {
+                                        final count =
+                                            snapshot.data?.docs.length ??
+                                            widget.sphere.memberCount;
+                                        return Text(
+                                          '$count members',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Members',
+                                onPressed: _showMembersSheet,
+                                icon: const Icon(
+                                  Icons.groups_rounded,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert_rounded,
+                                  color: Colors.white,
+                                ),
+                                onSelected: (value) {
+                                  if (value == 'invite_friends') {
+                                    _inviteFriendsToSphere();
+                                  } else if (value == 'leave_sphere') {
+                                    _showLeaveSphereDialog();
+                                  }
+                                },
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: 'invite_friends',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person_add_alt_rounded),
+                                        SizedBox(width: 12),
+                                        Text('Invite Friends'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'leave_sphere',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.exit_to_app_outlined),
+                                        SizedBox(width: 12),
+                                        Text('Leave Sphere'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
                   Expanded(
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
@@ -3140,47 +3195,6 @@ class _DefaultSphereChatBanner extends StatelessWidget {
                 borderRadius: BorderRadius.circular(80),
                 color: palette.accentColor.withValues(alpha: 0.22),
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(palette.icon, color: Colors.white, size: 22),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        palette.title,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        palette.subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.95),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
         ],

@@ -61,6 +61,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   String? _sessionId;
   int _messageSequence = 0;
   int _avatarWaveToken = 1;
+  bool _danceOnOpen = false;
   late final ChatSessionService _chatSessionService;
   MoodLogStore? _moodStoreSource;
   SleepStore? _sleepStoreSource;
@@ -842,6 +843,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         _intelligence = response;
         _activeSymptomCount = activeSymptoms.length;
         _lastIntelligenceInputSignature = nextSignature;
+        _danceOnOpen = _computeDanceOnOpen(
+          recentMoods: recentMoods,
+          recentSleep: recentSleep,
+          exerciseActivity: exercise,
+        );
       });
     } catch (_) {
       // Keep UI functional even if backend is unavailable.
@@ -1846,6 +1852,28 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return streak;
   }
 
+  bool _computeDanceOnOpen({
+    required List<MoodCheckIn> recentMoods,
+    required List<int> recentSleep,
+    required List<int> exerciseActivity,
+  }) {
+    // Consistently good moods: last 3 logs all intensity >= 4
+    if (recentMoods.length >= 3 &&
+        recentMoods.take(3).every((m) => m.intensity >= 4)) {
+      return true;
+    }
+    // Consistently good sleep: last 3 logged nights all >= 7 hours
+    if (recentSleep.length >= 3 &&
+        recentSleep.take(3).every((h) => h >= 7)) {
+      return true;
+    }
+    // Consistent exercise: 3+ active days in the last 7 days
+    if (exerciseActivity.where((v) => v > 0).length >= 3) {
+      return true;
+    }
+    return false;
+  }
+
   bool _hasPositiveTrendForCelebration() {
     final intelligence = _intelligence;
     if (intelligence == null) {
@@ -2061,6 +2089,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   messages: _messages,
                   scrollController: _scrollController,
                   avatarWaveToken: _avatarWaveToken,
+                  danceOnOpen: _danceOnOpen,
                   onToggleCoachExpanded: _toggleCoachExpanded,
                   onExpandCoach: _expandCoachAndFocus,
                   onOpenFullChat: _openFullChatSheet,
@@ -2093,6 +2122,7 @@ class _MiniMePanelContent extends StatelessWidget {
     required this.messages,
     required this.scrollController,
     required this.avatarWaveToken,
+    required this.danceOnOpen,
     required this.onToggleCoachExpanded,
     required this.onExpandCoach,
     required this.onOpenFullChat,
@@ -2120,6 +2150,7 @@ class _MiniMePanelContent extends StatelessWidget {
   final List<_MiniMeChatMessage> messages;
   final ScrollController scrollController;
   final int avatarWaveToken;
+  final bool danceOnOpen;
   final VoidCallback onToggleCoachExpanded;
   final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
@@ -2165,6 +2196,7 @@ class _MiniMePanelContent extends StatelessWidget {
       visualState: derivedUiState.visualState,
       avatarWaveToken: avatarWaveToken,
       celebrateOnOpen: derivedUiState.celebrateOnOpen,
+      danceOnOpen: danceOnOpen,
       intelligenceState: intelligence?.state,
       intelligenceInsights: intelligence?.insights ?? const <String>[],
       intelligenceAlert: intelligence?.alert,
@@ -2200,6 +2232,7 @@ class _AvatarPanel extends StatelessWidget {
     required this.visualState,
     required this.avatarWaveToken,
     required this.celebrateOnOpen,
+    required this.danceOnOpen,
     required this.intelligenceState,
     required this.intelligenceInsights,
     required this.intelligenceAlert,
@@ -2231,6 +2264,7 @@ class _AvatarPanel extends StatelessWidget {
   final MiniMeVisualState visualState;
   final int avatarWaveToken;
   final bool celebrateOnOpen;
+  final bool danceOnOpen;
   final Map<String, dynamic>? intelligenceState;
   final List<String> intelligenceInsights;
   final String? intelligenceAlert;
@@ -2320,6 +2354,7 @@ class _AvatarPanel extends StatelessWidget {
                           lockScreenPosition: true,
                           headTiltBias: headTiltBias,
                           celebrateOnOpen: celebrateOnOpen,
+                          danceOnOpen: danceOnOpen,
                         ),
                       ),
                     ),

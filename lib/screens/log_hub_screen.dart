@@ -159,7 +159,7 @@ class _LogHubScreenState extends State<LogHubScreen> {
                 builder: (context, snapshot) {
                   final isFirstTimeUser = snapshot.data ?? false;
                   final title = isFirstTimeUser
-                      ? 'Welcome, let\'s get started $userName'
+                      ? 'Welcome, let\'s get started, $userName'
                       : 'Welcome back, $userName';
 
                   return Text(

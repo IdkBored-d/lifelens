@@ -111,6 +111,7 @@ class MiniMeAvatar extends StatefulWidget {
     this.lockScreenPosition = false,
     this.headTiltBias = 0,
     this.celebrateOnOpen = false,
+    this.danceOnOpen = false,
   });
 
   final String bodyModel;
@@ -135,6 +136,7 @@ class MiniMeAvatar extends StatefulWidget {
   final bool lockScreenPosition;
   final double headTiltBias;
   final bool celebrateOnOpen;
+  final bool danceOnOpen;
 
   @override
   State<MiniMeAvatar> createState() => _MiniMeAvatarState();
@@ -348,11 +350,17 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
     Future<void>.delayed(delay, () {
       if (!mounted) return;
       if (_reaction != _MiniMeReaction.none) return;
-      _triggerReaction(
-        widget.celebrateOnOpen
-            ? _MiniMeReaction.celebrate
-            : _MiniMeReaction.wave,
-      );
+      if (widget.danceOnOpen) {
+        _triggerReaction(_MiniMeReaction.dance);
+        return;
+      }
+      if (widget.celebrateOnOpen) {
+        _triggerReaction(_MiniMeReaction.celebrate);
+        return;
+      }
+      // Randomly wave or bounce on each greeting
+      final useWave = (DateTime.now().millisecondsSinceEpoch % 2) == 0;
+      _triggerReaction(useWave ? _MiniMeReaction.wave : _MiniMeReaction.bounce);
     });
   }
 
@@ -362,6 +370,8 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
       _MiniMeReaction.wave => const Duration(milliseconds: 2050),
       _MiniMeReaction.celebrate => const Duration(milliseconds: 1600),
       _MiniMeReaction.shimmy => const Duration(milliseconds: 1150),
+      _MiniMeReaction.bounce => const Duration(milliseconds: 1400),
+      _MiniMeReaction.dance => const Duration(milliseconds: 3200),
       _ => const Duration(milliseconds: 420),
     };
     setState(() => _reaction = reaction);
@@ -2149,25 +2159,32 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
         shadowDelta: -0.06 * enter,
       );
     case _MiniMeReaction.wave:
-      final pose = _timedPoseValue(t, enterEnd: 0.16, holdEnd: 0.84);
-      final waveWindow = ((t - 0.14) / 0.60).clamp(0.0, 1.0);
+      // Phase 1 (0–0.18): arm shoots up quickly
+      final raise = Curves.easeOutBack.transform((t / 0.18).clamp(0.0, 1.0));
+      // Phase 2 (0.14–0.78): waving window — 4 full back-and-forth swings
+      final waveWindow = ((t - 0.14) / 0.64).clamp(0.0, 1.0);
       final waveEnvelope = math.sin(waveWindow * math.pi).clamp(0.0, 1.0);
-      final waveCycle = math.sin(waveWindow * math.pi * 6.5) * waveEnvelope;
-      final settle = Curves.easeOutCubic.transform(
-        ((t - 0.76) / 0.24).clamp(0.0, 1.0),
+      // 4 swings = 4 * π * 2 half-cycles; abs() gives snappy back-and-forth
+      final swingRaw = math.sin(waveWindow * math.pi * 8.0);
+      final swing = swingRaw * waveEnvelope; // −1 → +1, enveloped
+      // Phase 3 (0.78–1.0): lower arm back down
+      final lower = Curves.easeInCubic.transform(
+        ((t - 0.78) / 0.22).clamp(0.0, 1.0),
       );
-      final raisedRightArm =
-          0.08 +
-          pose * 0.22 +
-          waveEnvelope * 0.03 +
-          math.max(0, waveCycle) * 0.12;
+      // Arm stays raised high (0.72 at peak) + swings add ±0.20 excursion
+      final armBase = raise * 0.72 * (1.0 - lower);
+      final armSwing = swing * 0.20 * (1.0 - lower);
+      // Slight body lean in the direction of the wave
+      final bodySway = swing * 0.022 * waveEnvelope;
+      // Head tilts toward the raised arm, nods slightly with each swing
+      final headNod = swing * 0.055 * waveEnvelope;
       return _ReactionMotion(
-        bob: -pose * 0.45 + math.max(0, waveCycle) * 0.12,
-        sway: waveCycle * 0.007,
-        headDip: -pose * 0.35 + math.max(0, waveCycle) * 0.08,
+        bob: -raise * 1.8 * (1.0 - lower) + waveEnvelope * 0.6,
+        sway: bodySway,
+        headDip: -raise * 0.5 * (1.0 - lower) + headNod,
         leftArmLift: 0.0,
-        rightArmLift: raisedRightArm - settle * 0.08,
-        shadowDelta: -0.01 * pose,
+        rightArmLift: armBase + armSwing,
+        shadowDelta: -0.015 * raise * (1.0 - lower),
       );
     case _MiniMeReaction.shimmy:
       final shimmyWindow = math.sin(t * math.pi).clamp(0.0, 1.0);
@@ -2201,14 +2218,51 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
         shadowDelta: -0.1 * jumpArc + landingBounce * 0.03,
       );
     case _MiniMeReaction.bounce:
-      final eased = Curves.easeOut.transform(t);
+      // Three distinct jumps: t maps 0→1 across 1400ms
+      final jumpCount = 3;
+      final segment = (t * jumpCount).clamp(0.0, jumpCount.toDouble());
+      final jumpT = segment - segment.floor();
+      // Each jump: quick rise (ease-in) and fast fall (elastic-like landing)
+      final arc = math.sin(jumpT * math.pi);
+      // Amplitude shrinks slightly for each successive jump
+      final jumpIndex = segment.floor();
+      final amp = 1.0 - jumpIndex * 0.15;
+      final bobHeight = arc * 32 * amp;  // tall, noticeable
+      final landingSquash = (1.0 - arc) * (jumpT > 0.5 ? (jumpT - 0.5) * 2 : 0.0);
       return _ReactionMotion(
-        bob: -math.sin(eased * math.pi) * 7,
-        sway: 0,
-        headDip: -math.sin(eased * math.pi) * 2,
-        leftArmLift: 0.1,
-        rightArmLift: 0.1,
-        shadowDelta: -0.07,
+        bob: -bobHeight + landingSquash * 4,
+        sway: math.sin(t * math.pi * jumpCount * 2) * 0.008,
+        headDip: -arc * 3.5 * amp + landingSquash * 1.5,
+        leftArmLift: arc * 0.18 * amp,
+        rightArmLift: arc * 0.18 * amp,
+        shadowDelta: -0.14 * arc * amp,
+      );
+    case _MiniMeReaction.dance:
+      // 3200ms of full-body groove: 4-beat bar (800ms each) × 4 bars
+      // beat: t subdivided into 16 beats (0.0625 each)
+      final beat = (t * 16).floor();
+      final beatT = (t * 16) - beat; // 0→1 within each beat
+      // Hip sway: alternate left/right every beat — sin over whole duration
+      final hipSway = math.sin(t * math.pi * 8) * 0.038;
+      // Bob: bounce up on every beat (sharp up, ease down = gravity feel)
+      final bobRaw = math.pow(1.0 - beatT, 2.0).toDouble();
+      final bobHeight = bobRaw * 7.0;
+      // Arms pump alternately: left up on even beats, right up on odd beats
+      final isEvenBeat = beat % 2 == 0;
+      final armPump = Curves.easeOutCubic.transform(
+        math.sin(beatT * math.pi).clamp(0.0, 1.0),
+      ) * 0.28;
+      // Head nod: tilts slightly toward the raised arm on each beat
+      final headNod = math.sin(t * math.pi * 8) * 0.06;
+      // Fade out the last 10% of the animation so it lands cleanly
+      final fadeOut = (1.0 - ((t - 0.9) / 0.1).clamp(0.0, 1.0));
+      return _ReactionMotion(
+        bob: bobHeight * fadeOut,
+        sway: hipSway * fadeOut,
+        headDip: headNod * fadeOut,
+        leftArmLift: (isEvenBeat ? armPump : armPump * 0.12) * fadeOut,
+        rightArmLift: (isEvenBeat ? armPump * 0.12 : armPump) * fadeOut,
+        shadowDelta: -0.04 * bobRaw * fadeOut,
       );
     case _MiniMeReaction.none:
       return const _ReactionMotion();
@@ -2263,6 +2317,7 @@ enum _MiniMeReaction {
   shimmy,
   celebrate,
   bounce,
+  dance,
 }
 
 double _timedPoseValue(
