@@ -60,45 +60,39 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
         curve: const Interval(0.10, 0.65, curve: Curves.easeOut),
       ),
     );
-    _titleSlide = Tween<Offset>(
-      begin: const Offset(0, 0.18),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _entranceCtrl,
-        curve: const Interval(0.10, 0.65, curve: Curves.easeOutCubic),
-      ),
-    );
+    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero)
+        .animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.10, 0.65, curve: Curves.easeOutCubic),
+          ),
+        );
     _subtitleOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _entranceCtrl,
         curve: const Interval(0.22, 0.78, curve: Curves.easeOut),
       ),
     );
-    _subtitleSlide = Tween<Offset>(
-      begin: const Offset(0, 0.18),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _entranceCtrl,
-        curve: const Interval(0.22, 0.78, curve: Curves.easeOutCubic),
-      ),
-    );
+    _subtitleSlide =
+        Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.22, 0.78, curve: Curves.easeOutCubic),
+          ),
+        );
     _buttonsOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _entranceCtrl,
         curve: const Interval(0.38, 1.0, curve: Curves.easeOut),
       ),
     );
-    _buttonsSlide = Tween<Offset>(
-      begin: const Offset(0, 0.22),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _entranceCtrl,
-        curve: const Interval(0.38, 1.0, curve: Curves.easeOutCubic),
-      ),
-    );
+    _buttonsSlide =
+        Tween<Offset>(begin: const Offset(0, 0.22), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _entranceCtrl,
+            curve: const Interval(0.38, 1.0, curve: Curves.easeOutCubic),
+          ),
+        );
 
     // Start synchronously — animation is already ticking on the very first frame
     _entranceCtrl.forward();
@@ -117,45 +111,80 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
         pageBuilder: (context, animation, _) =>
             SignupLogin(initialIsLogin: isLogin),
         transitionsBuilder: (context, animation, _, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
           return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOut,
-            ),
+            opacity: curved,
             child: SlideTransition(
               position: Tween<Offset>(
-                begin: const Offset(0, 0.05),
+                begin: const Offset(0, 0.018),
                 end: Offset.zero,
-              ).animate(
-                CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutCubic,
-                ),
-              ),
+              ).animate(curved),
               child: child,
             ),
           );
         },
-        transitionDuration: const Duration(milliseconds: 360),
+        transitionDuration: const Duration(milliseconds: 420),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    const bg = Color(0xFF0F1014);
-    const primaryDeep = Color(0xFF6D4CFF);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final bg = theme.scaffoldBackgroundColor;
+    final logoBg = isDark ? const Color(0xFF1C1830) : const Color(0xFFF8FAFC);
+    final accent = colorScheme.primary;
+    final mutedText = colorScheme.onSurface.withValues(
+      alpha: isDark ? 0.45 : 0.56,
+    );
+    final logoSize = isDark ? 108.0 : 98.0;
+    final logoIconSize = isDark ? 54.0 : 48.0;
+    final logoRadius = isDark ? 34.0 : 30.0;
 
     return Scaffold(
       backgroundColor: bg,
       body: Stack(
         fit: StackFit.expand,
         children: [
+          if (!isDark)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color.alphaBlend(accent.withValues(alpha: 0.045), bg),
+                    bg,
+                    Color.alphaBlend(
+                      colorScheme.secondary.withValues(alpha: 0.035),
+                      bg,
+                    ),
+                  ],
+                  stops: const [0.0, 0.48, 1.0],
+                ),
+              ),
+            ),
           // ── Ambient orb background ───────────────────────────────────────
           AnimatedBuilder(
             animation: _ambientCtrl,
-            builder: (context, _) =>
-                CustomPaint(painter: _OrbPainter(t: _ambientCtrl.value)),
+            builder: (context, _) => CustomPaint(
+              painter: _OrbPainter(
+                t: _ambientCtrl.value,
+                primary: accent,
+                secondary: colorScheme.secondary,
+                tertiary: isDark
+                    ? const Color(0xFFBFA5FF)
+                    : const Color(0xFF8B5CF6),
+                alphaScale: isDark ? 1.0 : 0.58,
+              ),
+            ),
           ),
 
           SafeArea(
@@ -167,15 +196,13 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
 
                   // ── Logo ─────────────────────────────────────────────────
                   AnimatedBuilder(
-                    animation:
-                        Listenable.merge([_entranceCtrl, _ambientCtrl]),
+                    animation: Listenable.merge([_entranceCtrl, _ambientCtrl]),
                     builder: (context, _) {
                       final floatY =
                           math.sin(_ambientCtrl.value * 2 * math.pi) * 7.0;
                       final glow =
                           0.5 +
-                          0.5 *
-                              math.sin(_ambientCtrl.value * 2 * math.pi);
+                          0.5 * math.sin(_ambientCtrl.value * 2 * math.pi);
                       return Opacity(
                         opacity: _logoOpacity.value,
                         child: Transform.scale(
@@ -183,38 +210,45 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
                           child: Transform.translate(
                             offset: Offset(0, floatY),
                             child: Container(
-                              width: 108,
-                              height: 108,
+                              width: logoSize,
+                              height: logoSize,
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1C1830),
-                                borderRadius: BorderRadius.circular(34),
+                                color: logoBg,
+                                borderRadius: BorderRadius.circular(logoRadius),
                                 border: Border.all(
-                                  color: primaryDeep.withValues(
-                                    alpha: 0.30 + 0.20 * glow,
+                                  color: accent.withValues(
+                                    alpha: (isDark ? 0.30 : 0.22) + 0.10 * glow,
                                   ),
-                                  width: 1.5,
+                                  width: isDark ? 1.5 : 1.2,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: primaryDeep.withValues(
-                                      alpha: 0.28 + 0.18 * glow,
+                                    color: accent.withValues(
+                                      alpha:
+                                          (isDark ? 0.28 : 0.11) + 0.08 * glow,
                                     ),
-                                    blurRadius: 36 + 20 * glow,
-                                    offset: const Offset(0, 10),
+                                    blurRadius: isDark
+                                        ? 36 + 20 * glow
+                                        : 32 + 16 * glow,
+                                    offset: Offset(0, isDark ? 10 : 8),
                                   ),
                                   BoxShadow(
-                                    color: const Color(0xFFBFA5FF)
-                                        .withValues(alpha: 0.08),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
+                                    color: colorScheme.outlineVariant
+                                        .withValues(
+                                          alpha: isDark ? 0.08 : 0.38,
+                                        ),
+                                    blurRadius: isDark ? 8 : 12,
+                                    offset: Offset(0, isDark ? 2 : 4),
                                   ),
                                 ],
                               ),
                               child: Icon(
                                 Icons.spa_rounded,
-                                size: 54,
-                                color: const Color(0xFFBFA5FF).withValues(
-                                  alpha: 0.75 + 0.25 * glow,
+                                size: logoIconSize,
+                                color: accent.withValues(
+                                  alpha: isDark
+                                      ? 0.75 + 0.25 * glow
+                                      : 0.86 + 0.10 * glow,
                                 ),
                               ),
                             ),
@@ -224,28 +258,30 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
                     },
                   ),
 
-                  const SizedBox(height: 42),
+                  SizedBox(height: isDark ? 42 : 38),
 
                   // ── Title ────────────────────────────────────────────────
                   FadeTransition(
                     opacity: _titleOpacity,
                     child: SlideTransition(
                       position: _titleSlide,
-                      child: const Text(
+                      child: Text(
                         'Welcome to\nLifeLens',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 38,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -1.0,
-                          height: 1.08,
+                          color: colorScheme.onSurface,
+                          fontSize: isDark ? 38 : 35,
+                          fontWeight: isDark
+                              ? FontWeight.w900
+                              : FontWeight.w800,
+                          letterSpacing: 0,
+                          height: isDark ? 1.08 : 1.12,
                         ),
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 13),
+                  SizedBox(height: isDark ? 13 : 15),
 
                   // ── Subtitle ─────────────────────────────────────────────
                   FadeTransition(
@@ -257,16 +293,19 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
                         'and guided wellbeing.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.45),
-                          fontSize: 14.5,
-                          height: 1.6,
-                          letterSpacing: 0.05,
+                          color: mutedText,
+                          fontSize: isDark ? 14.5 : 15,
+                          fontWeight: isDark
+                              ? FontWeight.w400
+                              : FontWeight.w500,
+                          height: isDark ? 1.6 : 1.45,
+                          letterSpacing: 0,
                         ),
                       ),
                     ),
                   ),
 
-                  const Spacer(flex: 4),
+                  const Spacer(flex: 5),
 
                   // ── Buttons ──────────────────────────────────────────────
                   FadeTransition(
@@ -281,20 +320,22 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
                             icon: Icons.person_add_rounded,
                             onPressed: () => _goTo(isLogin: false),
                             filled: true,
+                            accent: accent,
                           ),
-                          const SizedBox(height: 11),
+                          const SizedBox(height: 12),
                           _SplashButton(
                             label: 'Log in',
                             icon: Icons.login_rounded,
                             onPressed: () => _goTo(isLogin: true),
                             filled: false,
+                            accent: accent,
                           ),
                         ],
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 38),
+                  const SizedBox(height: 42),
                 ],
               ),
             ),
@@ -315,52 +356,60 @@ class _SplashButton extends StatelessWidget {
     required this.icon,
     required this.onPressed,
     required this.filled,
+    required this.accent,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
   final bool filled;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    const primaryDeep = Color(0xFF6D4CFF);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = colorScheme.brightness == Brightness.dark;
+    final filledBackground = isDark ? accent.withValues(alpha: 0.14) : accent;
+    final filledForeground = isDark ? accent : colorScheme.onPrimary;
+    final verticalPadding = isDark ? 16.0 : 15.0;
+    final radius = isDark ? 18.0 : 16.0;
+    final iconSize = isDark ? 20.0 : 19.0;
+    final fontSize = isDark ? 16.0 : 15.5;
 
     if (filled) {
       return Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(radius),
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(18),
-          splashColor: primaryDeep.withValues(alpha: 0.12),
-          highlightColor: primaryDeep.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(radius),
+          splashColor: accent.withValues(alpha: 0.12),
+          highlightColor: accent.withValues(alpha: 0.06),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: EdgeInsets.symmetric(vertical: verticalPadding),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(radius),
               border: Border.all(
-                color: const Color(0xFFBFA5FF).withValues(alpha: 0.38),
-                width: 1.5,
+                color: isDark
+                    ? accent.withValues(alpha: 0.38)
+                    : Colors.transparent,
+                width: isDark ? 1.5 : 0,
               ),
-              color: primaryDeep.withValues(alpha: 0.14),
+              color: filledBackground,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  color: const Color(0xFFBFA5FF),
-                  size: 20,
-                ),
+                Icon(icon, color: filledForeground, size: iconSize),
                 const SizedBox(width: 9),
-                const Text(
-                  'Create account',
+                Text(
+                  label,
                   style: TextStyle(
-                    color: Color(0xFFBFA5FF),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    letterSpacing: 0.1,
+                    color: filledForeground,
+                    fontWeight: FontWeight.w800,
+                    fontSize: fontSize,
+                    letterSpacing: 0,
                   ),
                 ),
               ],
@@ -372,37 +421,41 @@ class _SplashButton extends StatelessWidget {
 
     return Material(
       color: Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(radius),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(18),
-        splashColor: const Color(0xFFBFA5FF).withValues(alpha: 0.08),
-        highlightColor: const Color(0xFFBFA5FF).withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(radius),
+        splashColor: accent.withValues(alpha: 0.08),
+        highlightColor: accent.withValues(alpha: 0.04),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: EdgeInsets.symmetric(vertical: verticalPadding),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(radius),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.14),
+              color: colorScheme.outlineVariant.withValues(
+                alpha: isDark ? 0.70 : 1.0,
+              ),
             ),
-            color: Colors.white.withValues(alpha: 0.04),
+            color: colorScheme.surfaceContainerHighest.withValues(
+              alpha: isDark ? 0.18 : 1.0,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
-                color: Colors.white.withValues(alpha: 0.8),
-                size: 20,
+                color: colorScheme.onSurface.withValues(alpha: 0.82),
+                size: iconSize,
               ),
               const SizedBox(width: 9),
               Text(
                 label,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  letterSpacing: 0.1,
+                  color: colorScheme.onSurface.withValues(alpha: 0.88),
+                  fontWeight: FontWeight.w800,
+                  fontSize: fontSize,
+                  letterSpacing: 0,
                 ),
               ),
             ],
@@ -418,8 +471,18 @@ class _SplashButton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _OrbPainter extends CustomPainter {
-  const _OrbPainter({required this.t});
+  const _OrbPainter({
+    required this.t,
+    required this.primary,
+    required this.secondary,
+    required this.tertiary,
+    required this.alphaScale,
+  });
   final double t;
+  final Color primary;
+  final Color secondary;
+  final Color tertiary;
+  final double alphaScale;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -433,8 +496,8 @@ class _OrbPainter extends CustomPainter {
         size.height * (0.10 + 0.04 * c1),
       ),
       radius: size.width * 0.55,
-      color: const Color(0xFF6D4CFF),
-      alpha: 0.10,
+      color: primary,
+      alpha: 0.10 * alphaScale,
     );
     _orb(
       canvas,
@@ -443,8 +506,8 @@ class _OrbPainter extends CustomPainter {
         size.height * (0.78 + 0.04 * s1),
       ),
       radius: size.width * 0.48,
-      color: const Color(0xFF4B2DFF),
-      alpha: 0.08,
+      color: secondary,
+      alpha: 0.08 * alphaScale,
     );
     _orb(
       canvas,
@@ -453,8 +516,8 @@ class _OrbPainter extends CustomPainter {
         size.height * (0.32 + 0.05 * c1),
       ),
       radius: size.width * 0.28,
-      color: const Color(0xFFBFA5FF),
-      alpha: 0.06,
+      color: tertiary,
+      alpha: 0.06 * alphaScale,
     );
   }
 
@@ -480,5 +543,10 @@ class _OrbPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_OrbPainter old) => old.t != t;
+  bool shouldRepaint(_OrbPainter old) =>
+      old.t != t ||
+      old.primary != primary ||
+      old.secondary != secondary ||
+      old.tertiary != tertiary ||
+      old.alphaScale != alphaScale;
 }

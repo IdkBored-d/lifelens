@@ -473,6 +473,82 @@ class MiniMeIntelligenceReply {
   }
 }
 
+class SymptomConditionPrediction {
+  const SymptomConditionPrediction({
+    required this.condition,
+    required this.confidence,
+    required this.description,
+    required this.severity,
+    required this.whenToSeekCare,
+  });
+
+  final String condition;
+  final double confidence;
+  final String description;
+  final String severity;
+  final String whenToSeekCare;
+
+  factory SymptomConditionPrediction.fromJson(Map<String, dynamic> json) {
+    return SymptomConditionPrediction(
+      condition: (json['condition'] as String? ?? '').trim(),
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
+      description: (json['description'] as String? ?? '').trim(),
+      severity: (json['severity'] as String? ?? '').trim(),
+      whenToSeekCare: (json['when_to_seek_care'] as String? ?? '').trim(),
+    );
+  }
+}
+
+class SymptomAnalysisReply {
+  const SymptomAnalysisReply({
+    required this.urgency,
+    required this.analysis,
+    required this.predictions,
+    required this.selfCareRecommendations,
+    required this.warningSigns,
+    required this.source,
+    this.confidenceScore,
+  });
+
+  /// 'emergency', 'urgent', or 'routine'
+  final String urgency;
+  final String analysis;
+  final List<SymptomConditionPrediction> predictions;
+  final List<String> selfCareRecommendations;
+  final List<String> warningSigns;
+  final String source;
+  final double? confidenceScore;
+
+  factory SymptomAnalysisReply.fromJson(Map<String, dynamic> json) {
+    final rawPredictions = json['predictions'];
+    final predictions = rawPredictions is List
+        ? rawPredictions
+              .whereType<Map>()
+              .map((e) => SymptomConditionPrediction.fromJson(Map<String, dynamic>.from(e)))
+              .where((p) => p.condition.isNotEmpty)
+              .toList(growable: false)
+        : const <SymptomConditionPrediction>[];
+
+    List<String> _toStringList(Object? raw) {
+      if (raw is! List) return const [];
+      return raw
+          .map((e) => e.toString().trim())
+          .where((s) => s.isNotEmpty)
+          .toList(growable: false);
+    }
+
+    return SymptomAnalysisReply(
+      urgency: (json['urgency'] as String? ?? 'routine').trim(),
+      analysis: (json['analysis'] as String? ?? '').trim(),
+      predictions: predictions,
+      selfCareRecommendations: _toStringList(json['self_care_recommendations']),
+      warningSigns: _toStringList(json['warning_signs']),
+      source: (json['source'] as String? ?? 'backend').trim(),
+      confidenceScore: (json['confidence_score'] as num?)?.toDouble(),
+    );
+  }
+}
+
 class MiniMeBackendService {
   MiniMeBackendService._();
 
@@ -801,5 +877,52 @@ class MiniMeBackendService {
     }
 
     throw Exception('Unable to reach Mini-Me backend: $lastError');
+  }
+
+  Future<SymptomAnalysisReply> analyzeSymptoms({
+    required List<String> symptoms,
+    int? age,
+    String? sex,
+    String? duration,
+    String? additionalInfo,
+  }) async {
+    final payload = <String, dynamic>{
+      'symptoms': symptoms.take(20).toList(),
+    };
+    if (age != null) payload['age'] = age;
+    if (sex != null && sex.isNotEmpty) payload['sex'] = sex;
+    if (duration != null && duration.isNotEmpty) payload['duration'] = _truncateText(duration, 200);
+    if (additionalInfo != null && additionalInfo.isNotEmpty) {
+      payload['additional_info'] = _truncateText(additionalInfo, 1000);
+    }
+
+    Object? lastError;
+    for (final baseUrl in _prioritizedBaseUrls()) {
+      final uri = Uri.parse('$baseUrl/api/v1/symptoms/analyze');
+      try {
+        final response = await http
+            .post(
+              uri,
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode != 200) {
+          lastError = Exception(
+            'Symptom backend error ${response.statusCode}: ${response.body}',
+          );
+          continue;
+        }
+
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        _lastKnownGoodBaseUrl = baseUrl;
+        return SymptomAnalysisReply.fromJson(decoded);
+      } catch (e) {
+        lastError = e;
+      }
+    }
+
+    throw Exception('Unable to reach symptom analysis backend: $lastError');
   }
 }

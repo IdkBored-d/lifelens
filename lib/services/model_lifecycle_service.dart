@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/widgets.dart' show WidgetsBindingObserver;
+import 'dart:io' show Platform;
 
 import 'mobilebert_service.dart';
 import 'disembed_service.dart';
@@ -104,10 +105,19 @@ class ModelLifecycleService with WidgetsBindingObserver {
       case ModelType.fitnessMlp:
         await _fitnessMlp.reload();
       case ModelType.miniGen:
-        // MiniGen reload requires the model path; use downloader to get it.
-        final path = await MiniGenDownloader.ensureModel();
-        await _miniGen.reload(path);
-        _lastUsed[ModelType.miniGen] = DateTime.now();
+        // iOS simulator/framework packaging can fail for llamadart.
+        // Keep app stable and allow backend fallback when unavailable.
+        if (Platform.isIOS) {
+          debugPrint('[ModelLifecycle] MiniGen load skipped on iOS; using backend fallback.');
+          return;
+        }
+        try {
+          final path = await MiniGenDownloader.ensureModel();
+          await _miniGen.reload(path);
+          _lastUsed[ModelType.miniGen] = DateTime.now();
+        } catch (e) {
+          debugPrint('[ModelLifecycle] MiniGen reload failed (non-fatal): $e');
+        }
     }
   }
 

@@ -21,15 +21,10 @@ class AppRoot extends StatefulWidget {
 class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
   late Future<void> _initFuture;
   late AnimationController _openCtrl;
-  late Animation<Offset> _contentSlide;
   late Animation<double> _splashFade;
+  late Animation<double> _contentFade;
+  late Animation<double> _contentScale;
   bool _openTriggered = false;
-  bool _openComplete = false;
-
-  // Parallel subscriptions used ONLY to trigger the open animation.
-  // These are independent from the FutureBuilder/StreamBuilder in _buildContent.
-  StreamSubscription<User?>? _authReadySub;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _docReadySub;
 
   String? _cachedHomeUserId;
   String? _cachedHomeUserName;
@@ -42,73 +37,24 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
     _cachedHomeUserId = null;
     _cachedHomeUserName = null;
     _cachedHomeScreen = null;
+    HomeScreen.resetCachedNavigation();
   }
 
   /// Triggers the splash-dissolve animation exactly once, outside of build().
-  /// Double addPostFrameCallback ensures content is fully laid out and painted
-  /// before any pixel of the splash becomes transparent.
+  /// Runs on next frame once so content is painted before splash transparency starts.
   void _openContent() {
     if (_openTriggered) return;
-    _openTriggered = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _openCtrl.forward().then((_) {
-          if (mounted) setState(() => _openComplete = true);
-        });
-      });
+      if (_openTriggered) return;
+      setState(() => _openTriggered = true);
+      _openCtrl.forward();
     });
   }
 
-  /// Sets up a one-shot listener chain that calls [_openContent] the first
-  /// time the data stack resolves to something renderable. Completely
-  /// independent from the FutureBuilder/StreamBuilder used for UI rendering.
-  void _listenForReadiness() {
-    _initFuture.then((_) {
-      if (!mounted) return;
-      _authReadySub = FirebaseAuth.instance.authStateChanges().listen(
-        (user) {
-          if (!mounted) return;
-          if (user == null || !user.emailVerified) {
-            // Unauthenticated, verification gate, or startup splash — ready.
-            _openContent();
-            _cancelReadinessListeners();
-          } else {
-            // Authenticated — wait for first Firestore snapshot.
-            _docReadySub?.cancel();
-            _docReadySub = FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .snapshots()
-                .listen(
-              (_) {
-                if (!mounted) return;
-                _openContent();
-                _cancelReadinessListeners();
-              },
-              onError: (_) {
-                _openContent();
-                _cancelReadinessListeners();
-              },
-            );
-          }
-        },
-        onError: (_) {
-          _openContent();
-          _cancelReadinessListeners();
-        },
-      );
-    }).catchError((_) {
-      _openContent();
-    });
-  }
-
-  void _cancelReadinessListeners() {
-    _authReadySub?.cancel();
-    _authReadySub = null;
-    _docReadySub?.cancel();
-    _docReadySub = null;
+  Widget _ready(Widget child) {
+    _openContent();
+    return child;
   }
 
   @override
@@ -116,20 +62,25 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
     super.initState();
     _openCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 560),
     );
-    // Content rises subtly — easeOutCubic gives a natural opening feel.
-    _contentSlide = Tween<Offset>(
-      begin: const Offset(0.0, 0.025),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _openCtrl, curve: Curves.easeOutCubic));
-    // Splash holds at full opacity for the first 40% of the animation
-    // (240 ms) so content is guaranteed to be painted, then dissolves
-    // smoothly with easeIn over the remaining 360 ms.
+    // Hold briefly, then crossfade content in under the splash.
     _splashFade = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _openCtrl,
-        curve: const Interval(0.40, 1.0, curve: Curves.easeIn),
+        curve: const Interval(0.10, 1.0, curve: Curves.easeOutCubic),
+      ),
+    );
+    _contentFade = Tween<double>(begin: 0.94, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _openCtrl,
+        curve: const Interval(0.10, 0.88, curve: Curves.easeOutCubic),
+      ),
+    );
+    _contentScale = Tween<double>(begin: 0.992, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _openCtrl,
+        curve: const Interval(0.10, 0.90, curve: Curves.easeOutCubic),
       ),
     );
 
@@ -140,12 +91,10 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
       _verificationGateActive = true;
     }
     _initFuture = initializeApp();
-    _listenForReadiness();
   }
 
   @override
   void dispose() {
-    _cancelReadinessListeners();
     _openCtrl.dispose();
     super.dispose();
   }
@@ -155,32 +104,31 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
       future: _initFuture,
       builder: (context, initSnapshot) {
         if (initSnapshot.connectionState != ConnectionState.done) {
-          // Overlay is still fully opaque — just show the dark bg behind it.
-          return const Scaffold(backgroundColor: Color(0xFF0F1014));
+          return const _BootPlaceholder();
         }
 
         if (initSnapshot.hasError) {
-          return _InitErrorScreen(
-            error: initSnapshot.error.toString(),
-            onRetry: () => setState(() {
-              _openTriggered = false;
-              _openComplete = false;
-              _openCtrl.reset();
-              _initFuture = initializeApp();
-              _listenForReadiness();
-            }),
+          return _ready(
+            _InitErrorScreen(
+              error: initSnapshot.error.toString(),
+              onRetry: () => setState(() {
+                _openTriggered = false;
+                _openCtrl.reset();
+                _initFuture = initializeApp();
+              }),
+            ),
           );
         }
 
         if (Firebase.apps.isEmpty) {
-          return _FirebaseUnavailableScreen(
-            onRetry: () => setState(() {
-              _openTriggered = false;
-              _openComplete = false;
-              _openCtrl.reset();
-              _initFuture = initializeApp();
-              _listenForReadiness();
-            }),
+          return _ready(
+            _FirebaseUnavailableScreen(
+              onRetry: () => setState(() {
+                _openTriggered = false;
+                _openCtrl.reset();
+                _initFuture = initializeApp();
+              }),
+            ),
           );
         }
 
@@ -188,38 +136,40 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
           stream: FirebaseAuth.instance.authStateChanges(),
           builder: (context, authSnapshot) {
             if (authSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(backgroundColor: Color(0xFF0F1014));
+              return const _BootPlaceholder();
             }
 
             if (!authSnapshot.hasData) {
               _clearHomeCache();
               if (_verificationGateActive && _verificationGateEmail != null) {
-                return VerifyEmailScreen(
-                  email: _verificationGateEmail!,
-                  onVerifiedConfirmed: () {
-                    if (!mounted) return;
-                    setState(() {
-                      _verificationGateActive = false;
-                      _verificationGateUserId = null;
-                      _verificationGateEmail = null;
-                    });
-                    FirebaseAuth.instance.signOut();
-                  },
-                  onUseAnotherAccount: () {
-                    if (!mounted) return;
-                    setState(() {
-                      _verificationGateActive = false;
-                      _verificationGateUserId = null;
-                      _verificationGateEmail = null;
-                    });
-                    FirebaseAuth.instance.signOut();
-                  },
+                return _ready(
+                  VerifyEmailScreen(
+                    email: _verificationGateEmail!,
+                    onVerifiedConfirmed: () {
+                      if (!mounted) return;
+                      setState(() {
+                        _verificationGateActive = false;
+                        _verificationGateUserId = null;
+                        _verificationGateEmail = null;
+                      });
+                      FirebaseAuth.instance.signOut();
+                    },
+                    onUseAnotherAccount: () {
+                      if (!mounted) return;
+                      setState(() {
+                        _verificationGateActive = false;
+                        _verificationGateUserId = null;
+                        _verificationGateEmail = null;
+                      });
+                      FirebaseAuth.instance.signOut();
+                    },
+                  ),
                 );
               }
               _verificationGateActive = false;
               _verificationGateUserId = null;
               _verificationGateEmail = null;
-              return const StartupSplashScreen();
+              return _ready(const StartupSplashScreen());
             }
 
             final user = authSnapshot.data!;
@@ -232,20 +182,22 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
             }
 
             if (_verificationGateActive && _verificationGateUserId == uid) {
-              return VerifyEmailScreen(
-                email: user.email ?? '',
-                onVerifiedConfirmed: () {
-                  if (!mounted) return;
-                  setState(() => _verificationGateActive = false);
-                },
-                onUseAnotherAccount: () {
-                  if (!mounted) return;
-                  setState(() {
-                    _verificationGateActive = false;
-                    _verificationGateUserId = null;
-                    _verificationGateEmail = null;
-                  });
-                },
+              return _ready(
+                VerifyEmailScreen(
+                  email: user.email ?? '',
+                  onVerifiedConfirmed: () {
+                    if (!mounted) return;
+                    setState(() => _verificationGateActive = false);
+                  },
+                  onUseAnotherAccount: () {
+                    if (!mounted) return;
+                    setState(() {
+                      _verificationGateActive = false;
+                      _verificationGateUserId = null;
+                      _verificationGateEmail = null;
+                    });
+                  },
+                ),
               );
             }
 
@@ -256,20 +208,22 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
                   .snapshots(),
               builder: (context, userSnapshot) {
                 if (userSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(backgroundColor: Color(0xFF0F1014));
+                  return const _BootPlaceholder();
                 }
 
                 if (userSnapshot.hasError) {
-                  return _UserProfileErrorScreen(
-                    message: userSnapshot.error.toString(),
-                    onRetry: () => setState(() {}),
+                  return _ready(
+                    _UserProfileErrorScreen(
+                      message: userSnapshot.error.toString(),
+                      onRetry: () => setState(() {}),
+                    ),
                   );
                 }
 
                 final doc = userSnapshot.data;
                 if (doc == null || !doc.exists) {
                   _clearHomeCache();
-                  return const SignupLogin();
+                  return _ready(const SignupLogin());
                 }
 
                 final data = doc.data() ?? <String, dynamic>{};
@@ -277,7 +231,7 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
 
                 if (!onboardingComplete) {
                   _clearHomeCache();
-                  return const IntroScreen();
+                  return _ready(const IntroScreen());
                 }
 
                 final userName = (data['firstName'] ?? 'Friend').toString();
@@ -291,7 +245,7 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
                     userName: userName,
                   );
                 }
-                return _cachedHomeScreen!;
+                return _ready(_cachedHomeScreen!);
               },
             );
           },
@@ -302,29 +256,51 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // Solid dark floor prevents any OS background from showing through
+    // Solid theme floor prevents any OS background from showing through
     // while the splash dissolves and content is partially transparent.
+    final floorColor = Theme.of(context).scaffoldBackgroundColor;
     return ColoredBox(
-      color: const Color(0xFF0F1014),
+      color: floorColor,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ── Content: always full opacity, lifts up as splash dissolves ──
-          SlideTransition(
-            position: _contentSlide,
-            child: _buildContent(),
+          // ── Content: always painted under the splash overlay ───────────
+          AnimatedBuilder(
+            animation: _openCtrl,
+            child: RepaintBoundary(child: _buildContent()),
+            builder: (context, child) {
+              return Opacity(
+                opacity: _openTriggered ? _contentFade.value : 1,
+                child: Transform.scale(
+                  scale: _openTriggered ? _contentScale.value : 1,
+                  child: child,
+                ),
+              );
+            },
           ),
-          // ── Splash: dissolves out (easeIn) — removed when done ──────────
-          if (!_openComplete)
-            AnimatedBuilder(
+          // ── Splash: fades to transparent but stays mounted, preventing
+          // the one-frame flash that can happen when removing the overlay.
+          IgnorePointer(
+            ignoring: _openTriggered,
+            child: AnimatedBuilder(
               animation: _splashFade,
               builder: (_, child) =>
                   Opacity(opacity: _splashFade.value, child: child),
               child: const BrandSplashScreen(),
             ),
+          ),
         ],
       ),
     );
+  }
+}
+
+class _BootPlaceholder extends StatelessWidget {
+  const _BootPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(color: Theme.of(context).scaffoldBackgroundColor);
   }
 }
 

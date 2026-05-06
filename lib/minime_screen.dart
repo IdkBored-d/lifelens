@@ -796,11 +796,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       );
 
       final payloadMood = mood.isEmpty ? const [3, 3, 3] : mood;
-      final payloadSleep = recentSleep.isEmpty
+      final payloadSleep = recentSleep.isNotEmpty
+          ? recentSleep
+          : recentMoods.isNotEmpty
           ? recentMoods
                 .map((item) => _estimatedSleepHoursFromMood(item.moodLabel))
                 .toList(growable: false)
-          : recentSleep;
+          : const [3, 3, 3];
       final payloadExercise = exercise.isEmpty ? const [0, 0, 0] : exercise;
       final payloadSymptoms = symptomCount.isEmpty
           ? const [0, 0, 0]
@@ -1038,7 +1040,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final moodStore = context.read<MoodLogStore>();
     final sleepStore = context.read<SleepStore>();
 
-    if (forceRefresh || !inbox.isReady) {
+    if ((forceRefresh || !inbox.isReady) && inbox.unreadCount == 0) {
       await inbox.refresh(moodStore: moodStore, sleepStore: sleepStore);
     }
 
@@ -1076,17 +1078,30 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       final reason = item.reason.trim();
       if (action.isEmpty && reason.isEmpty) continue;
 
-      final buffer = StringBuffer();
-      if (action.isNotEmpty) {
-        buffer.write(action);
-      }
-      if (reason.isNotEmpty) {
-        if (action.isNotEmpty) {
-          buffer.write(' ');
+      if (item.category.trim().toLowerCase() == 'symptoms') {
+        var topLine = action;
+        const prefix = 'Top possible conditions:';
+        if (topLine.startsWith(prefix)) {
+          topLine = topLine.substring(prefix.length).trim();
         }
-        buffer.write(reason);
+        final conditions = topLine
+            .replaceAll('.', '')
+            .split(',')
+            .map((c) => c.trim())
+            .where((c) => c.isNotEmpty)
+            .take(3)
+            .toList(growable: false);
+
+        if (conditions.isNotEmpty) {
+          replies.add(
+            'I checked your latest symptom log. Top 3 possible conditions: '
+            '${conditions.join(', ')}. This is not a diagnosis.',
+          );
+          continue;
+        }
       }
-      replies.add(buffer.toString().trim());
+
+      replies.add((action.isNotEmpty ? action : reason).trim());
     }
 
     return replies;
@@ -1863,8 +1878,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       return true;
     }
     // Consistently good sleep: last 3 logged nights all >= 7 hours
-    if (recentSleep.length >= 3 &&
-        recentSleep.take(3).every((h) => h >= 7)) {
+    if (recentSleep.length >= 3 && recentSleep.take(3).every((h) => h >= 7)) {
       return true;
     }
     // Consistent exercise: 3+ active days in the last 7 days
@@ -2279,114 +2293,199 @@ class _AvatarPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const chatDockHeight = 112.0;
-          const collapsedBottomInset = 16.0;
-          final showPromptBubble =
-              isSuggestionBubbleThinking ||
-              messages.isEmpty ||
-              (latestAssistantText?.isNotEmpty ?? false);
-          final promptBubbleText = dailyLoggingPromptText != null
-              ? dailyLoggingPromptText!
-              : messages.isEmpty
-              ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
-              : _bubblePreviewText(
-                  latestAssistantText ??
-                      'What do you want to work on today, ${_displayFirstName(userName)}?',
-                );
-          final headTiltBias = isReplying ? -0.12 : 0.0;
-          final bubbleMaxHeight = math.min(constraints.maxHeight * 0.09, 64.0);
-          final suggestionBubbleReserve = showPromptBubble
-              ? bubbleMaxHeight + 80
-              : 42.0;
-          final availableAvatarHeight =
-              constraints.maxHeight -
-              chatDockHeight -
-              collapsedBottomInset -
-              suggestionBubbleReserve;
-          final avatarSize = math.max(
-            380.0,
-            math.min(
-              constraints.biggest.shortestSide * 2.0,
-              availableAvatarHeight - 24,
-            ),
-          );
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    bottom: chatDockHeight + collapsedBottomInset - 8,
-                    left: 0,
-                    right: 0,
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: RepaintBoundary(
-                        child: MiniMeAvatar(
-                          bodyModel: avatarSelection.bodyModel,
-                          hairModel: avatarSelection.hairModel,
-                          shirtModel: avatarSelection.shirtModel,
-                          bodyWidthScale: avatarSelection.bodyWidthScale,
-                          companionId: avatarSelection.companionId,
-                          moodLabel: moodLabel,
-                          moodEmoji: moodEmoji,
-                          animationState: avatarAnimationState,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isLight ? cs.surface : Colors.transparent,
+      ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const chatDockHeight = 112.0;
+            const collapsedBottomInset = 16.0;
+            final showPromptBubble =
+                isSuggestionBubbleThinking ||
+                messages.isEmpty ||
+                (latestAssistantText?.isNotEmpty ?? false);
+            final promptBubbleText = dailyLoggingPromptText != null
+                ? dailyLoggingPromptText!
+                : messages.isEmpty
+                ? 'What do you want to work on today, ${_displayFirstName(userName)}?'
+                : _bubblePreviewText(
+                    latestAssistantText ??
+                        'What do you want to work on today, ${_displayFirstName(userName)}?',
+                  );
+            final headTiltBias = isReplying ? -0.12 : 0.0;
+            final bubbleMaxHeight = math.min(
+              constraints.maxHeight * 0.14,
+              96.0,
+            );
+            final suggestionBubbleReserve = showPromptBubble
+                ? bubbleMaxHeight + 80
+                : 42.0;
+            final availableAvatarHeight =
+                constraints.maxHeight -
+                chatDockHeight -
+                collapsedBottomInset -
+                suggestionBubbleReserve;
+            final avatarSize = math.max(
+              380.0,
+              math.min(
+                constraints.biggest.shortestSide * 2.0,
+                availableAvatarHeight - 24,
+              ),
+            );
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      bottom: chatDockHeight + collapsedBottomInset - 46,
+                      left: -8,
+                      right: -8,
+                      height: math.min(
+                        avatarSize * 0.82,
+                        constraints.maxHeight * 0.70,
+                      ),
+                      child: IgnorePointer(
+                        child: _MiniMeStageBackdrop(
                           glow: glow,
-                          size: avatarSize,
-                          degradationLevel: visualState.wearLevel,
-                          isHatched: avatarSelection.isMiniMeHatched,
-                          visualState: visualState,
-                          onHatchComplete: avatarSelection.onHatchComplete,
-                          autoWaveToken: avatarWaveToken,
-                          lockScreenPosition: true,
-                          headTiltBias: headTiltBias,
-                          celebrateOnOpen: celebrateOnOpen,
-                          danceOnOpen: danceOnOpen,
+                          isLight: isLight,
                         ),
                       ),
                     ),
-                  ),
-                  if (showPromptBubble)
                     Positioned(
-                      top: 8,
-                      left: 18,
-                      right: 18,
-                      child: _AvatarSuggestionBubble(
-                        text: promptBubbleText,
-                        maxHeight: bubbleMaxHeight,
-                        isThinking: isSuggestionBubbleThinking,
+                      bottom: chatDockHeight + collapsedBottomInset - 8,
+                      left: 0,
+                      right: 0,
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: RepaintBoundary(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              boxShadow: [
+                                if (isLight)
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF0F172A,
+                                    ).withValues(alpha: 0.10),
+                                    blurRadius: 34,
+                                    offset: const Offset(0, 18),
+                                  ),
+                              ],
+                            ),
+                            child: MiniMeAvatar(
+                              bodyModel: avatarSelection.bodyModel,
+                              hairModel: avatarSelection.hairModel,
+                              shirtModel: avatarSelection.shirtModel,
+                              bodyWidthScale: avatarSelection.bodyWidthScale,
+                              companionId: avatarSelection.companionId,
+                              moodLabel: moodLabel,
+                              moodEmoji: moodEmoji,
+                              animationState: avatarAnimationState,
+                              glow: glow,
+                              size: avatarSize,
+                              degradationLevel: visualState.wearLevel,
+                              isHatched: avatarSelection.isMiniMeHatched,
+                              visualState: visualState,
+                              onHatchComplete: avatarSelection.onHatchComplete,
+                              autoWaveToken: avatarWaveToken,
+                              lockScreenPosition: true,
+                              headTiltBias: headTiltBias,
+                              celebrateOnOpen: celebrateOnOpen,
+                              danceOnOpen: danceOnOpen,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                ],
-              ),
-              Positioned(
-                left: 16,
-                right: 16,
-                bottom: 12,
-                child: RepaintBoundary(
-                  child: _CoachComposerCard(
-                    miniMeName: miniMeName,
-                    chatController: chatController,
-                    chatFocusNode: chatFocusNode,
-                    isReplying: isReplying,
-                    onExpandCoach: onExpandCoach,
-                    onOpenFullChat: onOpenFullChat,
-                    onRunDaySummary: onRunDaySummary,
-                    onSend: onSend,
+                    if (showPromptBubble)
+                      Positioned(
+                        top: 8,
+                        left: 18,
+                        right: 18,
+                        child: _AvatarSuggestionBubble(
+                          text: promptBubbleText,
+                          maxHeight: bubbleMaxHeight,
+                          isThinking: isSuggestionBubbleThinking,
+                        ),
+                      ),
+                  ],
+                ),
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 12,
+                  child: RepaintBoundary(
+                    child: _CoachComposerCard(
+                      miniMeName: miniMeName,
+                      chatController: chatController,
+                      chatFocusNode: chatFocusNode,
+                      isReplying: isReplying,
+                      onExpandCoach: onExpandCoach,
+                      onOpenFullChat: onOpenFullChat,
+                      onRunDaySummary: onRunDaySummary,
+                      onSend: onSend,
+                    ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
+    );
+  }
+}
+
+class _MiniMeStageBackdrop extends StatelessWidget {
+  const _MiniMeStageBackdrop({required this.glow, required this.isLight});
+
+  final Color glow;
+  final bool isLight;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    if (!isLight) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: const Alignment(0, 0.35),
+            radius: 0.72,
+            colors: [glow.withValues(alpha: 0.10), Colors.transparent],
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, 0.20),
+                radius: 0.70,
+                colors: [
+                  cs.primary.withValues(alpha: 0.10),
+                  glow.withValues(alpha: 0.06),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.50, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -3024,12 +3123,25 @@ class _CoachComposerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
-        color: cs.surfaceContainer,
+        color: isLight ? Colors.white : cs.surfaceContainer,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isLight
+              ? cs.outlineVariant.withValues(alpha: 0.85)
+              : Colors.transparent,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: isLight ? 0.06 : 0.0),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -3076,7 +3188,9 @@ class _CoachComposerCard extends StatelessWidget {
                     ),
                     isDense: true,
                     filled: true,
-                    fillColor: cs.surfaceContainerHighest,
+                    fillColor: isLight
+                        ? cs.surfaceContainerLow
+                        : cs.surfaceContainerHighest,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 13,
@@ -3099,11 +3213,13 @@ class _CoachComposerCard extends StatelessWidget {
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
+                      borderSide: isLight
+                          ? BorderSide(color: cs.outlineVariant)
+                          : BorderSide.none,
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
+                      borderSide: BorderSide(color: cs.primary, width: 1.2),
                     ),
                   ),
                   style: theme.textTheme.bodyLarge?.copyWith(
@@ -3196,14 +3312,18 @@ class _ChatBubbleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     final maxWidth = math.min(MediaQuery.of(context).size.width * 0.82, 420.0);
     final suggestionParts = isUser
         ? const <_SuggestionSection>[]
         : message.suggestionSections;
     final introText = isUser ? null : message.suggestionIntro;
     final bubbleColor = isUser
-        ? cs.primaryContainer.withValues(alpha: 0.96)
-        : cs.surface.withValues(alpha: 0.92);
+        ? (isLight ? cs.primary : cs.primaryContainer.withValues(alpha: 0.96))
+        : (isLight ? Colors.white : cs.surface.withValues(alpha: 0.92));
+    final bubbleBorder = isUser
+        ? (isLight ? cs.primary : cs.primary.withValues(alpha: 0.14))
+        : cs.outlineVariant.withValues(alpha: isLight ? 0.95 : 0.35);
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -3222,16 +3342,12 @@ class _ChatBubbleCard extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: cs.shadow.withValues(alpha: 0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
+                color: cs.shadow.withValues(alpha: isLight ? 0.09 : 0.05),
+                blurRadius: isLight ? 18 : 8,
+                offset: Offset(0, isLight ? 8 : 4),
               ),
             ],
-            border: Border.all(
-              color: isUser
-                  ? cs.primary.withValues(alpha: 0.14)
-                  : cs.outlineVariant.withValues(alpha: 0.35),
-            ),
+            border: Border.all(color: bubbleBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3265,7 +3381,7 @@ class _ChatBubbleCard extends StatelessWidget {
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w900,
                         color: isUser
-                            ? cs.onPrimaryContainer
+                            ? (isLight ? cs.onPrimary : cs.onPrimaryContainer)
                             : cs.onSurfaceVariant,
                       ),
                     ),
@@ -3336,7 +3452,9 @@ class _ChatBubbleCard extends StatelessWidget {
                       child: Text(
                         message.text,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: isUser ? cs.onPrimaryContainer : cs.onSurface,
+                          color: isUser
+                              ? (isLight ? cs.onPrimary : cs.onPrimaryContainer)
+                              : cs.onSurface,
                           fontSize: 15.5,
                           fontWeight: FontWeight.w500,
                           height: 1.42,

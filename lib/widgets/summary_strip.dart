@@ -8,13 +8,19 @@ class SummaryStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.6)),
+        border: Border.all(
+          color: isLight
+              ? cs.outlineVariant.withValues(alpha: 0.95)
+              : cs.outlineVariant.withValues(alpha: 0.6),
+          width: 1,
+        ),
       ),
       child: Row(
         children: items

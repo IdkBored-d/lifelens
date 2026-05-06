@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # ML Models
     embedding_model: str = "SalmanFaroz/DisEmbed-v1" 
     #can use "all-MiniLM-L6-v2" for other more general purposes
+    gemini_model: str = "gemini-2.0-flash"
     
     # Rate Limiting
     rate_limit_per_minute: int = 30

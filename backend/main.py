@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
+import re
 from typing import List, Any
 import time
 import json
@@ -447,13 +448,10 @@ def _build_opening_fallback(chat_input: MiniMeChatRequest) -> str:
     symptoms = ', '.join(chat_input.active_symptoms[:2]) if chat_input.active_symptoms else ''
     if symptoms:
         return (
-            f"Based on your recent mood trend ({mood_text}) and symptoms ({symptoms}), start with one gentle reset: "
-            "drink water, take 5 slow breaths, and do a 10-minute low-stress task. "
-            "After that, check if your symptoms are easing."
+            f"I noticed {mood_text} mood notes with {symptoms}. Try water, a few slow breaths, and one easy next step."
         )
     return (
-        f"Your recent mood trend appears {mood_text}. Start with one small win: take a 5-minute pause, "
-        "name your top priority, and complete just the first step."
+        f"I noticed your mood has felt {mood_text}. Try one tiny win: pause, pick one priority, and do the first step."
     )
 
 
@@ -484,6 +482,107 @@ def _extract_last_assistant_step(chat_input: MiniMeChatRequest) -> str:
         return step.rstrip('.').strip()
 
     return ''
+
+
+def _is_diagnosis_style_question(text: str) -> bool:
+    lower = (text or '').strip().lower()
+    if not lower:
+        return False
+    diagnosis_phrases = [
+        'what could i have', 'what do i have', 'what is this', 'what condition',
+        'what disease', 'what illness', 'what infection', 'could it be',
+        'what might i have', 'what could cause', 'diagnose', 'diagnosis',
+    ]
+    return any(phrase in lower for phrase in diagnosis_phrases)
+
+
+def _extract_symptoms_from_chat_input(chat_input: MiniMeChatRequest) -> List[str]:
+    symptoms: List[str] = []
+    seen = set()
+
+    def _push(value: str) -> None:
+        cleaned = value.strip().strip('.!?;:').lower()
+        if not cleaned:
+            return
+        if cleaned in seen:
+            return
+        seen.add(cleaned)
+        symptoms.append(cleaned)
+
+    for item in (chat_input.active_symptoms or []):
+        _push(item)
+
+    text = (chat_input.user_message or '').strip().lower()
+    if text:
+        # Pull likely symptom chunks from free text if user typed symptoms inline.
+        tail = text
+        for marker in ('based on', 'with', 'having', 'feeling'):
+            idx = text.find(marker)
+            if idx != -1:
+                tail = text[idx + len(marker):]
+                break
+
+        tail = tail.replace(' and ', ',')
+        tail = re.sub(r'[^a-z0-9,\-\s]', ' ', tail)
+        for chunk in tail.split(','):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            if chunk in {
+                'what could i have', 'what do i have', 'what is this', 'what condition',
+                'what disease', 'what illness', 'what infection', 'could it be',
+                'what might i have', 'what could cause', 'diagnose', 'diagnosis',
+            }:
+                continue
+            if len(chunk) > 64:
+                continue
+            _push(chunk)
+
+    return symptoms[:20]
+
+
+async def _build_minime_symptom_prediction_reply(
+    chat_input: MiniMeChatRequest,
+    analysis_service: GeminiAnalysisService,
+) -> str:
+    if not _is_diagnosis_style_question(chat_input.user_message):
+        return ''
+
+    symptoms = _extract_symptoms_from_chat_input(chat_input)
+    if not symptoms:
+        return (
+            "I can definitely help with that. Share 2-5 symptoms (for example: headache, fatigue, dry throat), "
+            "and I will give you the top possible conditions in chat."
+        )
+
+    try:
+        result = await analysis_service.analyze_symptoms(SymptomInput(symptoms=symptoms))
+    except Exception as e:
+        logger.warning(f"Mini-Me symptom prediction lookup failed: {e}")
+        return (
+            "I could not run the symptom lookup right now. Please try again in a moment, "
+            "or log the symptoms in the Symptoms screen and I will analyze them there."
+        )
+
+    predictions = (result.predictions or [])[:3]
+    if not predictions:
+        return (
+            "I could not find strong condition matches yet for those symptoms. "
+            "If symptoms persist or worsen, please seek medical care."
+        )
+
+    lines = [
+        "Based on what you shared, here are the top possible conditions:",
+    ]
+    for index, item in enumerate(predictions, start=1):
+        confidence_pct = int(round(item.confidence * 100))
+        lines.append(f"{index}. {item.condition} ({confidence_pct}% match)")
+
+    if result.warning_signs:
+        lines.append(f"Watch for: {result.warning_signs[0]}")
+    lines.append("This is not a diagnosis, but it can help guide your next step.")
+
+    return ' '.join(lines)
 
 
 def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
@@ -715,6 +814,34 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
         )
 
     if _mentions('pain', 'headache', 'nausea', 'dizzy', 'sore', 'symptom', 'hurt'):
+        # If the user is asking what they could have / what condition matches,
+        # redirect them to the symptom log feature rather than giving a generic plan.
+        asks_diagnosis = any(
+            phrase in lower
+            for phrase in [
+                'what could i have', 'what do i have', 'what is this', 'what condition',
+                'what disease', 'what illness', 'what infection', 'could it be',
+                'what might i have', 'what could cause', 'diagnose', 'diagnosis',
+            ]
+        )
+        if asks_diagnosis:
+            return (
+                "That is a great question to explore. For your best answer, log those symptoms in the Symptoms screen — "
+                "I will run a full analysis and show you the top possible conditions matched to your specific combination. "
+                "I cannot make diagnoses, but the analysis can point you in the right direction and tell you when to seek care."
+            )
+
+        # Avoid repeating the exact same canned advice when the last reply was identical
+        _symptom_step_marker = 'gentle reset: hydrate, reduce stimulation'
+        if _symptom_step_marker in last_assistant_turn:
+            return _compose(
+                "You mentioned physical symptoms again.",
+                "Check in with the intensity on a 0-10 scale compared to 20 minutes ago — has it shifted? "
+                "If it is the same or worse, that is worth a note to your doctor.",
+                "Seek urgent care immediately if you notice trouble breathing, chest pain, or sudden worsening.",
+                ask_update=False,
+            )
+
         return _compose(
             "It sounds like your body needs a lower-load plan right now.",
             "Do a gentle reset: hydrate, reduce stimulation, and track symptom intensity 0-10 after 20 minutes.",
@@ -983,49 +1110,112 @@ def _build_suggestions_fallback(
     mood_pattern_heavy = recent_heavy_count >= 2
 
     fallback_items: List[MiniMeSuggestionItem] = []
+    scored_items: List[tuple[int, str, str]] = []
     seen_actions = set()
 
-    def add_item(action: str, reason: str):
+    def add_item(action: str, reason: str, score: int = 10):
         normalized = action.strip().lower()
         if not normalized or normalized in seen_actions:
             return
         seen_actions.add(normalized)
-        fallback_items.append(
-            MiniMeSuggestionItem(
-                action=action.strip()[:240],
-                reason=reason.strip()[:240],
+        scored_items.append((score, action.strip()[:240], reason.strip()[:240]))
+
+    def _stable_index(count: int) -> int:
+        if count <= 0:
+            return 0
+        seed = '|'.join([
+            suggestion_window,
+            mood,
+            str(intensity),
+            ' '.join(recent_logs[:4]),
+            symptom_text,
+            str(len(recent_logs)),
+        ])
+        return sum(ord(ch) for ch in seed) % count
+
+    # Fresh log updates should primarily respond to the newest log. These score
+    # above generic cautious/sleep/exercise items so different moods do not all
+    # collapse into the same fallback suggestion when Gemini is unavailable.
+    if suggestion_window == 'log_update':
+        if mood in {'sad', 'sadness'}:
+            add_item(
+                'That sounded like a low moment. Try a tiny lift: step into light, take a short walk, or text someone you trust.',
+                'Small support is enough for right now.',
+                score=110,
             )
-        )
+        elif mood in {'fear', 'anxious', 'overwhelmed'}:
+            add_item(
+                'That sounded scary or tense. Write down what feels uncertain, then pick just one thing you can do next.',
+                'One clear step can make things feel less loud.',
+                score=110,
+            )
+        elif mood in {'anger', 'stressed'}:
+            add_item(
+                'That sounded frustrating. Take five minutes away from the trigger, then choose one calm next move.',
+                'A small pause can help you respond instead of react.',
+                score=110,
+            )
+        elif mood_is_positive:
+            add_item(
+                'Nice, that log sounded lighter. Use the momentum for one focused 20-minute task, then stop while it still feels good.',
+                'Keep the win easy to finish.',
+                score=110,
+            )
 
     # ── Cautious / strain mode ─────────────────────────────────────────────
     if cautious_mode:
         add_item(
-            'Take a gentle 3-minute reset: sip water, loosen your shoulders, and do 6 slow breaths.',
-            'Your recent signals suggest higher strain, so a low-effort calming step is safer and easier to start.',
+            'Try a gentle 3-minute reset: sip water, loosen your shoulders, and take six slow breaths.',
+            'Keep it easy on your body.',
+            score=95,
+        )
+        add_item(
+            'Keep the next step small: lower the noise for 10 minutes, then check how you feel.',
+            'Start with steadying yourself.',
+            score=92,
         )
 
     # ── Negative mood handling ─────────────────────────────────────────────
     if mood_is_negative and not cautious_mode:
         if mood in {'sad', 'sadness'}:
             add_item(
-                'Pick one small mood-lift for today: 10 minutes of sunlight, a short walk, or a brief chat with someone you trust.',
-                'Low mood often responds to tiny environmental changes — small wins compound over the day.',
+                'Pick one small lift: sunlight, a short walk, or a quick chat with someone you trust.',
+                'Tiny support still counts.',
+                score=82,
+            )
+            add_item(
+                'Try one easy connection step: send a short text or sit somewhere brighter for 10 minutes.',
+                'You do not have to force productivity.',
+                score=80,
             )
         elif mood in {'fear', 'anxious', 'overwhelmed'}:
             add_item(
-                'Write one sentence naming what is weighing on you, then choose the single smallest next step.',
-                'Naming the concern and shrinking the action reduces mental load and makes starting easier.',
+                'Name what is weighing on you, then choose the smallest next step.',
+                'Small and clear is the goal.',
+                score=84,
+            )
+            add_item(
+                'Make two quick lists: what you can control, and what can wait.',
+                'This can lower the pressure a little.',
+                score=81,
             )
         elif mood in {'anger', 'stressed'}:
             add_item(
-                'Take a 5-minute break from the current stressor: step away, breathe slowly, then come back with fresh eyes.',
-                'Brief physical distance from a stressor reduces reactivity and makes the next step clearer.',
+                'Step away for five minutes, breathe slowly, then come back to one small next move.',
+                'Give yourself room first.',
+                score=84,
+            )
+            add_item(
+                'Before doing anything big, unclench your jaw, drop your shoulders, and take six slow breaths.',
+                'Let your body settle first.',
+                score=82,
             )
 
     if mood_pattern_heavy and not mood_is_negative:
         add_item(
-            'Your mood pattern has had some heavier moments recently — take 2 minutes to note one thing you can do today to protect your energy.',
-            'Recognizing repeated mood dips early helps you course-correct before strain builds up.',
+            'You have had a few heavier moments lately. Pick one thing today that protects your energy.',
+            'A little protection early can help.',
+            score=76,
         )
 
     # ── Sleep suggestions: only when sleep actually needs attention ────────
@@ -1033,12 +1223,14 @@ def _build_suggestions_fallback(
         add_item(
             'Set a simple sleep anchor tonight: pick one consistent bedtime cue and aim to keep your wake time steady tomorrow.',
             'Your recent sleep data shows room to improve — bedtime consistency is the most practical lever.',
+            score=78,
         )
     elif sleep_is_solid and mood_is_positive:
         # Sleep is already great — acknowledge and build on it
         add_item(
             'Your sleep has been solid — protect that streak by keeping your wind-down routine consistent tonight.',
             'Good sleep is one of the strongest contributors to mood and energy. Keeping it consistent compounds the benefit.',
+            score=70,
         )
 
     # ── Exercise suggestions: context-aware ───────────────────────────────
@@ -1046,16 +1238,19 @@ def _build_suggestions_fallback(
         add_item(
             'Try adding a short 10-minute movement block today — a walk or light stretch is a great first step.',
             "You haven't logged exercise yet. Even a brief session boosts mood and energy on days you're already feeling good.",
+            score=72,
         )
     elif exercise_missing and not cautious_mode:
         add_item(
             'Even 5-10 minutes of gentle movement (walk, stretch) can help shift your energy today.',
             'Light activity is low-risk and often improves how the rest of the day feels, regardless of current mood.',
+            score=68,
         )
     elif exercise_logged and not cautious_mode:
         add_item(
             'Great job logging exercise. Next session, try adding 5 minutes or one more set to keep the momentum.',
             'You have already built the habit — small progressive increases maintain improvement without burnout.',
+            score=64,
         )
 
     # ── Positive reinforcement when everything looks good ─────────────────
@@ -1063,6 +1258,12 @@ def _build_suggestions_fallback(
         add_item(
             'Your mood and sleep are both in a good place — use this energy to tackle one thing you have been putting off.',
             "High-energy windows are the best time for harder tasks. Acting now turns positive momentum into tangible progress.",
+            score=80,
+        )
+        add_item(
+            'Use this good window for one focused 20-minute block, then stop and log what moved forward.',
+            'Your recent mood and sleep look supportive, so a short focused push fits the moment without overdoing it.',
+            score=78,
         )
 
     # ── Stress / low-energy fallbacks ────────────────────────────────────
@@ -1070,12 +1271,28 @@ def _build_suggestions_fallback(
         add_item(
             'Write one sentence naming the top stressor, then choose one tiny action you can finish in 10 minutes.',
             'Breaking stress into one concrete step reduces mental load and builds momentum quickly.',
+            score=74,
         )
 
     if has_low_energy_signal and not cautious_mode:
         add_item(
             'Pick a low-friction energy boost: drink a glass of water, do 5 minutes of light movement, or step outside briefly.',
             'Low-energy patterns often respond to tiny physical resets before requiring bigger changes.',
+            score=73,
+        )
+
+    if suggestion_window == 'log_update':
+        add_item(
+            'Use this new log as your cue: pick one small step that matches how you feel right now.',
+            'Check in again after 20 minutes.',
+            score=88,
+        )
+
+    if recent_logs and not cautious_mode:
+        add_item(
+            'Compare your latest log with the previous one and choose one adjustment: easier pace, more rest, or one focused task.',
+            'Your recent logs give enough context to tune the next step instead of repeating the same plan.',
+            score=66,
         )
 
     # ── Reflection as a safe filler when nothing specific fires ──────────
@@ -1083,13 +1300,35 @@ def _build_suggestions_fallback(
         add_item(
             'Do a quick evening reflection: one win, one challenge, and one small plan for tomorrow.',
             'This keeps progress visible and helps tomorrow start with less friction.',
+            score=40,
         )
 
     if len(fallback_items) < target_count:
         add_item(
             'Choose one clear wellness step for the next 2-4 hours and treat it as your baseline win for today.',
             'A single committed action is easier to follow through on and still moves your overall trend forward.',
+            score=35,
         )
+
+    scored_items.sort(key=lambda item: item[0], reverse=True)
+    if scored_items:
+        if target_count == 1:
+            best_score = scored_items[0][0]
+            top_band = [item for item in scored_items if item[0] == best_score]
+            if best_score < 100:
+                top_band = scored_items[:min(3, len(scored_items))]
+            rotated = top_band[_stable_index(len(top_band))]
+            fallback_items = [
+                MiniMeSuggestionItem(action=rotated[1], reason=rotated[2])
+            ]
+        else:
+            start = _stable_index(len(scored_items))
+            ordered = scored_items[start:] + scored_items[:start]
+            ordered.sort(key=lambda item: item[0], reverse=True)
+            fallback_items = [
+                MiniMeSuggestionItem(action=item[1], reason=item[2])
+                for item in ordered[:target_count]
+            ]
 
     suggestions = fallback_items[:target_count] if fallback_items else [
         MiniMeSuggestionItem(
@@ -1268,6 +1507,18 @@ async def minime_chat(
     except Exception as e:
         logger.warning(f"Mini-Me memory logging failed (chat): {e}")
 
+    symptom_prediction_reply = await _build_minime_symptom_prediction_reply(
+        chat_input,
+        analysis_service,
+    )
+    if symptom_prediction_reply:
+        return MiniMeChatResponse(
+            opening_suggestion='',
+            reply=symptom_prediction_reply,
+            source='symptom_analysis',
+            memory_state=memory_state,
+        )
+
     try:
         if (not _is_gemini_enabled()) or analysis_service.client is None:
             fallback_opening = _build_opening_fallback(chat_input)
@@ -1281,7 +1532,7 @@ async def minime_chat(
         prompt = _build_minime_prompt(chat_input, memory_state)
 
         response = analysis_service.client.models.generate_content(
-            model='gemini-2.5-flash-lite',
+            model=settings.gemini_model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.55,
@@ -1353,7 +1604,7 @@ async def minime_suggestions(
             base_response.suggestions,
         )
         response = analysis_service.client.models.generate_content(
-            model='gemini-2.5-flash-lite',
+            model=settings.gemini_model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.35,
@@ -1412,7 +1663,7 @@ async def minime_exercise_recommendations(
 
         prompt = _build_exercise_recommendations_prompt(recommendation_input)
         response = analysis_service.client.models.generate_content(
-            model='gemini-2.5-flash-lite',
+            model=settings.gemini_model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.75,

@@ -133,13 +133,26 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
           .map(_StoredSuggestion.fromDailySuggestion)
           .toList(growable: false);
 
-      final forceSurface = cadenceDecision.eventOverride;
+      final forceSurface =
+          cadenceDecision.eventOverride || cadenceDecision.window == 'log_update';
 
       var nextUnread = forceSurface
           ? currentSuggestions
           : currentSuggestions
                 .where((item) => !_viewedDigests.contains(item.digest))
                 .toList(growable: false);
+
+      if (nextUnread.isNotEmpty) {
+        final merged = <_StoredSuggestion>[...nextUnread];
+        for (final item in _unread) {
+          if (merged.any((existing) => existing.digest == item.digest)) {
+            continue;
+          }
+          merged.add(item);
+          if (merged.length >= 12) break;
+        }
+        nextUnread = merged;
+      }
 
       if (currentSuggestions.isNotEmpty) {
         _recordDeliveryIfRequested(cadenceDecision);
@@ -189,6 +202,48 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     if (!changed) return;
 
     await _persistViewedDigests();
+    await _persistUnread();
+    notifyListeners();
+  }
+
+  Future<void> enqueueSymptomInsight({
+    required List<String> topConditions,
+    required List<String> symptoms,
+  }) async {
+    await _ensureCurrentScopeLoaded();
+
+    final cleanedConditions = topConditions
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .take(3)
+        .toList(growable: false);
+    if (cleanedConditions.isEmpty) return;
+
+    final action =
+      'Top possible conditions: ${cleanedConditions.join(', ')}.';
+    final reason =
+      'This is just a quick guide, not a diagnosis.';
+
+    final suggestion = DailySuggestion(
+      title: 'Symptom analysis ready',
+      action: action,
+      reason: reason,
+      category: 'Symptoms',
+      priority: 5,
+      icon: Icons.health_and_safety_rounded,
+    );
+
+    final stored = _StoredSuggestion.fromDailySuggestion(suggestion);
+    final nextUnread = <_StoredSuggestion>[stored];
+    for (final item in _unread) {
+      if (item.digest == stored.digest) continue;
+      nextUnread.add(item);
+      if (nextUnread.length >= 12) break;
+    }
+
+    if (_sameDigests(_unread, nextUnread)) return;
+
+    _unread = nextUnread;
     await _persistUnread();
     notifyListeners();
   }

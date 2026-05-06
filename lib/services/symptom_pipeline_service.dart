@@ -7,6 +7,7 @@ import 'disembed_service.dart';
 import 'model_lifecycle_service.dart';
 import 'weaviate_service.dart';
 import 'gemini_service.dart';
+import 'minime_backend_service.dart';
 import '../database/isar_service.dart';
 import '../database/symptom_entry.dart';
 
@@ -49,8 +50,15 @@ class SymptomPipelineService {
     required bool isOnline,
   }) async {
     // ── STEP 1: DisEmbed fast embedding ───────────────────────────────────
-    await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
-    final embedding = await _disEmbed.embed(userSymptoms, _tokenize);
+    // If local model loading fails, continue with backend/Gemini paths so
+    // symptom analysis still works instead of saving a tracking-only stub.
+    List<double> embedding = const <double>[];
+    try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
+      embedding = await _disEmbed.embed(userSymptoms, _tokenize);
+    } catch (e) {
+      debugPrint('[SymptomPipeline] DisEmbed unavailable, continuing without local embedding: $e');
+    }
 
     // ── STEP 2: Disease index lookup ───────────────────────────────────────
     // TODO(index): Replace with a real on-device disease embedding index once
@@ -165,7 +173,7 @@ class SymptomPipelineService {
     required DisEmbedResult disEmbedResult,
   }) async {
     List<WeaviateDisease> ragResults = [];
-    if (isOnline) {
+    if (isOnline && embedding.isNotEmpty) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
     final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
@@ -203,19 +211,70 @@ class SymptomPipelineService {
     );
   }
 
+  /// Convert a backend [SymptomAnalysisReply] into the shared [DiagnosisEntry] list.
+  List<DiagnosisEntry> _backendReplyToDiagnoses(SymptomAnalysisReply reply) {
+    if (reply.predictions.isNotEmpty) {
+      final isEmergency = reply.urgency == 'emergency';
+      return reply.predictions.map((p) {
+        final nextSteps = p.whenToSeekCare.isNotEmpty
+            ? p.whenToSeekCare
+            : reply.selfCareRecommendations.take(2).join(' ');
+        return DiagnosisEntry(
+          diseaseName: p.condition,
+          reasoning: p.description,
+          nextSteps: nextSteps,
+          isUrgent: isEmergency,
+        );
+      }).toList();
+    }
+    // Backend returned analysis text but no structured predictions
+    return [
+      DiagnosisEntry(
+        diseaseName: 'See analysis',
+        reasoning: reply.analysis,
+        nextSteps: reply.selfCareRecommendations.take(2).join(' '),
+        isUrgent: reply.urgency == 'emergency',
+      ),
+    ];
+  }
+
   Future<SymptomPipelineResult> _handleEscalation({
     required String userSymptoms,
     required List<double> embedding,
     required bool isOnline,
     required DisEmbedResult? disEmbedResult,
   }) async {
-    List<WeaviateDisease> ragResults = [];
+    // ── Backend (online, Gemini + RAG on server) ───────────────────────────
     if (isOnline) {
+      try {
+        final symptomList = userSymptoms
+            .split(RegExp(r'[,.]'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        final backendReply = await MiniMeBackendService.instance
+            .analyzeSymptoms(symptoms: symptomList);
+        return _buildAndStore(
+          userSymptoms: userSymptoms,
+          diagnoses: _backendReplyToDiagnoses(backendReply),
+          ragUsed: backendReply.source == 'rag',
+          isOffline: false,
+          resolvedBy: EscalationLevel.gemini,
+          disEmbedPrediction: null,
+          disEmbedResult: disEmbedResult,
+        );
+      } catch (e) {
+        debugPrint('[SymptomPipeline] Backend analyze failed, falling back to Gemini: $e');
+      }
+    }
+
+    List<WeaviateDisease> ragResults = [];
+    if (isOnline && embedding.isNotEmpty) {
       ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
     final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
 
-    // ── Gemini (online only) ───────────────────────────────────────────────
+    // ── Gemini fallback (online only) ──────────────────────────────────────
     if (isOnline) {
       try {
         final geminiRaw = await _gemini.analyzeSymptoms(

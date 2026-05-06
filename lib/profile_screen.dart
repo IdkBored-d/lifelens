@@ -228,17 +228,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              ElevatedButton.icon(
-                icon: const Icon(Icons.logout),
-                label: const Text('Log out'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.error,
-                  foregroundColor: theme.colorScheme.onError,
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
+              _LogoutButton(
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
                   if (!context.mounted) return;
@@ -874,6 +864,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
         navigator.pop();
       }
     }
+  }
+}
+
+class _LogoutButton extends StatelessWidget {
+  const _LogoutButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    final background = isLight
+        ? Color.alphaBlend(cs.primary.withValues(alpha: 0.055), cs.surface)
+        : cs.surfaceContainerHighest.withValues(alpha: 0.48);
+    final iconBackground = isLight
+        ? cs.primary.withValues(alpha: 0.11)
+        : cs.primaryContainer.withValues(alpha: 0.58);
+    final borderColor = isLight
+        ? cs.primary.withValues(alpha: 0.16)
+        : cs.outlineVariant.withValues(alpha: 0.70);
+    final foreground = isLight ? cs.primary : cs.onSurface;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        splashColor: cs.primary.withValues(alpha: 0.08),
+        highlightColor: cs.primary.withValues(alpha: 0.04),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor),
+            boxShadow: isLight
+                ? [
+                    BoxShadow(
+                      color: cs.primary.withValues(alpha: 0.06),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: iconBackground,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.logout_rounded, size: 21, color: foreground),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Log out',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: cs.onSurface,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 15,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.72),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

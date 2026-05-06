@@ -2227,8 +2227,9 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
       // Amplitude shrinks slightly for each successive jump
       final jumpIndex = segment.floor();
       final amp = 1.0 - jumpIndex * 0.15;
-      final bobHeight = arc * 32 * amp;  // tall, noticeable
-      final landingSquash = (1.0 - arc) * (jumpT > 0.5 ? (jumpT - 0.5) * 2 : 0.0);
+      final bobHeight = arc * 32 * amp; // tall, noticeable
+      final landingSquash =
+          (1.0 - arc) * (jumpT > 0.5 ? (jumpT - 0.5) * 2 : 0.0);
       return _ReactionMotion(
         bob: -bobHeight + landingSquash * 4,
         sway: math.sin(t * math.pi * jumpCount * 2) * 0.008,
@@ -2249,9 +2250,11 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
       final bobHeight = bobRaw * 7.0;
       // Arms pump alternately: left up on even beats, right up on odd beats
       final isEvenBeat = beat % 2 == 0;
-      final armPump = Curves.easeOutCubic.transform(
-        math.sin(beatT * math.pi).clamp(0.0, 1.0),
-      ) * 0.28;
+      final armPump =
+          Curves.easeOutCubic.transform(
+            math.sin(beatT * math.pi).clamp(0.0, 1.0),
+          ) *
+          0.28;
       // Head nod: tilts slightly toward the raised arm on each beat
       final headNod = math.sin(t * math.pi * 8) * 0.06;
       // Fade out the last 10% of the animation so it lands cleanly
@@ -2435,13 +2438,13 @@ enum _MiniMeAccessory { none, band, tie }
 enum _MiniMeCrest { none, fluff, sprout }
 
 const MiniMeFacePalette _classicPalette = MiniMeFacePalette(
-  primary: Color(0xFFF8F6F2),
-  secondary: Color(0xFF75A0E3),
-  belly: Color(0xFFF2F0EC),
-  beak: Color(0xFFE3D9CF),
+  primary: Color(0xFFE8EDF7),
+  secondary: Color(0xFF5F8FD7),
+  belly: Color(0xFFF5F7FB),
+  beak: Color(0xFFD8DEEA),
   cheek: Color(0xFFF0B7C5),
   eye: Color(0xFF17345C),
-  accessory: Color(0xFF90A7F4),
+  accessory: Color(0xFF6F83E8),
 );
 
 const MiniMeFacePalette _sunsetPalette = MiniMeFacePalette(

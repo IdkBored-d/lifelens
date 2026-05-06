@@ -12,13 +12,19 @@ class MoodRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.6)),
+        border: Border.all(
+          color: isLight
+              ? cs.outlineVariant.withValues(alpha: 0.95)
+              : cs.outlineVariant.withValues(alpha: 0.6),
+          width: 1,
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -42,13 +48,16 @@ class MoodRow extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 5),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? cs.primaryContainer.withValues(alpha:0.75)
-                      : cs.surface.withValues(alpha:0.75),
+                      ? cs.primaryContainer.withValues(alpha: 0.75)
+                      : cs.surface,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: isSelected
-                        ? cs.primary.withValues(alpha:0.55)
-                        : cs.outlineVariant.withValues(alpha:0.6),
+                        ? cs.primary.withValues(alpha: isLight ? 0.95 : 0.55)
+                        : isLight
+                        ? cs.outlineVariant.withValues(alpha: 0.95)
+                        : cs.outlineVariant.withValues(alpha: 0.6),
+                    width: 1,
                   ),
                 ),
                 child: Column(

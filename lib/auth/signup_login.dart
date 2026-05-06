@@ -225,7 +225,9 @@ class _SignupLoginState extends State<SignupLogin> {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } on FirebaseAuthException catch (e) {
-      debugPrint('[Signup] FirebaseAuthException: code=${e.code} msg=${e.message}');
+      debugPrint(
+        '[Signup] FirebaseAuthException: code=${e.code} msg=${e.message}',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -241,7 +243,9 @@ class _SignupLoginState extends State<SignupLogin> {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 8),
-          content: Text('[${e.code}] ${e.message ?? 'Could not save your profile.'}'),
+          content: Text(
+            '[${e.code}] ${e.message ?? 'Could not save your profile.'}',
+          ),
         ),
       );
     } catch (e) {
@@ -324,6 +328,7 @@ class _SignupLoginState extends State<SignupLogin> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     final title = isLogin ? 'Sign in to continue' : 'Create your profile';
     final subtitle = isLogin
@@ -331,6 +336,7 @@ class _SignupLoginState extends State<SignupLogin> {
         : 'Set up your account in a minute and start tracking right away.';
 
     return Scaffold(
+      backgroundColor: cs.surface,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
@@ -423,27 +429,17 @@ class _SignupLoginState extends State<SignupLogin> {
                                 ),
                                 style: FilledButton.styleFrom(
                                   minimumSize: const Size(double.infinity, 56),
-                                  backgroundColor: cs.primary,
+                                  backgroundColor: isLight
+                                      ? const Color(0xFF4F46E5)
+                                      : cs.primary,
                                   foregroundColor: cs.onPrimary,
+                                  elevation: 0,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(18),
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              if (!isLogin) ...[
-                                _InfoPanel(isLogin: isLogin),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'By creating an account, you agree to Terms and Privacy Policy.',
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 8),
                             ],
                           ),
                         ),
@@ -467,6 +463,60 @@ class _AuthBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = colorScheme.brightness == Brightness.light;
+
+    if (isLight) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color.alphaBlend(
+                    colorScheme.primary.withValues(alpha: 0.045),
+                    colorScheme.surface,
+                  ),
+                  colorScheme.surface,
+                  Color.alphaBlend(
+                    colorScheme.secondary.withValues(alpha: 0.035),
+                    colorScheme.surface,
+                  ),
+                ],
+                stops: const [0.0, 0.48, 1.0],
+              ),
+            ),
+          ),
+          Positioned(
+            top: -92,
+            right: -54,
+            child: _BackdropOrb(
+              diameter: 260,
+              color: colorScheme.primary.withValues(alpha: 0.15),
+            ),
+          ),
+          Positioned(
+            top: 250,
+            left: -82,
+            child: _BackdropOrb(
+              diameter: 210,
+              color: colorScheme.secondary.withValues(alpha: 0.12),
+            ),
+          ),
+          Positioned(
+            bottom: -112,
+            right: 4,
+            child: _BackdropOrb(
+              diameter: 280,
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.11),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -530,7 +580,12 @@ class _BackdropOrb extends StatelessWidget {
       child: Container(
         width: diameter,
         height: diameter,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withValues(alpha: 0.0)],
+          ),
+        ),
       ),
     );
   }
@@ -551,24 +606,33 @@ class _HeaderRibbon extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color.alphaBlend(
-              cs.primary.withValues(alpha: 0.60),
-              cs.primaryContainer,
-            ),
-            Color.alphaBlend(
-              cs.secondary.withValues(alpha: 0.42),
-              cs.primaryContainer,
-            ),
-          ],
+        color: isLight ? const Color(0xFFF8FAFC) : null,
+        gradient: isLight
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color.alphaBlend(
+                    cs.primary.withValues(alpha: 0.60),
+                    cs.primaryContainer,
+                  ),
+                  Color.alphaBlend(
+                    cs.secondary.withValues(alpha: 0.42),
+                    cs.primaryContainer,
+                  ),
+                ],
+              ),
+        border: Border.all(
+          color: isLight
+              ? cs.outlineVariant.withValues(alpha: 0.95)
+              : Colors.transparent,
         ),
       ),
       child: Column(
@@ -590,17 +654,19 @@ class _HeaderRibbon extends StatelessWidget {
           Text(
             title,
             style: theme.textTheme.headlineSmall?.copyWith(
-              color: cs.onPrimaryContainer,
+              color: isLight ? cs.onSurface : cs.onPrimaryContainer,
               fontWeight: FontWeight.w900,
               height: 1.05,
-              letterSpacing: -0.35,
+              letterSpacing: 0,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             subtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: cs.onPrimaryContainer.withValues(alpha: 0.86),
+              color: isLight
+                  ? cs.onSurfaceVariant
+                  : cs.onPrimaryContainer.withValues(alpha: 0.86),
               fontWeight: FontWeight.w600,
               height: 1.3,
             ),
@@ -618,13 +684,19 @@ class _BrandBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = colorScheme.brightness == Brightness.light;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.22),
+        color: isLight
+            ? colorScheme.primaryContainer.withValues(alpha: 0.85)
+            : colorScheme.surface.withValues(alpha: 0.22),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: colorScheme.onPrimaryContainer.withValues(alpha: 0.20),
+          color: isLight
+              ? colorScheme.primary.withValues(alpha: 0.16)
+              : colorScheme.onPrimaryContainer.withValues(alpha: 0.20),
         ),
       ),
       child: Row(
@@ -633,13 +705,17 @@ class _BrandBadge extends StatelessWidget {
           Icon(
             Icons.spa_rounded,
             size: 16,
-            color: colorScheme.onPrimaryContainer,
+            color: isLight
+                ? colorScheme.primary
+                : colorScheme.onPrimaryContainer,
           ),
           const SizedBox(width: 6),
           Text(
             'LIFELENS',
             style: TextStyle(
-              color: colorScheme.onPrimaryContainer,
+              color: isLight
+                  ? colorScheme.primary
+                  : colorScheme.onPrimaryContainer,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.9,
               fontSize: 11,
@@ -660,22 +736,32 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: cs.surface.withValues(alpha: 0.24),
+        color: isLight ? Colors.white : cs.surface.withValues(alpha: 0.24),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: isLight
+              ? cs.outlineVariant.withValues(alpha: 0.95)
+              : Colors.transparent,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: cs.onPrimaryContainer),
+          Icon(
+            icon,
+            size: 14,
+            color: isLight ? cs.primary : cs.onPrimaryContainer,
+          ),
           const SizedBox(width: 6),
           Text(
             label,
             style: TextStyle(
-              color: cs.onPrimaryContainer,
+              color: isLight ? cs.onSurface : cs.onPrimaryContainer,
               fontWeight: FontWeight.w700,
               fontSize: 11,
             ),
@@ -695,9 +781,11 @@ class _ModeSwitchPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Card(
       margin: EdgeInsets.zero,
+      color: isLight ? Colors.white : null,
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: SegmentedButton<bool>(
@@ -710,22 +798,30 @@ class _ModeSwitchPanel extends StatelessWidget {
             ),
             backgroundColor: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
-                return cs.primaryContainer;
+                return isLight ? cs.primary : cs.primaryContainer;
               }
-              return cs.surfaceContainerHighest.withValues(alpha: 0.6);
+              return isLight
+                  ? cs.surfaceContainerHighest
+                  : cs.surfaceContainerHighest.withValues(alpha: 0.6);
             }),
             foregroundColor: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
-                return cs.onPrimaryContainer;
+                return isLight ? cs.onPrimary : cs.onPrimaryContainer;
               }
               return cs.onSurfaceVariant;
             }),
             side: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.selected)) {
-                return BorderSide(color: cs.primary.withValues(alpha: 0.45));
+                return BorderSide(
+                  color: isLight
+                      ? cs.primary
+                      : cs.primary.withValues(alpha: 0.45),
+                );
               }
               return BorderSide(
-                color: cs.outlineVariant.withValues(alpha: 0.45),
+                color: cs.outlineVariant.withValues(
+                  alpha: isLight ? 0.95 : 0.45,
+                ),
               );
             }),
             shape: WidgetStateProperty.all(
@@ -769,9 +865,11 @@ class _IdentityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Card(
       margin: EdgeInsets.zero,
+      color: isLight ? Colors.white : null,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Column(
@@ -875,9 +973,11 @@ class _CredentialsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Card(
       margin: EdgeInsets.zero,
+      color: isLight ? Colors.white : null,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Column(
@@ -1136,45 +1236,6 @@ class _UtilityRow extends StatelessWidget {
   }
 }
 
-class _InfoPanel extends StatelessWidget {
-  const _InfoPanel({required this.isLogin});
-
-  final bool isLogin;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.shield_outlined, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              isLogin
-                  ? 'Encrypted authentication keeps your account secure.'
-                  : 'We use your profile details only for personalized insights.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _AuthField extends StatelessWidget {
   const _AuthField({
     required this.controller,
@@ -1205,6 +1266,7 @@ class _AuthField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return TextFormField(
       controller: controller,
@@ -1215,7 +1277,13 @@ class _AuthField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: cs.onSurfaceVariant, size: 19),
+        filled: true,
+        fillColor: isLight ? const Color(0xFFFBFCFE) : null,
+        prefixIcon: Icon(
+          icon,
+          color: isLight ? cs.primary : cs.onSurfaceVariant,
+          size: 19,
+        ),
         suffixIcon: suffixIcon,
       ),
       validator: validator,

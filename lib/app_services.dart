@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -100,7 +102,7 @@ class AppServices {
     weaviate = WeaviateService(host: _weaviateHost, apiKey: _weaviateApiKey);
     gemini   = GeminiService(apiKey: _geminiApiKey);
 
-    // ── 5. Model services (load in parallel) ───────────────────────────────
+    // ── 5. Model service instances (constructed immediately, models loaded below) ──
     final modelsStart = sw.elapsedMilliseconds;
     mobileBert = MobileBertService();
     disEmbed   = DisEmbedService();
@@ -108,49 +110,8 @@ class AppServices {
     miniGen    = MiniGenService();
     miniGenChat = MiniGenChat(miniGen);
 
-    var loadedCount = 0;
-
-    Future<void> loadModel(String name, Future<void> Function() loader) async {
-      try {
-        await loader();
-        loadedCount += 1;
-        debugPrint('[AppServices] init: $name loaded');
-      } catch (e) {
-        debugPrint('[AppServices] init: $name load failed: $e');
-      }
-    }
-
-    await Future.wait([
-      loadModel('MobileBERT', () => mobileBert.load(_mobileBertAsset)),
-      loadModel('DisEmbed',   () => disEmbed.load(_disEmbedAsset)),
-      loadModel('FitnessMLP', () => fitnessMlp.load(_fitnessAsset)),
-      loadModel('MiniGen', () async {
-        final path = await MiniGenDownloader.ensureModel();
-        await miniGen.load(path);
-      }),
-    ]);
-
-    debugPrint('[AppServices] init: models ready $loadedCount/4 in ${sw.elapsedMilliseconds - modelsStart}ms');
-
-    // ── 6. Lifecycle + startup repair ───────────────────────────────────────
-    ModelLifecycleService.instance.init(
-      mobileBert: mobileBert,
-      disEmbed:   disEmbed,
-      fitnessMlp: fitnessMlp,
-      miniGen:    miniGen,
-    );
-    WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
-
-    final repairStart = sw.elapsedMilliseconds;
-    try {
-      final chatSessions = ChatSessionService();
-      await chatSessions.repairIncompleteSessions();
-      debugPrint('[AppServices] init: Startup repair in ${sw.elapsedMilliseconds - repairStart}ms');
-    } catch (e) {
-      debugPrint('[AppServices] startup repair failed (non-fatal): $e');
-    }
-
-    // ── 7. Pipeline services ─────────────────────────────────────────────────
+    // ── 5a. Pipeline services — created NOW so they are always available,
+    //        even if model loading below times out or is slow. ──────────────
     moodPipeline = MoodPipelineService(
       mobileBert: mobileBert,
       gemini:     gemini,
@@ -179,6 +140,72 @@ class AppServices {
       disEmbed: disEmbed,
       tokenize: _disEmbedTokenize,
     );
+
+    var loadedCount = 0;
+
+    Future<void> loadModel(String name, Future<void> Function() loader) async {
+      try {
+        await loader();
+        loadedCount += 1;
+        debugPrint('[AppServices] init: $name loaded');
+      } catch (e) {
+        debugPrint('[AppServices] init: $name load failed: $e');
+      }
+    }
+
+    // iOS simulator currently does not load llamadart.framework reliably in this
+    // project setup; skip MiniGen preload there to avoid startup isolate crash.
+    final miniGenPreloadEnabled = !Platform.isIOS;
+    final miniGenAvailable = miniGenPreloadEnabled
+        ? await MiniGenDownloader.isModelAvailable()
+        : false;
+    if (!miniGenPreloadEnabled) {
+      debugPrint('[AppServices] init: MiniGen preload disabled on iOS (using backend fallback)');
+    }
+
+    await Future.wait([
+      loadModel('MobileBERT', () => mobileBert.load(_mobileBertAsset)),
+      loadModel('DisEmbed',   () => disEmbed.load(_disEmbedAsset)),
+      loadModel('FitnessMLP', () => fitnessMlp.load(_fitnessAsset)),
+      if (miniGenPreloadEnabled && miniGenAvailable)
+        loadModel('MiniGen', () async {
+          final path = await MiniGenDownloader.ensureModel();
+          await miniGen.load(path);
+        }),
+    ]);
+
+    // First launch can spend significant time downloading MiniGen from HF.
+    // Do not block app startup; preload it in background instead.
+    if (miniGenPreloadEnabled && !miniGenAvailable) {
+      unawaited(
+        loadModel('MiniGen (background)', () async {
+          final path = await MiniGenDownloader.ensureModel();
+          await miniGen.load(path);
+        }),
+      );
+      debugPrint('[AppServices] init: MiniGen not cached yet; background preload started');
+    }
+
+    final expectedBlockingModels = (miniGenPreloadEnabled && miniGenAvailable) ? 4 : 3;
+    debugPrint('[AppServices] init: blocking model preload ready $loadedCount/$expectedBlockingModels in ${sw.elapsedMilliseconds - modelsStart}ms');
+
+    // ── 6. Lifecycle + startup repair ───────────────────────────────────────
+    ModelLifecycleService.instance.init(
+      mobileBert: mobileBert,
+      disEmbed:   disEmbed,
+      fitnessMlp: fitnessMlp,
+      miniGen:    miniGen,
+    );
+    WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
+
+    final repairStart = sw.elapsedMilliseconds;
+    try {
+      final chatSessions = ChatSessionService();
+      await chatSessions.repairIncompleteSessions();
+      debugPrint('[AppServices] init: Startup repair in ${sw.elapsedMilliseconds - repairStart}ms');
+    } catch (e) {
+      debugPrint('[AppServices] startup repair failed (non-fatal): $e');
+    }
 
     debugPrint('[AppServices] init: completed in ${sw.elapsedMilliseconds}ms');
   }

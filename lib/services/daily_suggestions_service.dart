@@ -313,6 +313,9 @@ class DailySuggestionsService {
         activeSymptoms: _flattenSymptoms(activeSymptoms),
         history: backendHistory,
         summaryContext: summaryContext,
+        suggestionWindow: suggestionWindow,
+        triggerReason: triggerReason,
+        eventOverride: eventOverride,
       );
 
       final suggestions = reply.suggestions

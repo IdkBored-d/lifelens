@@ -6,7 +6,9 @@ from google import genai
 from google.genai import types
 from typing import List, Optional, Dict, Any
 import logging
+import json
 import time
+import re
 from datetime import datetime
 import asyncio
 
@@ -115,6 +117,50 @@ If with others:
 
 **This is not a diagnosis, but these symptoms require immediate professional medical evaluation.**
 """
+
+    def _score_chunk_against_symptoms(self, chunk: Dict[str, Any], symptoms: List[str]) -> float:
+        """Blend semantic relevance with direct symptom-text overlap for better ranking quality."""
+        relevance = float(chunk.get('relevance', 0.0))
+        symptom_phrases = [s.strip().lower() for s in symptoms if s.strip()]
+        if not symptom_phrases:
+            return relevance
+
+        searchable_parts = [
+            str(chunk.get('condition', '')),
+            str(chunk.get('content', '')),
+        ]
+        meta = chunk.get('metadata', {}) or {}
+        meta_symptoms = meta.get('symptoms') if isinstance(meta, dict) else None
+        if isinstance(meta_symptoms, list):
+            searchable_parts.extend(str(s) for s in meta_symptoms)
+
+        searchable = ' '.join(searchable_parts).lower()
+        searchable = re.sub(r'\s+', ' ', searchable).strip()
+        if not searchable:
+            return relevance
+
+        matched = 0
+        for phrase in symptom_phrases:
+            if phrase and phrase in searchable:
+                matched += 1
+
+        overlap = matched / max(1, len(symptom_phrases))
+        # Weighted blend: semantic vector match remains primary, lexical overlap stabilizes ranking.
+        return (0.75 * relevance) + (0.25 * overlap)
+
+    def _rerank_knowledge_chunks(
+        self,
+        knowledge_chunks: List[Dict[str, Any]],
+        symptoms: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Return chunks sorted by blended score, with original relevance preserved for confidence output."""
+        scored: List[tuple[float, Dict[str, Any]]] = []
+        for chunk in knowledge_chunks:
+            score = self._score_chunk_against_symptoms(chunk, symptoms)
+            scored.append((score, chunk))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [item[1] for item in scored]
     
     async def _retrieve_medical_knowledge(
         self,
@@ -166,6 +212,8 @@ If with others:
                     'source': result.source,
                     'metadata': result.metadata
                 })
+
+            knowledge_chunks = self._rerank_knowledge_chunks(knowledge_chunks, symptoms)
             
             logger.info(f"Retrieved {len(knowledge_chunks)} knowledge chunks from RAG")
             return knowledge_chunks
@@ -221,25 +269,52 @@ If with others:
 
         return "\n".join(lines)
     
+    def _parse_structured_predictions(
+        self,
+        text: str,
+    ) -> tuple[list, str, list, list]:
+        """
+        Parse Gemini JSON response into (predictions, summary, self_care, warning_signs).
+        Falls back gracefully if JSON is malformed.
+        """
+        import re
+        # Strip markdown code fences if present
+        cleaned = re.sub(r'^```(?:json)?\s*', '', text.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r'```\s*$', '', cleaned.strip())
+
+        try:
+            data = json.loads(cleaned)
+        except Exception:
+            # JSON parse failed — return the raw text as summary with no predictions
+            return [], text.strip(), [], []
+
+        predictions_raw = data.get('predictions', [])
+        predictions = []
+        for p in predictions_raw[:3]:
+            predictions.append(ConditionPrediction(
+                condition=str(p.get('condition', 'Unknown')).strip(),
+                confidence=float(p.get('confidence', 0.5)),
+                description=str(p.get('description', '')).strip(),
+                severity=str(p.get('severity', 'moderate')).strip(),
+                when_to_seek_care=str(p.get('when_to_seek_care', '')).strip(),
+            ))
+
+        summary = str(data.get('summary', '')).strip()
+        self_care = [str(s).strip() for s in data.get('self_care_recommendations', []) if str(s).strip()]
+        warning_signs = [str(s).strip() for s in data.get('warning_signs', []) if str(s).strip()]
+        return predictions, summary, self_care, warning_signs
+
     def _build_rag_grounded_prompt(
         self,
         symptom_input: SymptomInput,
         knowledge_chunks: List[Dict[str, Any]]
     ) -> str:
         """
-        Build a prompt grounded in retrieved medical knowledge
-        
-        Args:
-            symptom_input: User's symptom information
-            knowledge_chunks: Retrieved medical knowledge
-            
-        Returns:
-            Formatted prompt for Gemini
+        Build a prompt grounded in retrieved medical knowledge.
+        Returns a JSON-structured response with top 3 predictions.
         """
-        # Format symptoms
         symptoms_text = ", ".join(symptom_input.symptoms)
-        
-        # Format demographics
+
         demographics = []
         if symptom_input.age:
             demographics.append(f"Age: {symptom_input.age}")
@@ -247,170 +322,194 @@ If with others:
             demographics.append(f"Sex: {symptom_input.sex}")
         if symptom_input.duration:
             demographics.append(f"Duration: {symptom_input.duration}")
-        
         demographics_text = "\n".join(demographics) if demographics else "Not provided"
-        
-        # Format retrieved knowledge
+
         knowledge_text = ""
         if knowledge_chunks:
-            knowledge_text = "\n\n**VETTED MEDICAL KNOWLEDGE (use this as your primary source):**\n\n"
-            
+            knowledge_text = "VETTED MEDICAL KNOWLEDGE (use as primary source):\n"
             for i, chunk in enumerate(knowledge_chunks, 1):
-                knowledge_text += f"{i}. **{chunk['condition']}** (Relevance: {chunk['relevance']:.2f})\n"
-                knowledge_text += f"   Source: {chunk['source']}\n"
-                knowledge_text += f"   {chunk['content']}\n\n"
-        
-        # Build complete prompt
-        prompt = f"""You are a medical information assistant helping users understand their symptoms. You must base your response primarily on the VETTED MEDICAL KNOWLEDGE provided below.
+                knowledge_text += f"{i}. {chunk['condition']} (relevance {chunk['relevance']:.2f}): {chunk['content']}\n"
 
-{knowledge_text if knowledge_text else "**NOTE:** No specific matching conditions found in knowledge base. Provide general guidance only and strongly recommend consulting a healthcare provider."}
+        prompt = f"""You are a medical information assistant. Analyze the reported symptoms and return ONLY valid JSON — no markdown, no extra text.
 
-**PATIENT INFORMATION:**
-{demographics_text}
+{knowledge_text if knowledge_text else "No specific conditions found in knowledge base. Use general medical knowledge."}
 
-**REPORTED SYMPTOMS:**
-{symptoms_text}
+Patient: {demographics_text}
+Symptoms: {symptoms_text}
+{f"Additional context: {symptom_input.additional_info}" if symptom_input.additional_info else ""}
 
-{f"**ADDITIONAL CONTEXT:** {symptom_input.additional_info}" if symptom_input.additional_info else ""}
+Return exactly this JSON structure (top 3 predictions, ordered most-likely first):
+{{
+  "predictions": [
+    {{
+      "condition": "<condition name>",
+      "confidence": <0.0-1.0>,
+      "description": "<2-3 sentence explanation>",
+      "severity": "<mild|moderate|severe>",
+      "when_to_seek_care": "<specific guidance>"
+    }}
+  ],
+  "summary": "<1-2 sentence overall assessment>",
+  "self_care_recommendations": ["<recommendation 1>", "<recommendation 2>", "<recommendation 3>"],
+  "warning_signs": ["<sign to watch for 1>", "<sign to watch for 2>"]
+}}
 
-**YOUR TASK:**
-Provide a clear, helpful health assessment with the following sections:
+Requirements:
+- Exactly 3 predictions
+- confidence values must sum to no more than 2.0 and each be between 0.1 and 0.95
+- Only suggest conditions grounded in the knowledge base above
+- End summary with: This information is educational only and not a medical diagnosis."""
 
-1. **Possible Conditions** (3-5 possibilities based on the knowledge above)
-   - List conditions in order of likelihood based on symptom match
-   - For each condition: brief explanation (2-3 sentences)
-   - Include approximate confidence (High/Medium/Low)
-   - **IMPORTANT:** Only suggest conditions supported by the knowledge base above
-
-2. **When to Seek Medical Care**
-   - Specify urgency: immediate attention, within 24 hours, or routine appointment
-   - List specific warning signs to watch for
-   - Be clear about when to call 911 or go to ER
-
-3. **Self-Care Recommendations**
-   - What can be done at home to manage symptoms
-   - Over-the-counter treatments that might help
-   - Lifestyle modifications
-   - **Only recommend what is mentioned in the knowledge base or is generally safe**
-
-4. **Important Notes**
-   - Are there serious conditions that should be ruled out?
-   - What additional information would help narrow diagnosis?
-   - Remind that this is informational, not a diagnosis
-
-**CRITICAL REQUIREMENTS:**
-- Use clear, simple language (avoid medical jargon)
-- Be empathetic and reassuring while accurate
-- If symptoms don't match knowledge base well, say so explicitly
-- Do NOT speculate beyond what's in the knowledge base
-- Always emphasize consulting a healthcare provider
-- If unsure, err on side of recommending medical evaluation
-- Keep response to 300-400 words maximum
-
-**MEDICAL DISCLAIMER:** End with: "This information is educational only and not a medical diagnosis. Please consult a qualified healthcare provider for proper evaluation and treatment."
-"""
-        
         return prompt
-    
+
+    def _build_rag_only_result(
+        self,
+        symptom_input: SymptomInput,
+        knowledge_chunks: List[Dict[str, Any]],
+        urgency: 'UrgencyLevel',
+        start_time: float,
+    ) -> 'SymptomAnalysisResult':
+        """
+        Build a full SymptomAnalysisResult directly from RAG results,
+        with no Gemini call required.
+        """
+        predictions = []
+        for chunk in knowledge_chunks[:3]:
+            meta = chunk.get('metadata', {})
+            condition = chunk.get('condition', 'Unknown condition')
+            relevance = float(chunk.get('relevance', 0.5))
+            description = chunk.get('content', '')
+            severity = meta.get('severity', 'moderate')
+            when_to_seek = meta.get('when_to_seek_care', '')
+            # Strip the markdown bold header line from content if present
+            description_lines = [
+                l for l in description.splitlines()
+                if not l.strip().startswith('**') or len(l.strip()) > len(condition) + 4
+            ]
+            clean_description = ' '.join(description_lines).strip()
+
+            predictions.append(ConditionPrediction(
+                condition=condition,
+                confidence=round(min(0.95, max(0.1, relevance)), 2),
+                description=clean_description or f"Condition associated with reported symptoms.",
+                severity=severity,
+                when_to_seek_care=when_to_seek or "Consult a healthcare provider if symptoms persist or worsen.",
+            ))
+
+        top = predictions[0].condition if predictions else "reported symptoms"
+        summary = (
+            f"Based on your symptoms, the most likely match is {top}. "
+            "This information is educational only and not a medical diagnosis."
+        )
+
+        response_time = int((time.time() - start_time) * 1000)
+        sources = [chunk['source'] for chunk in knowledge_chunks]
+
+        return SymptomAnalysisResult(
+            urgency=urgency,
+            analysis=summary,
+            predictions=predictions if predictions else None,
+            self_care_recommendations=[
+                "Monitor your symptoms and note any changes.",
+                "Stay hydrated and rest if needed.",
+                "Contact a healthcare provider if symptoms worsen.",
+            ],
+            warning_signs=[
+                "Symptoms become severe or sudden.",
+                "Difficulty breathing or chest pain.",
+                "High fever (above 39°C / 102°F).",
+            ],
+            knowledge_sources=sources,
+            confidence_score=self._estimate_confidence(knowledge_chunks),
+            source="rag",
+            response_time_ms=response_time,
+        )
+
     async def analyze_symptoms(
         self,
         symptom_input: SymptomInput
     ) -> SymptomAnalysisResult:
         """
-        Complete symptom analysis pipeline
-        
-        Args:
-            symptom_input: User's symptom information
-            
-        Returns:
-            Complete analysis result with recommendations
+        Complete symptom analysis pipeline.
+        Uses Gemini when available; falls back to pure RAG predictions otherwise.
         """
         start_time = time.time()
-        
+
+        # Step 1: Check for emergency symptoms
+        urgency = self._check_urgency(symptom_input.symptoms)
+
+        if urgency == UrgencyLevel.EMERGENCY:
+            response_time = int((time.time() - start_time) * 1000)
+            return SymptomAnalysisResult(
+                urgency=urgency,
+                analysis=self._build_emergency_response(symptom_input.symptoms),
+                source="emergency_detection",
+                response_time_ms=response_time
+            )
+
+        # Step 2: Retrieve relevant medical knowledge from RAG
+        knowledge_chunks = []
         try:
-            # Step 1: Check for emergency symptoms
-            urgency = self._check_urgency(symptom_input.symptoms)
-            
-            if urgency == UrgencyLevel.EMERGENCY:
-                response_time = int((time.time() - start_time) * 1000)
-                return SymptomAnalysisResult(
-                    urgency=urgency,
-                    analysis=self._build_emergency_response(symptom_input.symptoms),
-                    source="emergency_detection",
-                    response_time_ms=response_time
-                )
-            
-            # Step 2: Retrieve relevant medical knowledge from RAG
             knowledge_chunks = await self._retrieve_medical_knowledge(
                 symptom_input.symptoms,
                 max_results=5
             )
-            
-            # Step 3: Build grounded prompt
-            prompt = self._build_rag_grounded_prompt(symptom_input, knowledge_chunks)
-            
-            # Step 4: Call Gemini API
-            logger.info("Calling Gemini API for symptom analysis")
-            
-            if self.client is None:
-                raise RuntimeError("Gemini client unavailable: missing API key")
+        except Exception as rag_err:
+            logger.warning(f"RAG retrieval failed: {rag_err}")
 
-            response = self.client.models.generate_content(
-                model='gemini-2.5-flash-lite',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.2,  # Low temperature for consistent medical advice
-                    top_p=0.85,
-                    top_k=40,
-                    max_output_tokens=2000,
-                    candidate_count=1
+        # Step 3: Try Gemini (fast path)
+        if self.client is not None:
+            try:
+                prompt = self._build_rag_grounded_prompt(symptom_input, knowledge_chunks)
+                response = self.client.models.generate_content(
+                    model=self.settings.gemini_model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                        top_p=0.85,
+                        top_k=40,
+                        max_output_tokens=2000,
+                        candidate_count=1
+                    )
                 )
-            )
-            
-            # Step 5: Extract and validate response
-            analysis_text = response.text
-            
-            # Calculate response time
-            response_time = int((time.time() - start_time) * 1000)
-            
-            # Extract knowledge sources
-            sources = [chunk['source'] for chunk in knowledge_chunks]
-            
-            # Build result
-            result = SymptomAnalysisResult(
-                urgency=urgency,
-                analysis=analysis_text,
-                knowledge_sources=sources,
-                confidence_score=self._estimate_confidence(knowledge_chunks),
-                source="gemini_rag" if knowledge_chunks else "gemini_direct",
-                response_time_ms=response_time
-            )
-            
-            logger.info(f"Analysis completed in {response_time}ms")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Symptom analysis failed: {e}")
-            response_time = int((time.time() - start_time) * 1000)
+                predictions, summary, self_care, warning_signs = self._parse_structured_predictions(response.text)
+                display_analysis = summary if summary else response.text
+                response_time = int((time.time() - start_time) * 1000)
+                sources = [chunk['source'] for chunk in knowledge_chunks]
 
-            # Graceful fallback path: return knowledge-grounded guidance instead
-            # of a raw technical error.
-            fallback_analysis = self._build_rag_fallback_analysis(
-                symptom_input=symptom_input,
-                knowledge_chunks=knowledge_chunks if 'knowledge_chunks' in locals() else [],
-                urgency=urgency if 'urgency' in locals() else UrgencyLevel.INFORMATIONAL,
-            )
-            fallback_sources = [chunk['source'] for chunk in knowledge_chunks] if 'knowledge_chunks' in locals() else []
+                logger.info(f"Gemini analysis completed in {response_time}ms")
+                return SymptomAnalysisResult(
+                    urgency=urgency,
+                    analysis=display_analysis,
+                    predictions=predictions if predictions else None,
+                    self_care_recommendations=self_care if self_care else None,
+                    warning_signs=warning_signs if warning_signs else None,
+                    knowledge_sources=sources,
+                    confidence_score=self._estimate_confidence(knowledge_chunks),
+                    source="gemini_rag" if knowledge_chunks else "gemini_direct",
+                    response_time_ms=response_time,
+                )
+            except Exception as e:
+                logger.warning(f"Gemini unavailable ({e}), using RAG-only predictions.")
 
-            return SymptomAnalysisResult(
-                urgency=urgency if 'urgency' in locals() else UrgencyLevel.INFORMATIONAL,
-                analysis=fallback_analysis,
-                knowledge_sources=fallback_sources,
-                confidence_score=self._estimate_confidence(knowledge_chunks) if 'knowledge_chunks' in locals() else 0.3,
-                source="fallback_rag",
-                response_time_ms=response_time
-            )
-    
+        # Step 4: RAG-only fallback — no Gemini needed
+        if knowledge_chunks:
+            logger.info("Returning RAG-only predictions.")
+            return self._build_rag_only_result(symptom_input, knowledge_chunks, urgency, start_time)
+
+        # Step 5: Nothing available — return a safe no-data response
+        response_time = int((time.time() - start_time) * 1000)
+        return SymptomAnalysisResult(
+            urgency=urgency,
+            analysis=(
+                "No matching conditions found in the knowledge base and AI analysis is currently unavailable. "
+                "Please consult a healthcare provider for an accurate assessment. "
+                "This information is educational only and not a medical diagnosis."
+            ),
+            source="fallback",
+            response_time_ms=response_time,
+        )
+
     def _estimate_confidence(self, knowledge_chunks: List[Dict[str, Any]]) -> float:
         """
         Estimate confidence based on RAG retrieval quality

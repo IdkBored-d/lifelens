@@ -5,8 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
+import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
+import 'package:provider/provider.dart';
 
 class SymptomsScreen extends StatefulWidget {
   const SymptomsScreen({super.key});
@@ -73,14 +75,36 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     try {
       HapticFeedback.mediumImpact();
 
-      final savedAt = DateTime.now();
-      await _saveSymptomsLocally(
-        rawInput: rawInput,
-        symptoms: symptomsForPipeline,
-        timestamp: savedAt,
-      );
+      // Run the full pipeline (calls backend → Gemini → stores to Isar)
+      final isOnline = await AppServices.isOnline();
+      List<String> miniMeTop3 = const [];
+      try {
+        final result = await AppServices.symptomPipeline.analyze(
+          userSymptoms: symptomsForPipeline.join(', '),
+          isOnline: isOnline,
+        );
+        miniMeTop3 = result.diagnoses
+            .map((d) => d.diseaseName.trim())
+            .where((name) =>
+                name.isNotEmpty &&
+                name.toLowerCase() != 'symptom log saved' &&
+                name.toLowerCase() != 'analysis incomplete' &&
+                name.toLowerCase() != 'see analysis' &&
+                name.toLowerCase() != 'unknown')
+            .take(3)
+            .toList(growable: false);
+      } catch (pipelineError) {
+        debugPrint('[SymptomsScreen] Pipeline failed, storing stub: $pipelineError');
+        // Fallback: store a basic entry so the log is not lost
+        await AppServices.symptomPipeline.storeWithoutAnalysis(
+          userSymptoms: symptomsForPipeline.join(', '),
+          isOnline: isOnline,
+        );
+      }
+
       await TrackingReminderService.instance.handleLogRecorded();
 
+      final savedAt = DateTime.now();
       try {
         await _syncSymptomsToCloud(
           rawInput: rawInput,
@@ -100,6 +124,12 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
             content: Text(syncWarning),
             behavior: SnackBarBehavior.floating,
           ),
+        );
+      }
+      if (miniMeTop3.isNotEmpty && mounted) {
+        await context.read<MiniMeSuggestionsInbox>().enqueueSymptomInsight(
+          topConditions: miniMeTop3,
+          symptoms: symptomsForPipeline,
         );
       }
       await Future<void>.delayed(const Duration(milliseconds: 900));
@@ -143,30 +173,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       'createdAt': Timestamp.fromDate(timestamp),
       'date': Timestamp.fromDate(timestamp),
     });
-  }
-
-  Future<void> _saveSymptomsLocally({
-    required String rawInput,
-    required List<String> symptoms,
-    required DateTime timestamp,
-  }) async {
-    final today = timestamp.toIso8601String().split('T').first;
-
-    final entry = SymptomEntry()
-      ..date = today
-      ..rawSymptoms = rawInput.isNotEmpty ? rawInput : symptoms.join(', ')
-      ..symptomList = symptoms
-      ..predictedAilment = 'tracking-only'
-      ..disEmbedScore = null
-      ..diagnosesJson = '[]'
-      ..resolvedBy = 'tracking'
-      ..ragUsed = false
-      ..wasOffline = true
-      ..status = 'active'
-      ..timestamp = timestamp
-      ..updatedAt = timestamp;
-
-    await AppServices.isar.writeSymptomEntry(entry);
   }
 
   String _formatDate(DateTime date) {
@@ -304,6 +310,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       ),
     );
   }
+
 }
 
 class _SectionCard extends StatelessWidget {

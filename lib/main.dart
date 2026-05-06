@@ -48,6 +48,9 @@ void main() async {
   if (Platform.isAndroid || Platform.isIOS) {
     BackgroundFetch.registerHeadlessTask(backgroundFetchHeadlessTask);
   }
+
+  final initialDarkMode = await ThemeController.loadInitialDarkMode();
+
   runApp(
     MultiProvider(
       providers: [
@@ -55,7 +58,9 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AvatarStore()),
         ChangeNotifierProvider(create: (_) => SleepStore()),
         ChangeNotifierProvider(create: (_) => MiniMeSuggestionsInbox()),
-        ChangeNotifierProvider(create: (_) => ThemeController()),
+        ChangeNotifierProvider(
+          create: (_) => ThemeController(initialDarkMode: initialDarkMode),
+        ),
       ],
       child: const MyApp(),
     ),
@@ -77,14 +82,21 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Guard against accidental Inspector toggles (e.g. baseline paint) that
+    // can visually leak into splash text as colored underline artifacts.
+    debugPaintSizeEnabled = false;
+    debugPaintBaselinesEnabled = false;
+    debugPaintPointersEnabled = false;
+    debugRepaintRainbowEnabled = false;
+
     return Consumer<ThemeController>(
       builder: (context, controller, _) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          color: const Color(0xFF0F1014),
+          color: controller.theme.scaffoldBackgroundColor,
           theme: controller.theme,
           themeAnimationCurve: Curves.easeOutCubic,
-          themeAnimationDuration: const Duration(milliseconds: 220),
+          themeAnimationDuration: Duration.zero,
           home: const AppRoot(),
         );
       },

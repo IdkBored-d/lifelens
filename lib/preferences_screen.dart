@@ -47,7 +47,7 @@ class PreferencesScreen extends StatelessWidget {
                   const SizedBox(height: 12),
 
                   Text(
-                    'Turn dark mode on for the darker palette, or off for the lighter calm palette.',
+                    'Turn dark mode on for the darker palette, or off for a clean modern white theme.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),

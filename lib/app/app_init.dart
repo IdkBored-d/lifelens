@@ -9,10 +9,9 @@ import 'package:lifelens/services/background_eod_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 
 Future<void> initializeApp() async {
-  // Raised to 30 s: MiniGen GGUF OTA download on first launch
-  // can take longer on slow connections. NOTE: replacing old OnnxLLM asset copy.
+  // Keep startup snappy; heavy MiniGen download/load now preloads in background.
   try {
-    await AppServices.init().timeout(const Duration(seconds: 30));
+    await AppServices.init().timeout(const Duration(seconds: 8));
   } catch (_) {
     // Non-fatal at startup; services may still finish shortly after.
   }
