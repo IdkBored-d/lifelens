@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -121,14 +123,15 @@ class AppServices {
     }
 
     await Future.wait([
-      loadModel('MobileBERT', () => mobileBert.load(_mobileBertAsset)),
-      loadModel('DisEmbed',   () => disEmbed.load(_disEmbedAsset)),
       loadModel('FitnessMLP', () => fitnessMlp.load(_fitnessAsset)),
-      loadModel('MiniGen', () async {
-        final path = await MiniGenDownloader.ensureModel();
-        await miniGen.load(path);
-      }),
     ]);
+
+    // MiniGen requires an OTA download on first launch (~96 MB); fire it in the
+    // background so the 30-second startup timeout in app_init.dart doesn't kill it.
+    unawaited(loadModel('MiniGen', () async {
+      final path = await MiniGenDownloader.ensureModel();
+      await miniGen.load(path);
+    }));
 
     debugPrint('[AppServices] init: models ready $loadedCount/4 in ${sw.elapsedMilliseconds - modelsStart}ms');
 
@@ -138,6 +141,8 @@ class AppServices {
       disEmbed:   disEmbed,
       fitnessMlp: fitnessMlp,
       miniGen:    miniGen,
+      mobileBertAssetPath: _mobileBertAsset,
+      disEmbedAssetPath: _disEmbedAsset,
     );
     WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
 

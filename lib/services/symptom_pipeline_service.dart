@@ -50,6 +50,9 @@ class SymptomPipelineService {
   }) async {
     // ── STEP 1: DisEmbed fast embedding ───────────────────────────────────
     await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
+    // Start the 15-second timer immediately so the model is unloaded shortly after inference completes.
+    ModelLifecycleService.instance.scheduleUnload(ModelType.disEmbed);
+    
     final embedding = await _disEmbed.embed(userSymptoms, _tokenize);
 
     // ── STEP 2: Disease index lookup ───────────────────────────────────────

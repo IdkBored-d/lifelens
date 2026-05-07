@@ -63,6 +63,9 @@ class MoodPipelineService {
   }) async {
     // ── STEP 1: MobileBERT fast classification ─────────────────────────────
     await ModelLifecycleService.instance.ensureLoaded([ModelType.mobileBert]);
+    // Start the 15-second timer immediately so the model is unloaded shortly after inference completes.
+    ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+    
     final probs   = await _mobileBert.classify(userLog, _tokenize);
     final mbResult = _confidence.evaluateMobileBert(probs);
 

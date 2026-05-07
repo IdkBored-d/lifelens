@@ -1,7 +1,8 @@
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
+import 'dart:math' as math;
 import 'package:onnxruntime/onnxruntime.dart';
-
 /// Runs MobileBERT emotion classification on-device via ONNX Runtime.
 ///
 /// Model inputs:  input_ids      [1, 128] int64
@@ -22,9 +23,13 @@ class MobileBertService {
     OrtEnv.instance.init();
     final rawAssetFile = await rootBundle.load(assetPath);
     final bytes       = rawAssetFile.buffer.asUint8List();
-    final opts        = OrtSessionOptions();
-    _session          = OrtSession.fromBuffer(bytes, opts);
-    _isLoaded         = true;
+    // We cannot use Isolate.run here because OrtSession attaches a NativeFinalizer
+    // which cannot be sent across isolates. Lazy-loading alone fixes the startup ANR.
+    // To fully offload, this entire service must be rewritten as a persistent isolate worker.
+    final opts = OrtSessionOptions();
+    _session   = OrtSession.fromBuffer(bytes, opts);
+    
+    _isLoaded  = true;
   }
 
   /// Reload the model from the last-used asset path.
@@ -75,20 +80,11 @@ class MobileBertService {
 
   List<double> _softmax(List<double> logits) {
     final maxVal = logits.reduce((a, b) => a > b ? a : b);
-    final exps   = logits.map((v) => _dartExp(v - maxVal)).toList();
+    final exps   = logits.map((v) => math.exp(v - maxVal)).toList();
     final sum    = exps.reduce((a, b) => a + b);
     return exps.map((e) => e / sum).toList();
   }
 
-  // Taylor series approximation of e^x (avoids dart:math import)
-  double _dartExp(double x) {
-    double result = 1.0, term = 1.0;
-    for (var i = 1; i <= 20; i++) {
-      term   *= x / i;
-      result += term;
-    }
-    return result;
-  }
 
   void dispose() {
     _session?.release();

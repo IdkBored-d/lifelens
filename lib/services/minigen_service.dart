@@ -14,28 +14,44 @@ import 'package:llamadart/llamadart.dart';
 class MiniGenService {
   LlamaEngine? _engine;
   bool _isLoaded = false;
+  bool _isLoading = false;
 
   bool get isLoaded => _isLoaded;
 
   /// Load the MiniGen GGUF model from the given filesystem path.
   Future<void> load(String modelPath) async {
-    if (_isLoaded) return;
+    if (_isLoaded || _isLoading) return;
+    _isLoading = true;
 
     final nThreads = math.max(1, Platform.numberOfProcessors ~/ 2);
-    debugPrint('[MiniGenService] loading model: $modelPath (threads=$nThreads)');
-
-    _engine = LlamaEngine(LlamaBackend());
-    await _engine!.loadModel(
-      modelPath,
-      modelParams: ModelParams(
-        gpuLayers: 0,       // CPU-only on mobile
-        contextSize: 2048,
-        numberOfThreads: nThreads,
-      ),
+    debugPrint(
+      '[MiniGenService] loading model: $modelPath (threads=$nThreads)',
     );
 
-    _isLoaded = true;
-    debugPrint('[MiniGenService] model loaded successfully');
+    try {
+      _engine = LlamaEngine(LlamaBackend());
+      // Add a timeout to prevent infinite hang if the native isolate crashes
+      await _engine!.loadModel(
+        modelPath,
+        modelParams: ModelParams(
+          gpuLayers: 0, // CPU-only on mobile
+          contextSize: 2048,
+          numberOfThreads: nThreads,
+        ),
+      ).timeout(const Duration(seconds: 90));
+
+      // Guard: dispose() may have been called while the native load was awaited.
+      if (_engine == null) return;
+
+      _isLoaded = true;
+      debugPrint('[MiniGenService] model loaded successfully');
+    } catch (e) {
+      debugPrint('[MiniGenService] load failed or timed out: $e');
+      _engine = null; // Clean up so dispose doesn't hang
+      rethrow;
+    } finally {
+      _isLoading = false;
+    }
   }
 
   /// Reload the model (dispose then load again).
@@ -95,10 +111,15 @@ class MiniGenService {
   /// Dispose the engine and free native resources.
   Future<void> dispose() async {
     if (_engine != null) {
-      await _engine!.dispose();
+      try {
+        await _engine!.dispose().timeout(const Duration(seconds: 2));
+      } catch (e) {
+        debugPrint('[MiniGenService] dispose failed or timed out: $e');
+      }
       _engine = null;
     }
     _isLoaded = false;
+    _isLoading = false;
     debugPrint('[MiniGenService] disposed');
   }
 }

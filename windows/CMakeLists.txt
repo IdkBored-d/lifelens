@@ -1,6 +1,8 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
 project(lifelens LANGUAGES CXX)
+add_compile_options(/wd4996 /wd4005)
+add_link_options("/ignore:4099")
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.

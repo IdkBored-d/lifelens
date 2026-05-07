@@ -7,6 +7,7 @@ import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 
 class SymptomsScreen extends StatefulWidget {
   const SymptomsScreen({super.key});
@@ -33,6 +34,8 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   @override
   void dispose() {
     _symptomsController.dispose();
+    // Schedule DisEmbed unload 15 seconds after leaving the symptom logging screen.
+    ModelLifecycleService.instance.scheduleUnload(ModelType.disEmbed);
     super.dispose();
   }
 

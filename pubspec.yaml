@@ -72,7 +72,9 @@ flutter:
   #  - assets/models/fitness_model.onnx
     - assets/models/for MVP/fitness_model_v9.onnx
     - assets/models/vocab.txt
-  # ── MiniGen ONNX assets (deprecated — replaced by GGUF OTA download) ──────
+  # ── MiniGen GGUF (bundled fallback — runtime copies to app support dir) ─────
+    - assets/models/minigen-Q8_0.gguf
+  # ── Old MiniGen ONNX assets (deprecated — replaced by GGUF) ─────────────
   #  - assets/models/minigen_int8.onnx
   #  - assets/models/tokenizer.json
   #  - assets/models/genai_config.json

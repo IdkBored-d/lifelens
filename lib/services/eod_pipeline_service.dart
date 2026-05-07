@@ -4,6 +4,7 @@ import 'fitness_pipeline_service.dart';
 import 'disembed_service.dart';
 import 'gemini_service.dart';
 import 'weaviate_service.dart';
+import 'model_lifecycle_service.dart';
 import '../database/isar_service.dart';
 import '../database/eod_entry.dart';
 
@@ -82,6 +83,7 @@ class EodPipelineService {
           final symptomQueryText = activeSymptoms
               .map((e) => '${e.predictedAilment}: ${e.symptomList.join(", ")}')
               .join('. ');
+          await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
           final queryVector = await _disEmbed.embed(symptomQueryText, _tokenize);
           final ragResults  = await _weaviate.queryByVector(queryVector, topK: 3);
           ragContext = _weaviate.buildRagContext(ragResults);

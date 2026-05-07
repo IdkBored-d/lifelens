@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 // MiniGen GGUF replaces ONNX LLM — llamadart inference
 import 'package:provider/provider.dart';
 import 'package:lifelens/app_services.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
@@ -70,6 +71,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void initState() {
     super.initState();
     _chatSessionService = ChatSessionService();
+    
+    // If we start active, ensure MobileBERT doesn't unload.
+    if (widget.isActive) {
+      ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _attachPromptRefreshListeners();
 
@@ -95,7 +102,36 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   @override
+  void didUpdateWidget(covariant MiniMeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isActive && !widget.isActive) {
+      // User switched away from the chat tab.
+      ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+    } else if (!oldWidget.isActive && widget.isActive) {
+      // User switched back to the chat tab.
+      ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
+      
+      // Original logic for returning to the screen:
+      setState(() => _avatarWaveToken += 1);
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await _refreshStartLoggingPromptState();
+        if (!mounted) return;
+        unawaited(_checkSymptomCheckupPending());
+        await _checkPipelineReplies();
+        await _syncUnreadSuggestions(forceRefresh: true);
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    // If the screen is disposed while inactive, it's already scheduled.
+    // If it's disposed while active (unlikely in IndexedStack), schedule it now.
+    if (widget.isActive) {
+      ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+    }
+    
     _moodStoreSource?.removeListener(_onTrackedLogsChanged);
     _sleepStoreSource?.removeListener(_onTrackedLogsChanged);
     _promptRefreshDebounce?.cancel();
@@ -104,21 +140,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _scrollController.dispose();
     _chatFocusNode.dispose();
     super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(covariant MiniMeScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isActive && widget.isActive) {
-      setState(() => _avatarWaveToken += 1);
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        await _refreshStartLoggingPromptState();
-        if (!mounted) return;
-        unawaited(_checkSymptomCheckupPending());
-        await _syncUnreadSuggestions(forceRefresh: true);
-      });
-    }
   }
 
   void _attachPromptRefreshListeners() {
@@ -920,6 +941,21 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return normalizedBaseMood;
   }
 
+  /// Consume any pipeline-generated replies (e.g. from a mood log) and
+  /// surface them as assistant messages, persisting each to ISAR.
+  Future<void> _checkPipelineReplies() async {
+    if (!mounted) return;
+    final inbox = context.read<MiniMeSuggestionsInbox>();
+    final replies = await inbox.consumePipelineMessages();
+    if (replies.isEmpty || !mounted) return;
+
+    setState(() {
+      _isCoachExpanded = true;
+      _isReplying = true;
+    });
+    await _appendAssistantRepliesSequence(replies);
+  }
+
   Future<void> _bootstrapMiniMe() async {
     if (_dailyLoggingPromptText != null) {
       return;
@@ -946,12 +982,14 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           );
         });
         _scrollToBottom();
+        await _checkPipelineReplies();
         await _syncUnreadSuggestions(forceRefresh: true);
         return;
       }
     }
 
     await _loadOpeningSuggestion();
+    await _checkPipelineReplies();
     await _syncUnreadSuggestions(forceRefresh: false);
   }
 

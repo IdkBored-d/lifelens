@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 
+import '../app_services.dart';
 import 'crisis_regex_net.dart';
 import 'minigen_prompt.dart' as prompt;
 import 'minigen_service.dart';
+import 'model_lifecycle_service.dart';
 
 /// High-level chat interface wrapping [MiniGenService].
 ///
@@ -164,6 +166,68 @@ class MiniGenChat {
       chatHistory: chatHistory,
       userMessage: userMessage,
     );
+  }
+
+  // ── Mood log reply ───────────────────────────────────────────────────────
+
+  static const _toneLabels = ['sadness', 'joy', 'love', 'anger', 'fear', 'surprise'];
+  static const _neutralThreshold = 0.45;
+  static const _intensityLabels = ['very low', 'low', 'moderate', 'high', 'very high'];
+
+  String _predictTone(List<double> probs) {
+    final maxProb = probs.reduce((a, b) => a > b ? a : b);
+    if (maxProb < _neutralThreshold) return 'neutral';
+    return _toneLabels[probs.indexOf(maxProb)];
+  }
+
+  /// One-shot reply acknowledging a mood log. Runs MobileBERT on the note
+  /// text (if provided) to derive CURRENT_TONE; falls back to omitting the
+  /// field when note is empty.
+  Future<String> generateMoodLogReply({
+    required String mood,
+    required int intensity,
+    required Set<String> tags,
+    required String? note,
+    required String userName,
+  }) async {
+    final intensityLabel = _intensityLabels[intensity.clamp(1, 5) - 1];
+
+    String? tone;
+    if (note != null && note.isNotEmpty) {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.mobileBert]);
+      final probs = await AppServices.mobileBert.classify(
+        note,
+        AppServices.mobileBertTokenize,
+      );
+      tone = _predictTone(probs);
+    }
+
+    var moodLog = '$intensityLabel $mood';
+    if (tags.isNotEmpty) moodLog += '. Tags: ${tags.join(', ')}';
+    if (note != null && note.isNotEmpty) moodLog += '. Note: $note';
+
+    final userMessage =
+        (note != null && note.isNotEmpty) ? note : 'I feel $mood';
+
+    final fullPrompt = prompt.buildPrompt(
+      contextEntries: {
+        'USER': userName,
+        'MOOD_LOG': moodLog,
+        if (tone != null) 'CURRENT_TONE': tone,
+        'LATEST_ACTION': 'Mood Log',
+      },
+      userMessage: userMessage,
+    );
+
+    CrisisRegexNet.guard(fullPrompt, context: 'mood log prompt');
+
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.miniGen]);
+    final raw = await _service.generateFull(fullPrompt);
+    final reply = _cleanOutput(raw);
+
+    CrisisRegexNet.guard(reply, context: 'mood log output');
+
+    return reply;
   }
 
   /// Strip stop sequences and trailing whitespace from model output.

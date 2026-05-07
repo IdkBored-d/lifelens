@@ -21,6 +21,8 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       'miniMeSuggestionsInbox.unreadSuggestions';
   static const String _deliveryStateKeyBase =
       'miniMeSuggestionsInbox.deliveryState';
+  static const String _pipelineMessagesKeyBase =
+      'miniMeSuggestionsInbox.pipelineMessages';
 
   SharedPreferences? _prefs;
   bool _isInitialized = false;
@@ -29,10 +31,11 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   final Set<String> _viewedDigests = <String>{};
   List<_StoredSuggestion> _unread = const <_StoredSuggestion>[];
   _SuggestionDeliveryState _deliveryState = const _SuggestionDeliveryState();
+  List<String> _pipelineMessages = const <String>[];
 
   bool get isReady => _isInitialized;
   bool get isRefreshing => _isRefreshing;
-  int get unreadCount => _unread.length;
+  int get unreadCount => _unread.length + _pipelineMessages.length;
 
   List<DailySuggestion> get unreadSuggestions =>
       _unread.map((item) => item.toDailySuggestion()).toList(growable: false);
@@ -41,6 +44,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   String get _viewedDigestsKey => '${_viewedDigestsKeyBase}_$_scopeKey';
   String get _unreadSuggestionsKey => '${_unreadSuggestionsKeyBase}_$_scopeKey';
   String get _deliveryStateKey => '${_deliveryStateKeyBase}_$_scopeKey';
+  String get _pipelineMessagesKey => '${_pipelineMessagesKeyBase}_$_scopeKey';
 
   Future<void> _init() async {
     if (_isInitialized) return;
@@ -93,6 +97,38 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     }
 
     _deliveryState = const _SuggestionDeliveryState();
+
+    final rawPipeline = prefs.getStringList(_pipelineMessagesKey);
+    _pipelineMessages = rawPipeline != null
+        ? List<String>.from(rawPipeline)
+        : const <String>[];
+  }
+
+  /// Push a pipeline-generated reply (e.g. from the mood log) into the inbox.
+  /// Increments [unreadCount] and persists across restarts.
+  Future<void> injectPipelineMessage(String text) async {
+    await _ensureCurrentScopeLoaded();
+    _pipelineMessages = [..._pipelineMessages, text];
+    await _persistPipelineMessages();
+    notifyListeners();
+  }
+
+  /// Return all pending pipeline messages and clear them.
+  /// Call this from MiniMe when surfacing the replies in chat.
+  Future<List<String>> consumePipelineMessages() async {
+    await _ensureCurrentScopeLoaded();
+    if (_pipelineMessages.isEmpty) return const [];
+    final consumed = List<String>.from(_pipelineMessages);
+    _pipelineMessages = const <String>[];
+    await _persistPipelineMessages();
+    notifyListeners();
+    return consumed;
+  }
+
+  Future<void> _persistPipelineMessages() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    await prefs.setStringList(_pipelineMessagesKey, _pipelineMessages);
   }
 
   Future<void> _ensureCurrentScopeLoaded() async {

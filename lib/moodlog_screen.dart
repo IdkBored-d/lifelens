@@ -12,8 +12,11 @@ import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
+import 'package:lifelens/app_services.dart';
+import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
@@ -62,6 +65,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   @override
   void initState() {
     super.initState();
+    // Ensure MobileBERT doesn't unload while the user is logging their mood
+    ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
     notesCtrl.addListener(_persistDraft);
     _restoreDraft();
   }
@@ -70,6 +75,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   void dispose() {
     notesCtrl.removeListener(_persistDraft);
     notesCtrl.dispose();
+    // Schedule MobileBERT unload 15 seconds after leaving the mood log
+    ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
     super.dispose();
   }
 
@@ -544,6 +551,24 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                   'mood_log',
                                 ),
                               );
+
+                              // Generate MiniMe mood reply in background.
+                              // Capture inbox before the async gap — context may be gone by then.
+                              if (context.mounted && AppServices.isMiniGenLoaded) {
+                                final inbox = context.read<MiniMeSuggestionsInbox>();
+                                final userName =
+                                    FirebaseAuth.instance.currentUser?.displayName ??
+                                    FirebaseAuth.instance.currentUser?.email?.split('@').first ??
+                                    'User';
+                                unawaited(_triggerMoodLogReply(
+                                  mood: m.label,
+                                  intensity: intensity,
+                                  tags: Set.from(tags),
+                                  note: notes.isEmpty ? null : notes,
+                                  userName: userName,
+                                  inbox: inbox,
+                                ));
+                              }
                             } catch (e) {
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -634,6 +659,28 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
           'tags': selectedTags,
           'createdAt': Timestamp.fromDate(entry.timestamp),
         });
+  }
+
+  static Future<void> _triggerMoodLogReply({
+    required String mood,
+    required int intensity,
+    required Set<String> tags,
+    required String? note,
+    required String userName,
+    required MiniMeSuggestionsInbox inbox,
+  }) async {
+    try {
+      final reply = await AppServices.miniGenChat.generateMoodLogReply(
+        mood: mood,
+        intensity: intensity,
+        tags: tags,
+        note: note,
+        userName: userName,
+      );
+      await inbox.injectPipelineMessage(reply);
+    } catch (e) {
+      // Non-fatal — MiniMe just won't have a proactive reply this session.
+    }
   }
 }
 
