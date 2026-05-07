@@ -112,6 +112,7 @@ class MiniMeAvatar extends StatefulWidget {
     this.visualState = const MiniMeVisualState(),
     this.onHatchComplete,
     this.autoWaveToken = 0,
+    this.happyJumpToken = 0,
     this.lockScreenPosition = false,
     this.headTiltBias = 0,
     this.celebrateOnOpen = false,
@@ -137,6 +138,7 @@ class MiniMeAvatar extends StatefulWidget {
   final MiniMeVisualState visualState;
   final VoidCallback? onHatchComplete;
   final int autoWaveToken;
+  final int happyJumpToken;
   final bool lockScreenPosition;
   final double headTiltBias;
   final bool celebrateOnOpen;
@@ -336,6 +338,10 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
       _didAutoWave = false;
       _scheduleAutoGreetingIfNeeded(delay: const Duration(milliseconds: 220));
     }
+    if (widget.happyJumpToken != oldWidget.happyJumpToken &&
+        widget.happyJumpToken > 0) {
+      _scheduleHappyJump(delay: const Duration(milliseconds: 220));
+    }
     if (widget.isHatched && !oldWidget.isHatched) {
       _hatchController.value = 1;
       _didNotifyHatchComplete = true;
@@ -425,9 +431,16 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
         _triggerReaction(_MiniMeReaction.celebrate);
         return;
       }
-      // Randomly wave or bounce on each greeting
-      final useWave = (DateTime.now().millisecondsSinceEpoch % 2) == 0;
-      _triggerReaction(useWave ? _MiniMeReaction.wave : _MiniMeReaction.bounce);
+      _triggerReaction(_MiniMeReaction.wave);
+    });
+  }
+
+  void _scheduleHappyJump({Duration delay = Duration.zero}) {
+    if (!mounted || !widget.isHatched) return;
+    Future<void>.delayed(delay, () {
+      if (!mounted || !widget.isHatched) return;
+      if (_reaction != _MiniMeReaction.none) return;
+      _triggerReaction(_MiniMeReaction.bounce);
     });
   }
 

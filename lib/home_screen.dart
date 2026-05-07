@@ -133,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }, growable: false);
 
     return Scaffold(
+      resizeToAvoidBottomInset: _navIndex != 0,
       body: IndexedStack(index: _navIndex, children: visiblePages),
       bottomNavigationBar: BottomNav(
         currentIndex: _navIndex,

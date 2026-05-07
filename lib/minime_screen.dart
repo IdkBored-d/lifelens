@@ -5,7 +5,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 // MiniGen GGUF replaces ONNX LLM — llamadart inference
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lifelens/app_services.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
@@ -46,6 +45,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   bool _isReplying = false;
   bool _isSuggestionBubbleThinking = false;
   bool _isIntelligenceLoading = false;
+  bool _isNewUserAccount = false;
   String? _dailyLoggingPromptText;
   final List<_MiniMeChatMessage> _messages = [];
   String? _latestAssistantMessageText;
@@ -67,7 +67,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   late final ChatSessionService _chatSessionService;
   MoodLogStore? _moodStoreSource;
   SleepStore? _sleepStoreSource;
+  MiniMeSuggestionsInbox? _suggestionsInboxSource;
   Timer? _promptRefreshDebounce;
+  bool _pendingUnreadSuggestionSync = false;
 
   @override
   void initState() {
@@ -75,6 +77,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _chatSessionService = ChatSessionService();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _attachPromptRefreshListeners();
+      await _refreshStartLoggingPromptState();
+      if (!mounted) return;
 
       // Intelligence loads first — drives opening message + avatar mood.
       // 3-second timeout so a slow/offline backend doesn't block the screen.
@@ -94,6 +98,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void dispose() {
     _moodStoreSource?.removeListener(_onTrackedLogsChanged);
     _sleepStoreSource?.removeListener(_onTrackedLogsChanged);
+    _suggestionsInboxSource?.removeListener(_onSuggestionsInboxChanged);
     _promptRefreshDebounce?.cancel();
     if (_sessionId != null) _chatSessionService.endSession(_sessionId!);
     _chatController.dispose();
@@ -120,6 +125,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void _attachPromptRefreshListeners() {
     final moodStore = context.read<MoodLogStore>();
     final sleepStore = context.read<SleepStore>();
+    final suggestionsInbox = context.read<MiniMeSuggestionsInbox>();
 
     if (!identical(_moodStoreSource, moodStore)) {
       _moodStoreSource?.removeListener(_onTrackedLogsChanged);
@@ -132,6 +138,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       _sleepStoreSource = sleepStore;
       _sleepStoreSource?.addListener(_onTrackedLogsChanged);
     }
+
+    if (!identical(_suggestionsInboxSource, suggestionsInbox)) {
+      _suggestionsInboxSource?.removeListener(_onSuggestionsInboxChanged);
+      _suggestionsInboxSource = suggestionsInbox;
+      _suggestionsInboxSource?.addListener(_onSuggestionsInboxChanged);
+    }
   }
 
   void _onTrackedLogsChanged() {
@@ -143,6 +155,25 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _promptRefreshDebounce = Timer(const Duration(milliseconds: 200), () async {
       if (!mounted) return;
       await _refreshStartLoggingPromptState();
+    });
+  }
+
+  void _onSuggestionsInboxChanged() {
+    if (!mounted) return;
+    if ((_suggestionsInboxSource?.unreadCount ?? 0) == 0) return;
+    _pendingUnreadSuggestionSync = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_syncUnreadSuggestions(forceRefresh: false));
+    });
+  }
+
+  void _drainPendingUnreadSuggestionSync() {
+    if (!_pendingUnreadSuggestionSync || !mounted) return;
+    _pendingUnreadSuggestionSync = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_syncUnreadSuggestions(forceRefresh: false));
     });
   }
 
@@ -590,9 +621,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   Future<void> _refreshStartLoggingPromptState() async {
     final promptText = await _computeDailyLoggingPromptText();
+    final isNewUserAccount = _isCurrentUserNewAccount(DateTime.now());
     if (!mounted) return;
     setState(() {
       _dailyLoggingPromptText = promptText;
+      _isNewUserAccount = isNewUserAccount;
     });
   }
 
@@ -610,15 +643,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final creationTime = user.metadata.creationTime;
     if (creationTime == null) return;
 
-    final accountAge = DateTime.now().difference(creationTime);
-    if (accountAge < const Duration(hours: 24)) {
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final todayKey = _openingGreetingDayKey(DateTime.now());
-    final prefKey = 'minime_opening_greeting_${user.uid}';
-    if (prefs.getString(prefKey) == todayKey) {
+    if (_isCurrentUserNewAccount(DateTime.now())) {
       return;
     }
 
@@ -629,7 +654,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     });
 
     await _appendAssistantReplyInChunks(_buildReturningUserOpeningGreeting());
-    await prefs.setString(prefKey, todayKey);
   }
 
   String _buildReturningUserOpeningGreeting() {
@@ -643,12 +667,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     return 'I\'m glad you\'re back, $firstName. You do not have to have everything figured out $dayPart. Start with one honest signal, and I\'ll help you turn it into one small next step.';
   }
 
-  String _openingGreetingDayKey(DateTime value) {
-    final local = value.toLocal();
-    final year = local.year.toString().padLeft(4, '0');
-    final month = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
+  bool _isCurrentUserNewAccount(DateTime now) {
+    final creationTime =
+        FirebaseAuth.instance.currentUser?.metadata.creationTime;
+    if (creationTime == null) return false;
+    return now.difference(creationTime) < const Duration(hours: 24);
   }
 
   Future<String?> _computeDailyLoggingPromptText() async {
@@ -678,11 +701,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       if (!hasExerciseToday) 'exercise',
     ];
 
+    final isNewUserAccount = _isCurrentUserNewAccount(today);
+
     if (missingDailyBaseline.length == 3) {
+      if (isNewUserAccount) {
+        return 'Welcome to Mini-Me, $firstName. Start by logging mood, sleep, and exercise so I can understand your day and help you better.';
+      }
       return 'Hello $firstName. Start today by logging mood, sleep, and exercise so Mini-Me can make better suggestions.';
     }
 
     if (missingDailyBaseline.isNotEmpty) {
+      if (isNewUserAccount) {
+        return 'Nice start, $firstName. To finish setup for today, log your ${_joinLogLabels(missingDailyBaseline)}.';
+      }
       return 'To unlock today\'s Mini-Me suggestions, also log your ${_joinLogLabels(missingDailyBaseline)}.';
     }
 
@@ -1007,7 +1038,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   Future<void> _syncUnreadSuggestions({required bool forceRefresh}) async {
-    if (_isReplying || _isSurfacingUnreadSuggestions) return;
+    if (_isReplying || _isSurfacingUnreadSuggestions) {
+      _pendingUnreadSuggestionSync = true;
+      return;
+    }
 
     final inbox = context.read<MiniMeSuggestionsInbox>();
     final moodStore = context.read<MoodLogStore>();
@@ -1023,6 +1057,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final unreadSuggestions = inbox.unreadSuggestions;
     if (!mounted || unreadSuggestions.isEmpty) return;
 
+    _pendingUnreadSuggestionSync = false;
+
     _isSurfacingUnreadSuggestions = true;
     try {
       setState(() {
@@ -1037,6 +1073,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       await _refreshIntelligence();
     } finally {
       _isSurfacingUnreadSuggestions = false;
+      _drainPendingUnreadSuggestionSync();
     }
   }
 
@@ -1155,6 +1192,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           _isReplying = false;
           _isSuggestionBubbleThinking = false;
         });
+        _drainPendingUnreadSuggestionSync();
       }
       return;
     }
@@ -1178,6 +1216,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     if (mounted) {
       setState(() => _isReplying = false);
+      _drainPendingUnreadSuggestionSync();
     }
   }
 
@@ -1193,6 +1232,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           _isReplying = false;
           _isSuggestionBubbleThinking = false;
         });
+        _drainPendingUnreadSuggestionSync();
       }
       return;
     }
@@ -1228,6 +1268,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         _isReplying = false;
         _isSuggestionBubbleThinking = false;
       });
+      _drainPendingUnreadSuggestionSync();
     }
   }
 
@@ -1980,17 +2021,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     });
   }
 
-  void _expandCoachAndFocus() {
-    if (!_isCoachExpanded) {
-      setState(() => _isCoachExpanded = true);
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (!_chatFocusNode.canRequestFocus) return;
-      FocusScope.of(context).requestFocus(_chatFocusNode);
-    });
-  }
-
   void _toggleCoachExpanded() {
     final next = !_isCoachExpanded;
     setState(() => _isCoachExpanded = next);
@@ -2012,6 +2042,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final cs = theme.colorScheme;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: cs.surface,
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -2105,6 +2136,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         height: double.infinity,
         color: cs.surface,
         child: SafeArea(
+          maintainBottomViewPadding: true,
           child: Column(
             children: [
               Padding(
@@ -2122,6 +2154,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   userName: widget.userName,
                   latestAssistantText: _latestAssistantMessageText,
                   dailyLoggingPromptText: _dailyLoggingPromptText,
+                  isNewUserAccount: _isNewUserAccount,
                   intelligence: _intelligence,
                   resolveAvatarMoodLabel: _avatarMoodFromIntelligence,
                   computeDerivedUiState: _getDerivedUiState,
@@ -2136,7 +2169,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   avatarWaveToken: _avatarWaveToken,
                   danceOnOpen: _danceOnOpen,
                   onToggleCoachExpanded: _toggleCoachExpanded,
-                  onExpandCoach: _expandCoachAndFocus,
                   onOpenFullChat: _openFullChatSheet,
                   onRunDaySummary: _runDaySummary,
                   onSend: _sendMessage,
@@ -2155,6 +2187,7 @@ class _MiniMePanelContent extends StatelessWidget {
     required this.userName,
     required this.latestAssistantText,
     required this.dailyLoggingPromptText,
+    required this.isNewUserAccount,
     required this.intelligence,
     required this.resolveAvatarMoodLabel,
     required this.computeDerivedUiState,
@@ -2169,7 +2202,6 @@ class _MiniMePanelContent extends StatelessWidget {
     required this.avatarWaveToken,
     required this.danceOnOpen,
     required this.onToggleCoachExpanded,
-    required this.onExpandCoach,
     required this.onOpenFullChat,
     required this.onRunDaySummary,
     required this.onSend,
@@ -2178,6 +2210,7 @@ class _MiniMePanelContent extends StatelessWidget {
   final String userName;
   final String? latestAssistantText;
   final String? dailyLoggingPromptText;
+  final bool isNewUserAccount;
   final MiniMeIntelligenceReply? intelligence;
   final String? Function(String? baseMoodLabel) resolveAvatarMoodLabel;
   final _MiniMeDerivedUiState Function({
@@ -2197,10 +2230,20 @@ class _MiniMePanelContent extends StatelessWidget {
   final int avatarWaveToken;
   final bool danceOnOpen;
   final VoidCallback onToggleCoachExpanded;
-  final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
   final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
+
+  int _happyMoodJumpToken(MoodCheckIn? mood) {
+    if (mood == null) return 0;
+    final label = mood.moodLabel.trim().toLowerCase();
+    final isHappyMood =
+        label == 'happy' ||
+        label == 'excited' ||
+        label == 'joyful' ||
+        label == 'joy';
+    return isHappyMood ? mood.createdAt.microsecondsSinceEpoch : 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2220,6 +2263,7 @@ class _MiniMePanelContent extends StatelessWidget {
       latest?.intensity ?? 0,
     );
     final avatarMoodLabel = resolveAvatarMoodLabel(latest?.moodLabel);
+    final happyJumpToken = _happyMoodJumpToken(latest);
     final avatarAnimationState =
         intelligence?.miniMeLinkage['animation_state'] as String?;
     final derivedUiState = computeDerivedUiState(
@@ -2238,8 +2282,10 @@ class _MiniMePanelContent extends StatelessWidget {
       avatarAnimationState: avatarAnimationState,
       latestAssistantText: latestAssistantText,
       dailyLoggingPromptText: dailyLoggingPromptText,
+      isNewUserAccount: isNewUserAccount,
       visualState: derivedUiState.visualState,
       avatarWaveToken: avatarWaveToken,
+      happyJumpToken: happyJumpToken,
       celebrateOnOpen: derivedUiState.celebrateOnOpen,
       danceOnOpen: danceOnOpen,
       intelligenceState: intelligence?.state,
@@ -2255,7 +2301,6 @@ class _MiniMePanelContent extends StatelessWidget {
       messages: messages,
       scrollController: scrollController,
       onToggleCoachExpanded: onToggleCoachExpanded,
-      onExpandCoach: onExpandCoach,
       onOpenFullChat: onOpenFullChat,
       onRunDaySummary: onRunDaySummary,
       onSend: onSend,
@@ -2274,8 +2319,10 @@ class _AvatarPanel extends StatelessWidget {
     required this.avatarAnimationState,
     required this.latestAssistantText,
     required this.dailyLoggingPromptText,
+    required this.isNewUserAccount,
     required this.visualState,
     required this.avatarWaveToken,
+    required this.happyJumpToken,
     required this.celebrateOnOpen,
     required this.danceOnOpen,
     required this.intelligenceState,
@@ -2291,7 +2338,6 @@ class _AvatarPanel extends StatelessWidget {
     required this.messages,
     required this.scrollController,
     required this.onToggleCoachExpanded,
-    required this.onExpandCoach,
     required this.onOpenFullChat,
     required this.onRunDaySummary,
     required this.onSend,
@@ -2306,8 +2352,10 @@ class _AvatarPanel extends StatelessWidget {
   final String? avatarAnimationState;
   final String? latestAssistantText;
   final String? dailyLoggingPromptText;
+  final bool isNewUserAccount;
   final MiniMeVisualState visualState;
   final int avatarWaveToken;
+  final int happyJumpToken;
   final bool celebrateOnOpen;
   final bool danceOnOpen;
   final Map<String, dynamic>? intelligenceState;
@@ -2323,7 +2371,6 @@ class _AvatarPanel extends StatelessWidget {
   final List<_MiniMeChatMessage> messages;
   final ScrollController scrollController;
   final VoidCallback onToggleCoachExpanded;
-  final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
   final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
@@ -2344,18 +2391,31 @@ class _AvatarPanel extends StatelessWidget {
           builder: (context, constraints) {
             const chatDockHeight = 112.0;
             const collapsedBottomInset = 16.0;
+            final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+            final composerBottom = keyboardInset > 0
+                ? keyboardInset + 12.0
+                : 12.0;
+            final isChatInputActive = chatFocusNode.hasFocus;
+            final dailyPromptText = dailyLoggingPromptText?.trim() ?? '';
+            final assistantPromptText = latestAssistantText?.trim() ?? '';
+            final bubbleSourceText = isNewUserAccount
+                ? (dailyPromptText.isNotEmpty
+                      ? dailyPromptText
+                      : assistantPromptText)
+                : (assistantPromptText.isNotEmpty
+                      ? assistantPromptText
+                      : dailyPromptText);
+            final hasPromptBubbleContent =
+                isSuggestionBubbleThinking || bubbleSourceText.isNotEmpty;
             final showPromptBubble =
-                isSuggestionBubbleThinking ||
-                (latestAssistantText?.isNotEmpty ?? false);
-            final promptBubbleText = _bubblePreviewText(
-              latestAssistantText ?? '',
-            );
+                !isChatInputActive && hasPromptBubbleContent;
+            final promptBubbleText = _bubblePreviewText(bubbleSourceText);
             final headTiltBias = isReplying ? -0.12 : 0.0;
             final bubbleMaxHeight = math.min(
               constraints.maxHeight * 0.14,
               96.0,
             );
-            final suggestionBubbleReserve = showPromptBubble
+            final suggestionBubbleReserve = hasPromptBubbleContent
                 ? bubbleMaxHeight + 80
                 : 42.0;
             final availableAvatarHeight =
@@ -2428,6 +2488,7 @@ class _AvatarPanel extends StatelessWidget {
                               visualState: visualState,
                               onHatchComplete: avatarSelection.onHatchComplete,
                               autoWaveToken: avatarWaveToken,
+                              happyJumpToken: happyJumpToken,
                               lockScreenPosition: true,
                               headTiltBias: headTiltBias,
                               celebrateOnOpen: celebrateOnOpen,
@@ -2450,17 +2511,18 @@ class _AvatarPanel extends StatelessWidget {
                       ),
                   ],
                 ),
-                Positioned(
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOutCubic,
                   left: 16,
                   right: 16,
-                  bottom: 12,
+                  bottom: composerBottom,
                   child: RepaintBoundary(
                     child: _CoachComposerCard(
                       miniMeName: miniMeName,
                       chatController: chatController,
                       chatFocusNode: chatFocusNode,
                       isReplying: isReplying,
-                      onExpandCoach: onExpandCoach,
                       onOpenFullChat: onOpenFullChat,
                       onRunDaySummary: onRunDaySummary,
                       onSend: onSend,
@@ -3135,7 +3197,6 @@ class _CoachComposerCard extends StatelessWidget {
     required this.chatController,
     required this.chatFocusNode,
     required this.isReplying,
-    required this.onExpandCoach,
     required this.onOpenFullChat,
     required this.onRunDaySummary,
     required this.onSend,
@@ -3145,7 +3206,6 @@ class _CoachComposerCard extends StatelessWidget {
   final TextEditingController chatController;
   final FocusNode chatFocusNode;
   final bool isReplying;
-  final VoidCallback onExpandCoach;
   final VoidCallback onOpenFullChat;
   final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
@@ -3245,7 +3305,6 @@ class _CoachComposerCard extends StatelessWidget {
                   textInputAction: TextInputAction.newline,
                   minLines: 1,
                   maxLines: 5,
-                  onTap: onExpandCoach,
                   decoration: InputDecoration(
                     hintText: 'Message $miniMeName...',
                     hintStyle: theme.textTheme.bodyMedium?.copyWith(

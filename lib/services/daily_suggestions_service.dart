@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lifelens/app_services.dart';
@@ -487,13 +488,10 @@ class DailySuggestionsService {
         (latestLogFocus?.occurrenceCountToday ?? 1) +
         recentSuggestionActions.length;
     final rotated = _rotateSuggestions(candidates, seed);
-    final selected = rotated.firstWhere(
-      (item) => !_isNearRepeatSuggestion(
-        item.action,
-        item.reason,
-        recentSuggestionActions,
-      ),
-      orElse: () => rotated.first,
+    final selected = _selectBestFallbackCandidate(
+      rotated,
+      latestLogFocus: latestLogFocus,
+      recentSuggestionActions: recentSuggestionActions,
     );
 
     return [
@@ -529,9 +527,14 @@ class DailySuggestionsService {
     final symptomText = _fallbackSymptomText(activeSymptoms, recentSymptoms);
     final latestFitness = recentFitness.isEmpty ? null : recentFitness.first;
     final latestExercise = exerciseStore.getRecentExerciseHistory(limit: 1);
+    final latestExerciseIsNoExercise =
+        latestExercise.isNotEmpty &&
+        (latestExercise.first['noExercise'] ?? '').trim() == 'true';
     final exerciseLabel = latestExercise.isEmpty
         ? 'your latest movement log'
         : _fallbackExerciseLabel(latestExercise.first);
+    final latestContext = _latestContextFromFocus(latestLogFocus);
+    final contextClause = latestContext == null ? '' : ' about $latestContext';
 
     final kind = latestLogFocus?.kind;
     if (kind == _LatestLogKind.mood) {
@@ -551,6 +554,13 @@ class DailySuggestionsService {
                 ? profile.reflectReasonNoNote
                 : profile.reflectReasonWithNote,
           ),
+          if (latestContext != null)
+            _GeneratedSuggestion(
+              action:
+                  'Use the note about $latestContext to choose one concrete boundary, reset, or support step before the next hour gets busier.',
+              reason:
+                  'Your mood label gives the feeling, but your note names the context that should shape the suggestion.',
+            ),
           if (sleepHours != null && sleepHours < 7)
             _GeneratedSuggestion(
               action:
@@ -573,6 +583,13 @@ class DailySuggestionsService {
           action: profile.steadyAction,
           reason: profile.steadyReason,
         ),
+        if (latestContext != null)
+          _GeneratedSuggestion(
+            action:
+                'Turn the note about $latestContext into one small follow-up: write the next step, send one message, or set a reminder.',
+            reason:
+                'The most useful suggestion should address the context you logged, not just the mood label.',
+          ),
         _GeneratedSuggestion(
           action: profile.followThroughAction,
           reason: profile.followThroughReason,
@@ -590,6 +607,13 @@ class DailySuggestionsService {
           ? 'your sleep log'
           : '${sleepHours.toStringAsFixed(1)} hours';
       return [
+        if (latestContext != null)
+          _GeneratedSuggestion(
+            action:
+                'Use your sleep note about $latestContext to remove one matching friction point before bedtime tonight.',
+            reason:
+                'Your sleep entry included context, so the best next step should target what affected the night.',
+          ),
         _GeneratedSuggestion(
           action:
               'Protect recovery for the next block: choose a lighter task first and delay anything that needs peak focus.',
@@ -609,11 +633,63 @@ class DailySuggestionsService {
             reason:
                 'Pairing sleep with mood gives Mini-Me a clearer pattern than either log by itself.',
           ),
+        if (sleepHours != null && sleepHours < 6)
+          _GeneratedSuggestion(
+            action:
+                'Keep the day in recovery mode: avoid adding extra intensity, hydrate early, and choose the shortest version of one demanding task.',
+            reason:
+                'A shorter sleep log changes what is realistic today, so pacing matters more than adding goals.',
+          ),
+        if (sleepHours != null && sleepHours >= 8)
+          _GeneratedSuggestion(
+            action:
+                'Use the stronger sleep base for one planned task, but keep tonight\'s wind-down steady so the pattern is repeatable.',
+            reason:
+                'Longer sleep is useful when it turns into a repeatable routine rather than a one-day push.',
+          ),
       ];
     }
 
     if (kind == _LatestLogKind.exercise) {
+      if (latestExerciseIsNoExercise) {
+        return [
+          if (latestContext != null)
+            _GeneratedSuggestion(
+              action:
+                  'Use the reason you skipped exercise today, $latestContext, to make the next movement option smaller instead of forcing a workout.',
+              reason:
+                  'Your exercise log says no exercise, so the useful advice is removing friction rather than giving workout recovery steps.',
+            ),
+          _GeneratedSuggestion(
+            action:
+                'Choose one tiny movement option for later, like a two-minute stretch or a short walk, only if your energy allows it.',
+            reason:
+                'A no-exercise log means the next step should be low-pressure and realistic, not a full workout plan.',
+          ),
+          _GeneratedSuggestion(
+            action:
+                'Notice what blocked movement today: time, energy, soreness, mood, or symptoms, then adjust tomorrow\'s plan around that one barrier.',
+            reason:
+                'The missed-movement context is the signal Mini-Me needs to make future exercise suggestions fit better.',
+          ),
+          if (sleepHours != null && sleepHours < 7)
+            _GeneratedSuggestion(
+              action:
+                  'Treat no exercise plus shorter sleep as a recovery signal: keep expectations lighter and set up rest before adding movement.',
+              reason:
+                  'Short sleep can explain lower movement, so recovery may be more useful than pushing intensity.',
+            ),
+        ];
+      }
+
       return [
+        if (latestContext != null)
+          _GeneratedSuggestion(
+            action:
+                'Use the exercise note about $latestContext as feedback: adjust the next session by changing duration, intensity, or recovery.',
+            reason:
+                'Your workout context says more than completion alone, so the suggestion should respond to that detail.',
+          ),
         _GeneratedSuggestion(
           action:
               'Use $exerciseLabel as recovery information: hydrate, stretch lightly, and keep the next workout easier if soreness rises.',
@@ -634,11 +710,25 @@ class DailySuggestionsService {
               ? 'More than one exercise log today means recovery is now the useful signal to protect.'
               : 'Consistency usually comes from repeating the most doable part, not making the next session bigger.',
         ),
+        if (sleepHours != null && sleepHours < 7)
+          _GeneratedSuggestion(
+            action:
+                'Because sleep was shorter, treat $exerciseLabel as enough movement for now and make the next block easier.',
+            reason:
+                'Exercise and sleep together suggest recovery should guide the rest of the day.',
+          ),
       ];
     }
 
     if (kind == _LatestLogKind.symptom) {
       return [
+        if (latestContext != null)
+          _GeneratedSuggestion(
+            action:
+                'Use the symptom context$contextClause to avoid one likely trigger and check intensity again later today.',
+            reason:
+                'Your symptom log included context, so monitoring should focus on what might be connected to it.',
+          ),
         _GeneratedSuggestion(
           action:
               'Track symptom intensity once later today and avoid the activity that seems most likely to worsen it.',
@@ -657,12 +747,26 @@ class DailySuggestionsService {
           reason:
               'Mini-Me can help track patterns, but worsening or persistent symptoms need professional guidance.',
         ),
+        if (sleepHours != null && sleepHours < 7)
+          _GeneratedSuggestion(
+            action:
+                'Pair symptom monitoring with recovery today: rest earlier, keep fluids nearby, and skip nonessential strain.',
+            reason:
+                'Symptoms plus shorter sleep can make recovery harder, so the next step should reduce load.',
+          ),
       ];
     }
 
     if (kind == _LatestLogKind.fitness) {
       final score = latestFitness?.fitnessScore.toStringAsFixed(0) ?? 'unknown';
       return [
+        if (latestContext != null)
+          _GeneratedSuggestion(
+            action:
+                'Connect the fitness note about $latestContext with sleep, movement, and mood before changing your routine.',
+            reason:
+                'The extra context can explain the score better than the number alone.',
+          ),
         _GeneratedSuggestion(
           action:
               'Use the fitness score as a pacing signal today: choose movement that matches your current energy instead of forcing intensity.',
@@ -681,14 +785,23 @@ class DailySuggestionsService {
     final fallback = <_GeneratedSuggestion>[];
     if (latestMood != null) {
       final moodLabel = latestMood.moodLabel.toLowerCase();
+      final profile = _moodSuggestionProfile(moodLabel);
       fallback.add(
         _GeneratedSuggestion(
-          action:
-              'Use your $moodLabel mood as the cue for one small next step: lower the pressure if it feels heavy, or repeat what helped if it feels steady.',
-          reason:
-              'Your mood log is the clearest current signal, so the next action should match that emotional energy.',
+          action: profile.steadyAction,
+          reason: profile.steadyReason,
         ),
       );
+      if (latestContext != null) {
+        fallback.add(
+          _GeneratedSuggestion(
+            action:
+                'Use the logged context about $latestContext to choose one next step that fits the actual situation, not just the tracker category.',
+            reason:
+                'User notes are the strongest clue for making Mini-Me suggestions feel specific and accurate.',
+          ),
+        );
+      }
     }
     if (sleepHours != null) {
       fallback.add(
@@ -701,7 +814,7 @@ class DailySuggestionsService {
         ),
       );
     }
-    if (latestExercise.isNotEmpty) {
+    if (latestExercise.isNotEmpty && !latestExerciseIsNoExercise) {
       fallback.add(
         _GeneratedSuggestion(
           action:
@@ -724,7 +837,7 @@ class DailySuggestionsService {
 
     return fallback.isEmpty
         ? const <_GeneratedSuggestion>[]
-        : fallback.take(3).toList(growable: false);
+        : fallback.toList(growable: false);
   }
 
   List<_GeneratedSuggestion> _rotateSuggestions(
@@ -734,6 +847,92 @@ class DailySuggestionsService {
     if (suggestions.length <= 1) return suggestions;
     final offset = seed.abs() % suggestions.length;
     return [...suggestions.skip(offset), ...suggestions.take(offset)];
+  }
+
+  _GeneratedSuggestion _selectBestFallbackCandidate(
+    List<_GeneratedSuggestion> candidates, {
+    required _LatestLogFocus? latestLogFocus,
+    required List<String> recentSuggestionActions,
+  }) {
+    final context = _latestContextFromFocus(latestLogFocus);
+    final nonRepeats = candidates
+        .where(
+          (item) => !_isNearRepeatSuggestion(
+            item.action,
+            item.reason,
+            recentSuggestionActions,
+          ),
+        )
+        .toList(growable: false);
+    final pool = nonRepeats.isEmpty
+        ? _leastSimilarFallbackCandidates(candidates, recentSuggestionActions)
+        : nonRepeats;
+    if (context == null) return pool.first;
+
+    final contextTokens = _keywordTokens(context).take(6).toSet();
+    if (contextTokens.isEmpty) return pool.first;
+    return pool.firstWhere((item) {
+      final combined = '${item.action} ${item.reason}'.toLowerCase();
+      return contextTokens.any(combined.contains);
+    }, orElse: () => pool.first);
+  }
+
+  List<_GeneratedSuggestion> _leastSimilarFallbackCandidates(
+    List<_GeneratedSuggestion> candidates,
+    List<String> recentSuggestionActions,
+  ) {
+    if (candidates.length <= 1 || recentSuggestionActions.isEmpty) {
+      return candidates;
+    }
+
+    final scored =
+        candidates
+            .map((candidate) {
+              final combined = '${candidate.action} ${candidate.reason}';
+              final worstSimilarity = recentSuggestionActions
+                  .map((previous) => _textSimilarity(combined, previous))
+                  .fold<double>(0, math.max);
+              return (candidate: candidate, similarity: worstSimilarity);
+            })
+            .toList(growable: false)
+          ..sort((a, b) => a.similarity.compareTo(b.similarity));
+
+    return scored.map((item) => item.candidate).toList(growable: false);
+  }
+
+  String? _latestContextFromFocus(_LatestLogFocus? latestLogFocus) {
+    final text = latestLogFocus?.text ?? '';
+    if (text.trim().isEmpty) return null;
+
+    final fragments = text
+        .split('|')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (fragments.length <= 1) return null;
+
+    for (final fragment in fragments.skip(1)) {
+      final lower = fragment.toLowerCase();
+      if (lower.startsWith('quality ') ||
+          lower.startsWith('status ') ||
+          lower.startsWith('score ') ||
+          lower.startsWith('sleep input ') ||
+          lower.startsWith('activity ') ||
+          lower.startsWith('heart rate ') ||
+          lower.startsWith('possible ailment ') ||
+          RegExp(r'^\d+(\.\d+)?h$').hasMatch(lower) ||
+          RegExp(r'^\d+\s*min$').hasMatch(lower) ||
+          RegExp(r'^\d+\s*sets\s*x\s*\d+\s*reps$').hasMatch(lower)) {
+        continue;
+      }
+
+      final cleaned = fragment
+          .replaceFirst(RegExp(r'^context\s+', caseSensitive: false), '')
+          .trim();
+      if (cleaned.length >= 3) return _trimShort(cleaned);
+    }
+
+    return null;
   }
 
   String _fallbackSymptomText(
@@ -751,6 +950,8 @@ class DailySuggestionsService {
   }
 
   String _fallbackExerciseLabel(Map<String, String> entry) {
+    final noExercise = (entry['noExercise'] ?? '').trim() == 'true';
+    if (noExercise) return 'no exercise';
     final name = (entry['exerciseName'] ?? '').trim();
     if (name.isNotEmpty) return name;
     final id = (entry['exerciseId'] ?? '').trim();

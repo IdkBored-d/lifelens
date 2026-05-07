@@ -277,6 +277,8 @@ class MiniGenChat {
 Create exactly $targetCount grounded wellness suggestion${targetCount == 1 ? '' : 's'}.
 First suggestion must answer LATEST_LOG_FOCUS. Avoid RECENT_SUGGESTIONS_TO_AVOID.
 Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, or follow-through.
+If the latest log includes notes, tags, workout details, sleep notes, or symptom context, mention that context directly and address it.
+Do not give category-only advice like "log mood" or "rest more" when a specific note/context is available.
 Action: one realistic step for today. Reason: cite the matching log signal. Do not diagnose. Keep fields short.
 Use this exact shape:
 {"suggestions":[{"action":"One specific next step.","reason":"Why this fits the user's logs."}]}''',

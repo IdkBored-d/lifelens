@@ -26,6 +26,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   bool _isInitialized = false;
   bool _isRefreshing = false;
   bool _refreshQueued = false;
+  bool _refreshQueuedFromLog = false;
   String? _loadedScopeKey;
   final Set<String> _viewedDigests = <String>{};
   List<_StoredSuggestion> _unread = const <_StoredSuggestion>[];
@@ -115,21 +116,27 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     await _ensureCurrentScopeLoaded();
     if (_isRefreshing) {
       _refreshQueued = true;
+      _refreshQueuedFromLog = _refreshQueuedFromLog || fromLog;
       return;
     }
 
     _isRefreshing = true;
     try {
+      var currentFromLog = fromLog;
       do {
         _refreshQueued = false;
+        final nextFromLog = currentFromLog || _refreshQueuedFromLog;
+        _refreshQueuedFromLog = false;
         await _refreshOnce(
           moodStore: moodStore,
           sleepStore: sleepStore,
-          fromLog: fromLog,
+          fromLog: nextFromLog,
         );
+        currentFromLog = false;
       } while (_refreshQueued);
     } finally {
       _isRefreshing = false;
+      _refreshQueuedFromLog = false;
     }
   }
 
@@ -614,7 +621,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     final nextRecentSuggestions = <String>[
       ..._deliveryState.recentDeliveredSuggestionActions,
       ...deliveredSuggestions.map((item) => item.action.trim()),
-    ].where((item) => item.isNotEmpty).toList(growable: false);
+    ].where((item) => item.isNotEmpty).toList(growable: true);
     if (nextRecentSuggestions.length > 20) {
       nextRecentSuggestions.removeRange(0, nextRecentSuggestions.length - 20);
     }
@@ -649,7 +656,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   Future<void> _persistViewedDigests() async {
     final prefs = _prefs;
     if (prefs == null) return;
-    final values = _viewedDigests.toList(growable: false);
+    final values = _viewedDigests.toList(growable: true);
     if (values.length > 120) {
       values.removeRange(0, values.length - 120);
     }
