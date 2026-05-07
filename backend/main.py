@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 # Get settings
 settings = get_settings()
+_gemini_suggestions_disabled_until = 0.0
 
 
 def _is_gemini_enabled() -> bool:
@@ -104,7 +105,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Lifelens API",
-    description="Symptom analysis API with Gemini and RAG integration",
+    description="Symptom analysis API with DisEmbed/RAG prediction and Mini-Me refinement endpoints",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -188,7 +189,7 @@ async def root():
     return {
         "name": "Lifelens API",
         "version": "1.0.0",
-        "description": "Symptom analysis with Gemini and RAG",
+        "description": "Symptom analysis with DisEmbed/RAG; Gemini is reserved for optional Mini-Me wording refinement",
         "endpoints": {
             "health": "/health",
             "analyze": "/api/v1/symptoms/analyze",
@@ -207,7 +208,7 @@ async def root():
     "/api/v1/symptoms/analyze",
     response_model=SymptomAnalysisResult,
     tags=["Symptom Analysis"],
-    summary="Analyze symptoms with Gemini and RAG"
+    summary="Analyze symptoms with DisEmbed/RAG"
 )
 async def analyze_symptoms(
     symptom_input: SymptomInput,
@@ -552,7 +553,7 @@ async def _build_minime_symptom_prediction_reply(
     if not symptoms:
         return (
             "I can definitely help with that. Share 2-5 symptoms (for example: headache, fatigue, dry throat), "
-            "and I will give you the top possible conditions in chat."
+            "and I will give you your possible conditions in chat."
         )
 
     try:
@@ -572,7 +573,7 @@ async def _build_minime_symptom_prediction_reply(
         )
 
     lines = [
-        "Based on what you shared, here are the top possible conditions:",
+        "Based on what you shared, here are your possible conditions:",
     ]
     for index, item in enumerate(predictions, start=1):
         confidence_pct = int(round(item.confidence * 100))
@@ -827,7 +828,7 @@ def _build_reply_fallback(chat_input: MiniMeChatRequest) -> str:
         if asks_diagnosis:
             return (
                 "That is a great question to explore. For your best answer, log those symptoms in the Symptoms screen — "
-                "I will run a full analysis and show you the top possible conditions matched to your specific combination. "
+                "I will run a full analysis and show you your possible conditions matched to your specific combination. "
                 "I cannot make diagnoses, but the analysis can point you in the right direction and tell you when to seek care."
             )
 
@@ -1037,6 +1038,8 @@ def _build_suggestions_fallback(
     mood = (suggestion_input.latest_mood_label or 'neutral').lower()
     intensity = suggestion_input.latest_mood_intensity or 0
     suggestion_window = (suggestion_input.suggestion_window or '').strip().lower()
+    trigger_reason = (suggestion_input.trigger_reason or '').strip().lower()
+    mood_notes = (suggestion_input.latest_mood_notes or '').strip().lower()
     summary_context = (suggestion_input.summary_context or '').lower()
     recent_logs = [item.lower() for item in (suggestion_input.recent_logs or [])]
     active_symptoms = [item.lower() for item in (suggestion_input.active_symptoms or [])]
@@ -1051,10 +1054,10 @@ def _build_suggestions_fallback(
 
     symptom_text = ' '.join(active_symptoms)
     log_text = ' '.join(recent_logs)
-    context_text = f"{summary_context} {log_text} {symptom_text}".strip()
+    context_text = f"{summary_context} {log_text} {symptom_text} {mood_notes}".strip()
 
     # ── Mood classification ────────────────────────────────────────────────
-    _positive_moods = {'joy', 'love', 'happy', 'excited', 'content', 'calm', 'grateful', 'hopeful'}
+    _positive_moods = {'joy', 'love', 'happy', 'excited', 'content', 'calm', 'grateful', 'hopeful', 'surprise', 'surprised'}
     _negative_moods = {'fear', 'anger', 'sadness', 'anxious', 'stressed', 'overwhelmed', 'disgust', 'sad', 'angry', 'anxious'}
     mood_is_positive = mood in _positive_moods
     mood_is_negative = mood in _negative_moods
@@ -1110,15 +1113,15 @@ def _build_suggestions_fallback(
     mood_pattern_heavy = recent_heavy_count >= 2
 
     fallback_items: List[MiniMeSuggestionItem] = []
-    scored_items: List[tuple[int, str, str]] = []
+    scored_items: List[tuple[int, str, str, str]] = []
     seen_actions = set()
 
-    def add_item(action: str, reason: str, score: int = 10):
+    def add_item(action: str, reason: str, score: int = 10, category: str = 'general'):
         normalized = action.strip().lower()
         if not normalized or normalized in seen_actions:
             return
         seen_actions.add(normalized)
-        scored_items.append((score, action.strip()[:240], reason.strip()[:240]))
+        scored_items.append((score, category, action.strip()[:240], reason.strip()[:240]))
 
     def _stable_index(count: int) -> int:
         if count <= 0:
@@ -1133,6 +1136,152 @@ def _build_suggestions_fallback(
         ])
         return sum(ord(ch) for ch in seed) % count
 
+    latest_log = recent_logs[0] if recent_logs else ''
+    latest_is_mood_log = 'mood log:' in latest_log or 'mood' in trigger_reason
+    latest_is_sleep_log = 'sleep log:' in latest_log or 'sleep' in trigger_reason
+    latest_is_symptom_log = 'symptom log:' in latest_log or 'symptom' in trigger_reason
+    latest_is_exercise_log = 'exercise log:' in latest_log or 'exercise' in trigger_reason
+    has_recurring_symptom_pattern = 'some symptoms appear more than once' in summary_context
+    fitness_declining = 'fitness logs:' in summary_context and 'overall declining' in summary_context
+    has_positive_food_note = any(
+        token in mood_notes or token in latest_log
+        for token in ['food', 'meal', 'ate', 'eat', 'taste', 'tasted', 'dinner', 'lunch', 'breakfast', 'snack']
+    ) and any(
+        token in mood_notes or token in latest_log
+        for token in ['better than expected', 'good', 'great', 'nice', 'surprised', 'surprise', 'enjoyed', 'tasty', 'delicious']
+    )
+
+    def _first_symptoms() -> str:
+        if active_symptoms:
+            return ', '.join(active_symptoms[:3])
+        if symptom_text:
+            pieces = [part.strip() for part in re.split(r'[,|]', symptom_text) if part.strip()]
+            return ', '.join(pieces[:3])
+        return 'your symptoms'
+
+    # Cross-signal playbook: these candidates intentionally combine multiple
+    # logs so suggestions feel specific instead of only reacting to one mood.
+    if latest_is_mood_log and has_positive_food_note:
+        add_item(
+            'Save that food win: note what made it better than expected, then use it as an easy repeat meal idea.',
+            'Your newest mood note is about a pleasant food surprise, so the best suggestion should build on that specific positive moment.',
+            score=132,
+            category='latest_mood_note',
+        )
+        if sleep_needs_attention:
+            add_item(
+                'Keep the good-food momentum simple tonight: repeat one small thing you enjoyed, then protect sleep early.',
+                'The food note is positive, but your sleep trend still needs care, so this keeps the suggestion grounded without turning it into pure recovery advice.',
+                score=130,
+                category='latest_mood_note_sleep',
+            )
+
+    if active_symptoms and sleep_needs_attention:
+        add_item(
+            'Make the next block a recovery block: hydrate, lower stimulation, and plan an earlier wind-down tonight.',
+            f'Your active symptoms ({_first_symptoms()}) overlap with weaker sleep, so recovery should come before pushing harder.',
+            score=116 if latest_is_mood_log else 124,
+            category='symptoms_sleep',
+        )
+    if active_symptoms and exercise_logged:
+        add_item(
+            'Keep movement gentle today: use stretching or an easy walk instead of adding intensity.',
+            f'You have symptoms logged ({_first_symptoms()}) and recent movement, so maintaining without overdoing it fits better.',
+            score=118,
+            category='symptoms_exercise',
+        )
+    if has_recurring_symptom_pattern:
+        add_item(
+            'Track the repeated symptom pattern once today: symptom, time, trigger, and intensity from 0-10.',
+            'Your recent symptom logs show a repeat pattern, so a small tracking note may reveal what sets it off.',
+            score=116,
+            category='symptom_pattern',
+        )
+    if sleep_needs_attention and mood_is_negative:
+        add_item(
+            'Protect tonight first: choose one sleep anchor, then keep the rest of the evening low-pressure.',
+            'Heavier mood plus weaker sleep usually calls for recovery before productivity.',
+            score=114,
+            category='sleep_mood',
+        )
+    if sleep_needs_attention and has_low_energy_signal:
+        add_item(
+            'Use an energy-conservation plan: one must-do task, one easy reset, and no extra pressure tonight.',
+            'Low energy and weaker sleep are showing up together, so reducing load is more useful than adding tasks.',
+            score=108 if suggestion_window == 'log_update' else 112,
+            category='sleep_energy',
+        )
+    if sleep_is_solid and mood_is_positive and exercise_missing:
+        add_item(
+            'Use the good recovery window for a short movement win: 10 minutes, easy pace, then log how it felt.',
+            'Your mood and sleep look supportive, but movement is the missing signal today.',
+            score=112,
+            category='mood_sleep_exercise',
+        )
+    if fitness_declining and exercise_missing:
+        add_item(
+            'Start with a minimum movement baseline today: 5-8 minutes walking or mobility, then stop while it feels manageable.',
+            'Fitness is trending down and movement has been light, so the goal is restarting gently, not intensity.',
+            score=110,
+            category='fitness_exercise',
+        )
+    if exercise_logged and mood_is_positive and not cautious_mode:
+        add_item(
+            'Lock in the routine signal: repeat today’s movement pattern once more this week at the same easy level.',
+            'Movement and mood are both pointing in a useful direction, so consistency beats a big jump.',
+            score=106,
+            category='exercise_mood',
+        )
+    if has_stress_signal and exercise_missing and not cautious_mode:
+        add_item(
+            'Use movement as a pressure valve: take a 7-minute walk, then write the one thing that feels most controllable.',
+            'Stress is present and movement is light, so a small physical reset may make the next choice clearer.',
+            score=104,
+            category='stress_exercise',
+        )
+    if latest_is_symptom_log and active_symptoms:
+        add_item(
+            'For the next hour, choose comfort over optimization: fluids, rest, and one quick symptom intensity check.',
+            f'Your newest log is symptom-related ({_first_symptoms()}), so the suggestion should match your body state first.',
+            score=122,
+            category='latest_symptom',
+        )
+    if latest_is_sleep_log and sleep_needs_attention:
+        add_item(
+            'Treat the latest sleep log as tonight’s cue: pick one earlier wind-down step and keep wake time steady tomorrow.',
+            'The newest log points to sleep needing attention, so the most relevant next step is a repeatable sleep anchor.',
+            score=121,
+            category='latest_sleep',
+        )
+    if latest_is_exercise_log and exercise_logged and not cautious_mode:
+        add_item(
+            'Use that exercise log as momentum: schedule the next session now, but keep it the same difficulty.',
+            'The newest movement data is already a win; repeating it is more reliable than increasing intensity immediately.',
+            score=120,
+            category='latest_exercise',
+        )
+    if latest_is_mood_log and sleep_needs_attention and mood_is_positive:
+        add_item(
+            'Let the better mood stay light: do one useful thing, then protect an earlier wind-down tonight.',
+            'Your newest mood is stronger, but recent sleep is still very low, so the best plan is small momentum plus recovery.',
+            score=123,
+            category='latest_mood_sleep',
+        )
+    if latest_is_mood_log and sleep_needs_attention and not mood_is_positive:
+        add_item(
+            'Treat this mood check-in as a recovery signal: lower the next task size and choose one bedtime cue now.',
+            'The newest mood log is landing on top of weak sleep, so reducing pressure is more useful than adding a big plan.',
+            score=123,
+            category='latest_mood_sleep',
+        )
+    if latest_is_mood_log and mood_is_positive and sleep_is_solid:
+        add_item(
+            'Use this lighter mood for one meaningful task, then stop and preserve the good energy.',
+            'Your newest mood is positive and sleep looks steady, so a focused but bounded effort fits the moment.',
+            score=119,
+            category='latest_mood',
+        )
+
     # Fresh log updates should primarily respond to the newest log. These score
     # above generic cautious/sleep/exercise items so different moods do not all
     # collapse into the same fallback suggestion when Gemini is unavailable.
@@ -1142,24 +1291,28 @@ def _build_suggestions_fallback(
                 'That sounded like a low moment. Try a tiny lift: step into light, take a short walk, or text someone you trust.',
                 'Small support is enough for right now.',
                 score=110,
+                category='mood',
             )
         elif mood in {'fear', 'anxious', 'overwhelmed'}:
             add_item(
                 'That sounded scary or tense. Write down what feels uncertain, then pick just one thing you can do next.',
                 'One clear step can make things feel less loud.',
                 score=110,
+                category='mood',
             )
         elif mood in {'anger', 'stressed'}:
             add_item(
                 'That sounded frustrating. Take five minutes away from the trigger, then choose one calm next move.',
                 'A small pause can help you respond instead of react.',
                 score=110,
+                category='mood',
             )
         elif mood_is_positive:
             add_item(
                 'Nice, that log sounded lighter. Use the momentum for one focused 20-minute task, then stop while it still feels good.',
                 'Keep the win easy to finish.',
                 score=110,
+                category='mood',
             )
 
     # ── Cautious / strain mode ─────────────────────────────────────────────
@@ -1314,20 +1467,41 @@ def _build_suggestions_fallback(
     if scored_items:
         if target_count == 1:
             best_score = scored_items[0][0]
-            top_band = [item for item in scored_items if item[0] == best_score]
-            if best_score < 100:
-                top_band = scored_items[:min(3, len(scored_items))]
+            top_band = [item for item in scored_items if item[0] >= best_score - 6]
+            if best_score < 112:
+                top_band = scored_items[:min(5, len(scored_items))]
             rotated = top_band[_stable_index(len(top_band))]
             fallback_items = [
-                MiniMeSuggestionItem(action=rotated[1], reason=rotated[2])
+                MiniMeSuggestionItem(action=rotated[2], reason=rotated[3])
             ]
         else:
-            start = _stable_index(len(scored_items))
-            ordered = scored_items[start:] + scored_items[:start]
-            ordered.sort(key=lambda item: item[0], reverse=True)
+            selected = []
+            used_categories = set()
+            for item in scored_items:
+                if item[1] in used_categories and len(selected) < target_count - 1:
+                    continue
+                selected.append(item)
+                used_categories.add(item[1])
+                if len(selected) >= target_count:
+                    break
+            if len(selected) < target_count:
+                for item in scored_items:
+                    if item in selected:
+                        continue
+                    selected.append(item)
+                    if len(selected) >= target_count:
+                        break
+
+            start = _stable_index(len(selected)) if selected else 0
+            if len(selected) > 1:
+                top = selected[0]
+                rest = selected[1:]
+                rest = rest[start % len(rest):] + rest[:start % len(rest)]
+                selected = [top] + rest
+
             fallback_items = [
-                MiniMeSuggestionItem(action=item[1], reason=item[2])
-                for item in ordered[:target_count]
+                MiniMeSuggestionItem(action=item[2], reason=item[3])
+                for item in selected[:target_count]
             ]
 
     suggestions = fallback_items[:target_count] if fallback_items else [
@@ -1594,9 +1768,12 @@ async def minime_suggestions(
     analysis_service: GeminiAnalysisService = Depends(get_analysis_service)
 ):
     """Generate deterministic suggestions, then optionally refine wording with Gemini."""
+    global _gemini_suggestions_disabled_until
     base_response = _build_suggestions_fallback(suggestion_input)
     try:
         if (not _is_gemini_enabled()) or analysis_service.client is None:
+            return base_response
+        if time.time() < _gemini_suggestions_disabled_until:
             return base_response
 
         prompt = _build_suggestions_refinement_prompt(
@@ -1642,6 +1819,9 @@ async def minime_suggestions(
             source='fallback',
         )
     except Exception as e:
+        error_text = str(e)
+        if '429' in error_text or 'RESOURCE_EXHAUSTED' in error_text:
+            _gemini_suggestions_disabled_until = time.time() + 300
         logger.warning(f"Mini-Me suggestion refinement skipped; using deterministic fallback: {e}")
         return base_response
 

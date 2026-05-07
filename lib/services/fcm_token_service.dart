@@ -27,7 +27,7 @@ class FcmTokenService {
     }
 
     // Save the current token.
-    await _saveToken(await _messaging.getToken());
+    await _saveToken(await _getTokenWhenReady());
 
     // Refresh token when FCM rotates it.
     _messaging.onTokenRefresh.listen(_saveToken);
@@ -39,13 +39,40 @@ class FcmTokenService {
     if (uid == null) return;
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).set(
-        {'fcmToken': token},
-        SetOptions(merge: true),
-      );
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'fcmToken': token,
+      }, SetOptions(merge: true));
       debugPrint('[FCM] Token saved for $uid');
     } catch (e) {
       debugPrint('[FCM] Failed to save token: $e');
+    }
+  }
+
+  Future<String?> _getTokenWhenReady() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      var apnsReady = false;
+      for (var attempt = 0; attempt < 6; attempt++) {
+        final apnsToken = await _messaging.getAPNSToken();
+        if (apnsToken != null) {
+          apnsReady = true;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      if (!apnsReady) {
+        debugPrint(
+          '[FCM] APNS token unavailable yet; FCM token will refresh later.',
+        );
+        return null;
+      }
+    }
+
+    try {
+      return await _messaging.getToken();
+    } catch (e) {
+      debugPrint('[FCM] Token unavailable yet: $e');
+      return null;
     }
   }
 
@@ -55,10 +82,9 @@ class FcmTokenService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .update({'fcmToken': FieldValue.delete()});
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'fcmToken': FieldValue.delete(),
+      });
     } catch (_) {}
   }
 }

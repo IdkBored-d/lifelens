@@ -88,10 +88,10 @@ class AvatarStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setMiniMeName(String name) {
+  Future<void> setMiniMeName(String name) async {
     final next = name.trim();
     _miniMeName = next.isEmpty ? 'Mini-Me' : next;
-    _saveToPrefs();
+    await _saveToPrefs();
     notifyListeners();
   }
 
@@ -151,11 +151,24 @@ class AvatarStore extends ChangeNotifier {
     final avgSleep = average(sleep);
     final avgExercise = average(exercise);
     final avgSymptoms = average(symptomCount);
+    final symptomDays = symptomCount.where((count) => count > 0).length;
+    var consecutiveSymptomDays = 0;
+    for (final count in symptomCount.reversed) {
+      if (count <= 0) break;
+      consecutiveSymptomDays += 1;
+    }
 
     final moodHealth = ((avgMood - 1.0) / 4.0).clamp(0.0, 1.0);
     final sleepHealth = ((avgSleep - 4.0) / 4.0).clamp(0.0, 1.0);
     final exerciseHealth = (avgExercise / 2.0).clamp(0.0, 1.0);
     final symptomPressure = (avgSymptoms / 6.0).clamp(0.0, 1.0);
+    final symptomContinuity = (consecutiveSymptomDays / 5.0).clamp(0.0, 1.0);
+    final repeatedSymptomPressure = (symptomDays / 7.0).clamp(0.0, 1.0);
+    final chronicSymptomPressure = symptomContinuity < 0.4
+        ? 0.0
+        : (symptomContinuity * 0.7 + repeatedSymptomPressure * 0.3)
+              .clamp(0.0, 1.0)
+              .toDouble();
 
     final positivePressure =
         (moodHealth * 0.44 + sleepHealth * 0.3 + exerciseHealth * 0.26).clamp(
@@ -187,19 +200,24 @@ class AvatarStore extends ChangeNotifier {
         (inactivity * 0.62 + lowSleepPressure * 0.24 + (1 - moodHealth) * 0.14)
             .clamp(0.0, 1.0);
     final lossBias =
-        (symptomPressure * 0.52 +
+        (symptomPressure * 0.24 +
+                chronicSymptomPressure * 0.58 +
                 lowSleepPressure * 0.28 +
                 (exerciseHealth * 0.2))
             .clamp(0.0, 1.0);
 
     final negativeShift = underRecovery * (gainBias - lossBias) * 0.14;
+    final symptomWeightLossShift =
+        -chronicSymptomPressure *
+        (0.05 + symptomPressure * 0.08 + lowSleepPressure * 0.03);
     final positiveShift = -improving * (0.06 + exerciseHealth * 0.06);
-    final targetTrendBodyScale = (1.0 + negativeShift + positiveShift)
-        .clamp(0.88, 1.16)
-        .toDouble();
+    final targetTrendBodyScale =
+        (1.0 + negativeShift + symptomWeightLossShift + positiveShift)
+            .clamp(0.82, 1.16)
+            .toDouble();
     final nextTrendBodyScale =
         (_trendBodyWidthScale * 0.82 + targetTrendBodyScale * 0.18)
-            .clamp(0.88, 1.16)
+            .clamp(0.82, 1.16)
             .toDouble();
 
     final targetFatigue =

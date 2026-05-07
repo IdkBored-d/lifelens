@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_prefs.dart';
 import 'verification_email_service.dart';
 
+final RegExp _usernamePattern = RegExp(r'^[A-Za-z0-9_.]{3,24}$');
+
 class SignupLogin extends StatefulWidget {
   const SignupLogin({super.key, this.initialIsLogin = true});
 
@@ -117,7 +119,7 @@ class _SignupLoginState extends State<SignupLogin> {
   }
 
   bool _isValidUsername(String input) {
-    return RegExp(r'^[A-Za-z0-9_.]{3,24}$').hasMatch(_normalizeUsername(input));
+    return _usernamePattern.hasMatch(_normalizeUsername(input));
   }
 
   Future<void> _submit() async {
@@ -328,7 +330,6 @@ class _SignupLoginState extends State<SignupLogin> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final isLight = cs.brightness == Brightness.light;
 
     final title = isLogin ? 'Sign in to continue' : 'Create your profile';
     final subtitle = isLogin
@@ -341,7 +342,7 @@ class _SignupLoginState extends State<SignupLogin> {
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
           children: [
-            _AuthBackdrop(colorScheme: cs),
+            RepaintBoundary(child: _AuthBackdrop(colorScheme: cs)),
             SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -429,9 +430,7 @@ class _SignupLoginState extends State<SignupLogin> {
                                 ),
                                 style: FilledButton.styleFrom(
                                   minimumSize: const Size(double.infinity, 56),
-                                  backgroundColor: isLight
-                                      ? const Color(0xFF4F46E5)
-                                      : cs.primary,
+                                  backgroundColor: cs.primary,
                                   foregroundColor: cs.onPrimary,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
@@ -577,13 +576,15 @@ class _BackdropOrb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: Container(
-        width: diameter,
-        height: diameter,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [color, color.withValues(alpha: 0.0)],
+      child: RepaintBoundary(
+        child: Container(
+          width: diameter,
+          height: diameter,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [color, color.withValues(alpha: 0.0)],
+            ),
           ),
         ),
       ),
@@ -937,7 +938,7 @@ class _IdentityCard extends StatelessWidget {
                   if (v.isEmpty) {
                     return 'Required';
                   }
-                  if (!RegExp(r'^[A-Za-z0-9_.]{3,24}$').hasMatch(v)) {
+                  if (!_usernamePattern.hasMatch(v)) {
                     return 'Use 3-24 chars: letters, numbers, ., _';
                   }
                   return null;

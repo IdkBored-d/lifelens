@@ -217,8 +217,8 @@ ThemeData lifeLensCalmTheme() {
   const borderStrong = Color(0xFF94A3B8);
   const text = Color(0xFF0F172A);
   const mutedText = Color(0xFF64748B);
-  const primary = Color(0xFF4F46E5);
-  const primarySoft = Color(0xFFE0E7FF);
+  const primary = Color(0xFF3730A3);
+  const primarySoft = Color(0xFFE8EAFD);
   const secondary = Color(0xFF0F766E);
   const secondarySoft = Color(0xFFCCFBF1);
 
@@ -315,13 +315,36 @@ ThemeData lifeLensCalmTheme() {
       style: ElevatedButton.styleFrom(
         animationDuration: const Duration(milliseconds: 180),
         elevation: 0,
-        backgroundColor: surface,
-        foregroundColor: cs.primary,
+        backgroundColor: cs.surfaceContainerHighest,
+        foregroundColor: cs.onSurface,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: cs.outlineVariant),
         ),
+        textStyle: base.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        animationDuration: const Duration(milliseconds: 180),
+        foregroundColor: cs.onSurface,
+        side: BorderSide(color: cs.outlineVariant),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: base.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        animationDuration: const Duration(milliseconds: 180),
+        foregroundColor: cs.primary,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         textStyle: base.textTheme.labelLarge?.copyWith(
           fontWeight: FontWeight.w800,
         ),

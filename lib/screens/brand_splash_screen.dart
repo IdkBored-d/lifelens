@@ -34,40 +34,44 @@ class BrandSplashScreen extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: logoSize,
-                        height: logoSize,
-                        decoration: BoxDecoration(
-                          color: logoBg,
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                            color: accent.withValues(
-                              alpha: isDark ? 0.35 : 0.45,
-                            ),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
+                      RepaintBoundary(
+                        child: Container(
+                          width: logoSize,
+                          height: logoSize,
+                          decoration: BoxDecoration(
+                            color: logoBg,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
                               color: accent.withValues(
-                                alpha: isDark ? 0.30 : 0.18,
+                                alpha: isDark ? 0.35 : 0.45,
                               ),
-                              blurRadius: 32,
-                              offset: const Offset(0, 8),
+                              width: 1.5,
                             ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.spa_rounded,
-                          size: iconSize,
-                          color: accent,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.withValues(
+                                  alpha: isDark ? 0.30 : 0.18,
+                                ),
+                                blurRadius: 32,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.spa_rounded,
+                            size: iconSize,
+                            color: accent,
+                          ),
                         ),
                       ),
                       SizedBox(height: spacing),
                       SizedBox(
                         width: 132,
                         height: 34,
-                        child: CustomPaint(
-                          painter: _LifeLensWordmarkPainter(wordmarkColor),
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            painter: _LifeLensWordmarkPainter(wordmarkColor),
+                          ),
                         ),
                       ),
                     ],

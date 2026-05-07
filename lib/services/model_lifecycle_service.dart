@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/widgets.dart' show WidgetsBindingObserver;
-import 'dart:io' show Platform;
-
 import 'mobilebert_service.dart';
 import 'disembed_service.dart';
 import 'fitness_mlp_service.dart';
@@ -29,16 +27,17 @@ class ModelLifecycleService with WidgetsBindingObserver {
   // ── Memory estimates (MB) ────────────────────────────────────────────────────
   static const Map<ModelType, int> _kEstimatedMB = {
     ModelType.mobileBert: 35,
-    ModelType.disEmbed:   55,
+    ModelType.disEmbed: 55,
     ModelType.fitnessMlp: 8,
-    ModelType.miniGen:    96,  // F16 GGUF; actual runtime memory managed by llama.cpp
+    ModelType.miniGen:
+        96, // F16 GGUF; actual runtime memory managed by llama.cpp
   };
 
   // ── Service references ───────────────────────────────────────────────────────
   late MobileBertService _mobileBert;
-  late DisEmbedService   _disEmbed;
+  late DisEmbedService _disEmbed;
   late FitnessMlpService _fitnessMlp;
-  late MiniGenService    _miniGen;
+  late MiniGenService _miniGen;
 
   bool _initialised = false;
 
@@ -49,14 +48,14 @@ class ModelLifecycleService with WidgetsBindingObserver {
 
   void init({
     required MobileBertService mobileBert,
-    required DisEmbedService   disEmbed,
+    required DisEmbedService disEmbed,
     required FitnessMlpService fitnessMlp,
-    required MiniGenService    miniGen,
+    required MiniGenService miniGen,
   }) {
-    _mobileBert  = mobileBert;
-    _disEmbed    = disEmbed;
-    _fitnessMlp  = fitnessMlp;
-    _miniGen     = miniGen;
+    _mobileBert = mobileBert;
+    _disEmbed = disEmbed;
+    _fitnessMlp = fitnessMlp;
+    _miniGen = miniGen;
     _initialised = true;
   }
 
@@ -68,9 +67,9 @@ class ModelLifecycleService with WidgetsBindingObserver {
     _assertInitialised();
     return switch (type) {
       ModelType.mobileBert => _mobileBert.isLoaded,
-      ModelType.disEmbed   => _disEmbed.isLoaded,
+      ModelType.disEmbed => _disEmbed.isLoaded,
       ModelType.fitnessMlp => _fitnessMlp.isLoaded,
-      ModelType.miniGen    => _miniGen.isLoaded,
+      ModelType.miniGen => _miniGen.isLoaded,
     };
   }
 
@@ -105,12 +104,6 @@ class ModelLifecycleService with WidgetsBindingObserver {
       case ModelType.fitnessMlp:
         await _fitnessMlp.reload();
       case ModelType.miniGen:
-        // iOS simulator/framework packaging can fail for llamadart.
-        // Keep app stable and allow backend fallback when unavailable.
-        if (Platform.isIOS) {
-          debugPrint('[ModelLifecycle] MiniGen load skipped on iOS; using backend fallback.');
-          return;
-        }
         try {
           final path = await MiniGenDownloader.ensureModel();
           await _miniGen.reload(path);
@@ -125,7 +118,9 @@ class ModelLifecycleService with WidgetsBindingObserver {
   /// loaded at all times — this is a no-op for all current model types.
   Future<void> unloadModel(ModelType type) async {
     _assertInitialised();
-    debugPrint('[ModelLifecycle] unloadModel($type) — conservative policy, skipped.');
+    debugPrint(
+      '[ModelLifecycle] unloadModel($type) — conservative policy, skipped.',
+    );
   }
 
   // ── Memory pressure ──────────────────────────────────────────────────────────
@@ -134,15 +129,19 @@ class ModelLifecycleService with WidgetsBindingObserver {
   /// Override present for future policy changes.
   @override
   void didHaveMemoryPressure() {
-    debugPrint('[ModelLifecycle] Memory pressure received. '
-        'Current usage: ${getMemoryUsageMB()} MB. No models evicted (all under threshold).');
+    debugPrint(
+      '[ModelLifecycle] Memory pressure received. '
+      'Current usage: ${getMemoryUsageMB()} MB. No models evicted (all under threshold).',
+    );
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
   void _assertInitialised() {
     if (!_initialised) {
-      throw StateError('ModelLifecycleService not initialised. Call init() first.');
+      throw StateError(
+        'ModelLifecycleService not initialised. Call init() first.',
+      );
     }
   }
 }

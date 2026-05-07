@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -56,20 +55,22 @@ class AppServices {
   static late final EodPipelineService eodPipeline;
 
   // Two tokenizer instances — same vocab, different maxLength
-  static late final WordPieceTokenizer _mbTokenizer; // maxLen=128 for MobileBERT
+  static late final WordPieceTokenizer
+  _mbTokenizer; // maxLen=128 for MobileBERT
   static late final WordPieceTokenizer _deTokenizer; // maxLen=512 for DisEmbed
 
   // ── Configuration ────────────────────────────────────────────────────────────
-  static const String _weaviateHost   = 'https://your-cluster.weaviate.network';
+  static const String _weaviateHost = 'https://your-cluster.weaviate.network';
   static const String _weaviateApiKey = 'YOUR_WEAVIATE_API_KEY';
-  static const String _geminiApiKey   = 'YOUR_GEMINI_API_KEY';
+  static const String _geminiApiKey = 'YOUR_GEMINI_API_KEY';
 
   // Asset paths
-  static const String _mobileBertAsset = 'assets/models/mobile_bert_emotion.onnx';
-  static const String _disEmbedAsset   = 'assets/models/disembed_fp16.onnx';
-  static const String _fitnessAsset    = 'assets/models/for MVP/fitness_model_v9.onnx';
-  static const String _vocabAsset      = 'assets/models/vocab.txt';
-
+  static const String _mobileBertAsset =
+      'assets/models/mobile_bert_emotion.onnx';
+  static const String _disEmbedAsset = 'assets/models/disembed_fp16.onnx';
+  static const String _fitnessAsset =
+      'assets/models/for MVP/fitness_model_v9.onnx';
+  static const String _vocabAsset = 'assets/models/vocab.txt';
 
   // ── Initialisation ───────────────────────────────────────────────────────────
 
@@ -84,59 +85,65 @@ class AppServices {
     final dbStart = sw.elapsedMilliseconds;
     try {
       await isar.init();
-      debugPrint('[AppServices] init: Isar initialised in ${sw.elapsedMilliseconds - dbStart}ms');
+      debugPrint(
+        '[AppServices] init: Isar initialised in ${sw.elapsedMilliseconds - dbStart}ms',
+      );
     } catch (e) {
       debugPrint('[AppServices] init: Isar init failed (non-fatal): $e');
     }
 
     // ── 2. Shared BERT tokenizers ────────────────────────────────────────────
     final vocabRaw = await rootBundle.loadString(_vocabAsset);
-    final vocab    = VocabLoader.fromString(vocabRaw);
-    _mbTokenizer   = WordPieceTokenizer(vocab: vocab, config: TokenizerConfig(maxLength: 128, normalizeText: true));
-    _deTokenizer   = WordPieceTokenizer(vocab: vocab, config: TokenizerConfig(maxLength: 512, normalizeText: true));
+    final vocab = VocabLoader.fromString(vocabRaw);
+    _mbTokenizer = WordPieceTokenizer(
+      vocab: vocab,
+      config: TokenizerConfig(maxLength: 128, normalizeText: true),
+    );
+    _deTokenizer = WordPieceTokenizer(
+      vocab: vocab,
+      config: TokenizerConfig(maxLength: 512, normalizeText: true),
+    );
 
     // ── 3. Stateless services ────────────────────────────────────────────────
     confidence = const ConfidenceManager();
 
     // ── 4. External services ─────────────────────────────────────────────────
     weaviate = WeaviateService(host: _weaviateHost, apiKey: _weaviateApiKey);
-    gemini   = GeminiService(apiKey: _geminiApiKey);
+    gemini = GeminiService(apiKey: _geminiApiKey);
 
     // ── 5. Model service instances (constructed immediately, models loaded below) ──
     final modelsStart = sw.elapsedMilliseconds;
     mobileBert = MobileBertService();
-    disEmbed   = DisEmbedService();
+    disEmbed = DisEmbedService();
     fitnessMlp = FitnessMlpService();
-    miniGen    = MiniGenService();
+    miniGen = MiniGenService();
     miniGenChat = MiniGenChat(miniGen);
 
     // ── 5a. Pipeline services — created NOW so they are always available,
     //        even if model loading below times out or is slow. ──────────────
     moodPipeline = MoodPipelineService(
       mobileBert: mobileBert,
-      gemini:     gemini,
+      gemini: gemini,
       confidence: confidence,
-      tokenize:   _mobileBertTokenize,
+      tokenize: _mobileBertTokenize,
     );
 
     symptomPipeline = SymptomPipelineService(
-      disEmbed:   disEmbed,
-      gemini:     gemini,
-      weaviate:   weaviate,
+      disEmbed: disEmbed,
       confidence: confidence,
-      tokenize:   _disEmbedTokenize,
+      tokenize: _disEmbedTokenize,
     );
 
     fitnessPipeline = FitnessPipelineService(
-      mlp:             fitnessMlp,
-      confidence:      confidence,
+      mlp: fitnessMlp,
+      confidence: confidence,
       fetchHealthData: _fetchHealthData,
     );
 
     eodPipeline = EodPipelineService(
-      gemini:   gemini,
+      gemini: gemini,
       weaviate: weaviate,
-      fitness:  fitnessPipeline,
+      fitness: fitnessPipeline,
       disEmbed: disEmbed,
       tokenize: _disEmbedTokenize,
     );
@@ -153,21 +160,13 @@ class AppServices {
       }
     }
 
-    // iOS simulator currently does not load llamadart.framework reliably in this
-    // project setup; skip MiniGen preload there to avoid startup isolate crash.
-    final miniGenPreloadEnabled = !Platform.isIOS;
-    final miniGenAvailable = miniGenPreloadEnabled
-        ? await MiniGenDownloader.isModelAvailable()
-        : false;
-    if (!miniGenPreloadEnabled) {
-      debugPrint('[AppServices] init: MiniGen preload disabled on iOS (using backend fallback)');
-    }
+    final miniGenAvailable = await MiniGenDownloader.isModelAvailable();
 
     await Future.wait([
       loadModel('MobileBERT', () => mobileBert.load(_mobileBertAsset)),
-      loadModel('DisEmbed',   () => disEmbed.load(_disEmbedAsset)),
+      loadModel('DisEmbed', () => disEmbed.load(_disEmbedAsset)),
       loadModel('FitnessMLP', () => fitnessMlp.load(_fitnessAsset)),
-      if (miniGenPreloadEnabled && miniGenAvailable)
+      if (miniGenAvailable)
         loadModel('MiniGen', () async {
           final path = await MiniGenDownloader.ensureModel();
           await miniGen.load(path);
@@ -176,25 +175,29 @@ class AppServices {
 
     // First launch can spend significant time downloading MiniGen from HF.
     // Do not block app startup; preload it in background instead.
-    if (miniGenPreloadEnabled && !miniGenAvailable) {
+    if (!miniGenAvailable) {
       unawaited(
         loadModel('MiniGen (background)', () async {
           final path = await MiniGenDownloader.ensureModel();
           await miniGen.load(path);
         }),
       );
-      debugPrint('[AppServices] init: MiniGen not cached yet; background preload started');
+      debugPrint(
+        '[AppServices] init: MiniGen not cached yet; background preload started',
+      );
     }
 
-    final expectedBlockingModels = (miniGenPreloadEnabled && miniGenAvailable) ? 4 : 3;
-    debugPrint('[AppServices] init: blocking model preload ready $loadedCount/$expectedBlockingModels in ${sw.elapsedMilliseconds - modelsStart}ms');
+    final expectedBlockingModels = miniGenAvailable ? 4 : 3;
+    debugPrint(
+      '[AppServices] init: blocking model preload ready $loadedCount/$expectedBlockingModels in ${sw.elapsedMilliseconds - modelsStart}ms',
+    );
 
     // ── 6. Lifecycle + startup repair ───────────────────────────────────────
     ModelLifecycleService.instance.init(
       mobileBert: mobileBert,
-      disEmbed:   disEmbed,
+      disEmbed: disEmbed,
       fitnessMlp: fitnessMlp,
-      miniGen:    miniGen,
+      miniGen: miniGen,
     );
     WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
 
@@ -202,7 +205,9 @@ class AppServices {
     try {
       final chatSessions = ChatSessionService();
       await chatSessions.repairIncompleteSessions();
-      debugPrint('[AppServices] init: Startup repair in ${sw.elapsedMilliseconds - repairStart}ms');
+      debugPrint(
+        '[AppServices] init: Startup repair in ${sw.elapsedMilliseconds - repairStart}ms',
+      );
     } catch (e) {
       debugPrint('[AppServices] startup repair failed (non-fatal): $e');
     }
@@ -215,7 +220,7 @@ class AppServices {
   static Map<String, List<int>> _mobileBertTokenize(String text, int maxLen) {
     final output = _mbTokenizer.encode(text);
     return {
-      'input_ids':      output.inputIds.take(maxLen).toList(),
+      'input_ids': output.inputIds.take(maxLen).toList(),
       'attention_mask': output.attentionMask.take(maxLen).toList(),
     };
   }
@@ -223,7 +228,7 @@ class AppServices {
   static Map<String, List<int>> _disEmbedTokenize(String text, int maxLen) {
     final output = _deTokenizer.encode(text);
     return {
-      'input_ids':      output.inputIds.take(maxLen).toList(),
+      'input_ids': output.inputIds.take(maxLen).toList(),
       'attention_mask': output.attentionMask.take(maxLen).toList(),
     };
   }
@@ -238,19 +243,23 @@ class AppServices {
 
   static Future<RawHealthData?> _fetchHealthData() async {
     try {
-      final Map<dynamic, dynamic>? raw = await _healthChannel.invokeMethod('getDailyHealthMetrics');
+      final Map<dynamic, dynamic>? raw = await _healthChannel.invokeMethod(
+        'getDailyHealthMetrics',
+      );
       if (raw == null) return null;
       return RawHealthData(
-        age:               (raw['age'] as num?)?.toDouble()               ?? 0,
-        weightKg:          (raw['weightKg'] as num?)?.toDouble()          ?? 0,
-        heightCm:          (raw['heightCm'] as num?)?.toDouble()          ?? 0,
-        restingHeartRate:  (raw['restingHeartRate'] as num?)?.toDouble()  ?? 0,
-        sleepHours:        (raw['sleepHours'] as num?)?.toDouble()        ?? 0,
-        smokes:            raw['smokes'] as bool?                         ?? false,
-        nutritionQuality:  (raw['nutritionQuality'] as num?)?.toDouble()  ?? 0,
-        activityIndex:     (raw['activityIndex'] as num?)?.toDouble()     ?? 0,
-        isMale:            raw['isMale'] as bool?                         ?? false,
-        timestamp:         DateTime.tryParse(raw['timestamp'] as String? ?? '') ?? DateTime.now(),
+        age: (raw['age'] as num?)?.toDouble() ?? 0,
+        weightKg: (raw['weightKg'] as num?)?.toDouble() ?? 0,
+        heightCm: (raw['heightCm'] as num?)?.toDouble() ?? 0,
+        restingHeartRate: (raw['restingHeartRate'] as num?)?.toDouble() ?? 0,
+        sleepHours: (raw['sleepHours'] as num?)?.toDouble() ?? 0,
+        smokes: raw['smokes'] as bool? ?? false,
+        nutritionQuality: (raw['nutritionQuality'] as num?)?.toDouble() ?? 0,
+        activityIndex: (raw['activityIndex'] as num?)?.toDouble() ?? 0,
+        isMale: raw['isMale'] as bool? ?? false,
+        timestamp:
+            DateTime.tryParse(raw['timestamp'] as String? ?? '') ??
+            DateTime.now(),
       );
     } catch (e) {
       debugPrint('Health channel error: $e');
@@ -261,7 +270,11 @@ class AppServices {
   // ── Runtime helpers ───────────────────────────────────────────────────────────
 
   static bool get isMiniGenLoaded {
-    try { return miniGen.isLoaded; } catch (_) { return false; }
+    try {
+      return miniGen.isLoaded;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<bool> isOnline() async {

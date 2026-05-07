@@ -265,28 +265,24 @@ class _AppRootState extends State<AppRoot> with SingleTickerProviderStateMixin {
         fit: StackFit.expand,
         children: [
           // ── Content: always painted under the splash overlay ───────────
-          AnimatedBuilder(
-            animation: _openCtrl,
-            child: RepaintBoundary(child: _buildContent()),
-            builder: (context, child) {
-              return Opacity(
-                opacity: _openTriggered ? _contentFade.value : 1,
-                child: Transform.scale(
-                  scale: _openTriggered ? _contentScale.value : 1,
-                  child: child,
-                ),
-              );
-            },
+          FadeTransition(
+            opacity: _openTriggered
+                ? _contentFade
+                : const AlwaysStoppedAnimation<double>(1),
+            child: ScaleTransition(
+              scale: _openTriggered
+                  ? _contentScale
+                  : const AlwaysStoppedAnimation<double>(1),
+              child: RepaintBoundary(child: _buildContent()),
+            ),
           ),
           // ── Splash: fades to transparent but stays mounted, preventing
           // the one-frame flash that can happen when removing the overlay.
           IgnorePointer(
             ignoring: _openTriggered,
-            child: AnimatedBuilder(
-              animation: _splashFade,
-              builder: (_, child) =>
-                  Opacity(opacity: _splashFade.value, child: child),
-              child: const BrandSplashScreen(),
+            child: FadeTransition(
+              opacity: _splashFade,
+              child: const RepaintBoundary(child: BrandSplashScreen()),
             ),
           ),
         ],

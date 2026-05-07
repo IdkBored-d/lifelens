@@ -14,7 +14,6 @@ import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/sleep_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
-import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 import 'package:provider/provider.dart';
 
@@ -135,6 +134,11 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
         actions: [
           IconButton(
             tooltip: 'Clear draft',
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(52),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             onPressed: () async {
               setState(() {
                 selectedMood = -1;
@@ -446,6 +450,12 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                         borderRadius: BorderRadius.circular(14),
                         child: Row(
                           children: [
+                            Icon(
+                              Icons.mood_rounded,
+                              size: 20,
+                              color: cs.primary,
+                            ),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 _showPreviousLogs
@@ -537,6 +547,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                       .refresh(
                                         moodStore: moodStore,
                                         sleepStore: context.read<SleepStore>(),
+                                        fromLog: true,
                                       ),
                                 );
                               }
@@ -551,14 +562,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 syncWarning =
                                     'Saved on this device. Cloud sync failed for this mood log.';
                               }
-
-                              // Auto-detect and register symptoms from user notes
-                              unawaited(
-                                SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
-                                  userLog,
-                                  'mood_log',
-                                ),
-                              );
                             } catch (e) {
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -607,7 +610,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                     child: LogButtonContent(
                       state: _buttonState,
                       idleLabel: widget.source == LogSource.tab
-                          ? "Save and log another time"
+                          ? "Log mood entry"
                           : "Save check-in",
                       loadingLabel: 'Saving check-in',
                       successLabel: 'Saved',

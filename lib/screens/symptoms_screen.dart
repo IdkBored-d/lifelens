@@ -75,7 +75,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     try {
       HapticFeedback.mediumImpact();
 
-      // Run the full pipeline (calls backend → Gemini → stores to Isar)
+      // Run the full symptom analysis pipeline and store the result to Isar.
       final isOnline = await AppServices.isOnline();
       List<String> miniMeTop3 = const [];
       try {
@@ -85,16 +85,20 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         );
         miniMeTop3 = result.diagnoses
             .map((d) => d.diseaseName.trim())
-            .where((name) =>
-                name.isNotEmpty &&
-                name.toLowerCase() != 'symptom log saved' &&
-                name.toLowerCase() != 'analysis incomplete' &&
-                name.toLowerCase() != 'see analysis' &&
-                name.toLowerCase() != 'unknown')
+            .where(
+              (name) =>
+                  name.isNotEmpty &&
+                  name.toLowerCase() != 'symptom log saved' &&
+                  name.toLowerCase() != 'analysis incomplete' &&
+                  name.toLowerCase() != 'see analysis' &&
+                  name.toLowerCase() != 'unknown',
+            )
             .take(3)
             .toList(growable: false);
       } catch (pipelineError) {
-        debugPrint('[SymptomsScreen] Pipeline failed, storing stub: $pipelineError');
+        debugPrint(
+          '[SymptomsScreen] Pipeline failed, storing stub: $pipelineError',
+        );
         // Fallback: store a basic entry so the log is not lost
         await AppServices.symptomPipeline.storeWithoutAnalysis(
           userSymptoms: symptomsForPipeline.join(', '),
@@ -127,7 +131,8 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         );
       }
       if (miniMeTop3.isNotEmpty && mounted) {
-        await context.read<MiniMeSuggestionsInbox>().enqueueSymptomInsight(
+        final inbox = context.read<MiniMeSuggestionsInbox>();
+        await inbox.enqueueSymptomInsight(
           topConditions: miniMeTop3,
           symptoms: symptomsForPipeline,
         );
@@ -154,6 +159,14 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         setState(() => _saveButtonState = LogButtonVisualState.idle);
       }
     }
+  }
+
+  void _clearDraft() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _symptomsController.clear();
+      _saveButtonState = LogButtonVisualState.idle;
+    });
   }
 
   Future<void> _syncSymptomsToCloud({
@@ -210,6 +223,18 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
         title: const Text('Symptoms Log'),
+        actions: [
+          IconButton(
+            tooltip: 'Clear draft',
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(52),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: _clearDraft,
+            icon: const Icon(Icons.restart_alt_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: GestureDetector(
@@ -297,7 +322,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         : _saveSymptoms,
                     child: LogButtonContent(
                       state: _saveButtonState,
-                      idleLabel: 'Save entry',
+                      idleLabel: 'Log symptom entry',
                       loadingLabel: 'Saving symptoms',
                       successLabel: 'Saved',
                     ),
@@ -310,7 +335,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       ),
     );
   }
-
 }
 
 class _SectionCard extends StatelessWidget {
@@ -397,6 +421,8 @@ class _HistoryDisclosureCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
                 children: [
+                  Icon(Icons.healing_outlined, size: 20, color: cs.primary),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       expanded ? 'Hide previous logs' : 'View previous logs',
@@ -468,10 +494,9 @@ class _SymptomHistoryList extends StatelessWidget {
           );
         }
 
-        final entries = snapshot.data!
-            .where(_isTodayEntry)
-            .toList(growable: false)
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        final entries =
+            snapshot.data!.where(_isTodayEntry).toList(growable: false)
+              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
         if (entries.isEmpty) {
           return Text(

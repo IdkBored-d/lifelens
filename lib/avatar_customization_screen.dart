@@ -15,10 +15,13 @@ class AvatarCustomizationScreen extends StatefulWidget {
 
 class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
   final TextEditingController _nameController = TextEditingController();
+  final FocusNode _nameFocusNode = FocusNode();
+  String? _syncedStoreName;
 
   @override
   void dispose() {
     _nameController.dispose();
+    _nameFocusNode.dispose();
     super.dispose();
   }
 
@@ -26,7 +29,8 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
     final nextName = (value ?? _nameController.text).trim();
     final previousName = store.miniMeName;
 
-    store.setMiniMeName(nextName);
+    await store.setMiniMeName(nextName);
+    _syncedStoreName = store.miniMeName;
     _nameController.text = store.miniMeName;
     _nameController.selection = TextSelection.fromPosition(
       TextPosition(offset: _nameController.text.length),
@@ -142,7 +146,11 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
           builder: (context) {
             final cs = theme.colorScheme;
 
-            if (_nameController.text != store.miniMeName) {
+            final shouldSyncNameField =
+                _syncedStoreName != store.miniMeName &&
+                !_nameFocusNode.hasFocus;
+            if (shouldSyncNameField) {
+              _syncedStoreName = store.miniMeName;
               _nameController.text = store.miniMeName;
               _nameController.selection = TextSelection.fromPosition(
                 TextPosition(offset: _nameController.text.length),
@@ -235,6 +243,7 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                       const SizedBox(height: 10),
                       TextField(
                         controller: _nameController,
+                        focusNode: _nameFocusNode,
                         textInputAction: TextInputAction.done,
                         maxLength: 24,
                         decoration: InputDecoration(
@@ -358,12 +367,11 @@ class _AvatarCustomizationScreenState extends State<AvatarCustomizationScreen> {
                                           preset.subtitle,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style:
-                                              theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                    color: cs.onSurfaceVariant,
-                                                    height: 1.25,
-                                                  ),
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: cs.onSurfaceVariant,
+                                                height: 1.25,
+                                              ),
                                         ),
                                         const Spacer(),
                                         Row(
@@ -479,9 +487,7 @@ class _ToneDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        border: Border.all(
-          color: Colors.black.withValues(alpha: 0.08),
-        ),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
       ),
     );
   }

@@ -15,6 +15,7 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
     with TickerProviderStateMixin {
   // Continuous ambient loop — drives orbs + logo float + glow pulse
   late final AnimationController _ambientCtrl;
+  late final Listenable _logoMotion;
 
   // Single entrance controller — all elements animate in together
   late final AnimationController _entranceCtrl;
@@ -93,6 +94,7 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
             curve: const Interval(0.38, 1.0, curve: Curves.easeOutCubic),
           ),
         );
+    _logoMotion = Listenable.merge([_entranceCtrl, _ambientCtrl]);
 
     // Start synchronously — animation is already ticking on the very first frame
     _entranceCtrl.forward();
@@ -174,15 +176,19 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
           // ── Ambient orb background ───────────────────────────────────────
           AnimatedBuilder(
             animation: _ambientCtrl,
-            builder: (context, _) => CustomPaint(
-              painter: _OrbPainter(
-                t: _ambientCtrl.value,
-                primary: accent,
-                secondary: colorScheme.secondary,
-                tertiary: isDark
-                    ? const Color(0xFFBFA5FF)
-                    : const Color(0xFF8B5CF6),
-                alphaScale: isDark ? 1.0 : 0.58,
+            builder: (context, _) => RepaintBoundary(
+              child: CustomPaint(
+                isComplex: true,
+                willChange: true,
+                painter: _OrbPainter(
+                  t: _ambientCtrl.value,
+                  primary: accent,
+                  secondary: colorScheme.secondary,
+                  tertiary: isDark
+                      ? const Color(0xFFBFA5FF)
+                      : const Color(0xFF8B5CF6),
+                  alphaScale: isDark ? 1.0 : 0.58,
+                ),
               ),
             ),
           ),
@@ -196,7 +202,7 @@ class _StartupSplashScreenState extends State<StartupSplashScreen>
 
                   // ── Logo ─────────────────────────────────────────────────
                   AnimatedBuilder(
-                    animation: Listenable.merge([_entranceCtrl, _ambientCtrl]),
+                    animation: _logoMotion,
                     builder: (context, _) {
                       final floatY =
                           math.sin(_ambientCtrl.value * 2 * math.pi) * 7.0;

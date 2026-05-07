@@ -1,6 +1,8 @@
 """
-Gemini API Service for Symptom Analysis
-Integrates with RAG system for grounded medical responses
+Backend analysis service.
+
+Symptom disease prediction uses DisEmbed-backed RAG only. The Gemini client is
+kept here because other Mini-Me endpoints use it for wording refinement.
 """
 from google import genai
 from google.genai import types
@@ -26,8 +28,10 @@ logger = logging.getLogger(__name__)
 
 class GeminiAnalysisService:
     """
-    Complete Gemini API integration for symptom analysis
-    Uses RAG for grounded responses and prevents hallucinations
+    Shared analysis service for symptom prediction and Mini-Me refinement.
+
+    Symptom prediction is intentionally RAG/model-only; Gemini is initialized
+    for other endpoints that opt into response wording refinement.
     """
     
     # Emergency symptoms that require immediate medical attention
@@ -40,7 +44,8 @@ class GeminiAnalysisService:
         'severe burns', 'stroke symptoms', 'heart attack',
         'anaphylaxis', 'severe trauma', 'heavy bleeding',
         'can\'t breathe', 'choking', 'severe pain', 'paralysis',
-        'unresponsive', 'blue lips', 'blue skin'
+        'unresponsive', 'blue lips', 'blue skin',
+        'heart pain', 'heart ache', 'chest pressure', 'chest discomfort'
     }
     
     URGENT_KEYWORDS = {
@@ -118,35 +123,62 @@ If with others:
 **This is not a diagnosis, but these symptoms require immediate professional medical evaluation.**
 """
 
+    def _symptom_terms(self, symptom: str) -> List[str]:
+        """Return conservative aliases used only for matching user symptoms to indexed condition symptoms."""
+        normalized = symptom.strip().lower()
+        aliases = {
+            'dizziness': ['dizziness', 'dizzy', 'vertigo', 'lightheaded', 'lightheadedness'],
+            'chest pain': ['chest pain', 'chest ache', 'chest pressure', 'chest discomfort', 'heart pain', 'heart ache'],
+            'heart pain': ['heart pain', 'heart ache', 'chest pain', 'chest pressure', 'chest discomfort'],
+            'stomach pain': ['stomach pain', 'stomach ache', 'abdominal pain', 'belly pain', 'cramps'],
+            'body ache': ['body ache', 'body aches', 'muscle pain', 'muscle aches', 'aches', 'myalgia'],
+            'congestion': ['congestion', 'congested', 'stuffy nose', 'nasal congestion'],
+            'runny nose': ['runny nose', 'rhinitis'],
+            'shortness of breath': ['shortness of breath', 'short of breath', 'breathless', 'difficulty breathing'],
+        }
+        return aliases.get(normalized, [normalized])
+
+    def _contains_any_term(self, haystack: str, terms: List[str]) -> bool:
+        return any(term and re.search(rf'\b{re.escape(term)}\b', haystack) for term in terms)
+
     def _score_chunk_against_symptoms(self, chunk: Dict[str, Any], symptoms: List[str]) -> float:
         """Blend semantic relevance with direct symptom-text overlap for better ranking quality."""
         relevance = float(chunk.get('relevance', 0.0))
         symptom_phrases = [s.strip().lower() for s in symptoms if s.strip()]
         if not symptom_phrases:
+            chunk['primary_overlap'] = 0.0
+            chunk['secondary_overlap'] = 0.0
             return relevance
 
-        searchable_parts = [
-            str(chunk.get('condition', '')),
-            str(chunk.get('content', '')),
-        ]
         meta = chunk.get('metadata', {}) or {}
         meta_symptoms = meta.get('symptoms') if isinstance(meta, dict) else None
+        primary_parts = [str(chunk.get('condition', ''))]
         if isinstance(meta_symptoms, list):
-            searchable_parts.extend(str(s) for s in meta_symptoms)
+            primary_parts.extend(str(s) for s in meta_symptoms)
+        secondary_parts = [str(chunk.get('content', ''))]
 
-        searchable = ' '.join(searchable_parts).lower()
-        searchable = re.sub(r'\s+', ' ', searchable).strip()
-        if not searchable:
+        primary_searchable = re.sub(r'\s+', ' ', ' '.join(primary_parts).lower()).strip()
+        secondary_searchable = re.sub(r'\s+', ' ', ' '.join(secondary_parts).lower()).strip()
+        if not primary_searchable and not secondary_searchable:
+            chunk['primary_overlap'] = 0.0
+            chunk['secondary_overlap'] = 0.0
             return relevance
 
-        matched = 0
+        primary_matched = 0
+        secondary_matched = 0
         for phrase in symptom_phrases:
-            if phrase and phrase in searchable:
-                matched += 1
+            terms = self._symptom_terms(phrase)
+            if self._contains_any_term(primary_searchable, terms):
+                primary_matched += 1
+            elif self._contains_any_term(secondary_searchable, terms):
+                secondary_matched += 1
 
-        overlap = matched / max(1, len(symptom_phrases))
-        # Weighted blend: semantic vector match remains primary, lexical overlap stabilizes ranking.
-        return (0.75 * relevance) + (0.25 * overlap)
+        primary_overlap = primary_matched / max(1, len(symptom_phrases))
+        secondary_overlap = secondary_matched / max(1, len(symptom_phrases))
+        chunk['primary_overlap'] = primary_overlap
+        chunk['secondary_overlap'] = secondary_overlap
+
+        return (0.55 * relevance) + (0.35 * primary_overlap) + (0.10 * secondary_overlap)
 
     def _rerank_knowledge_chunks(
         self,
@@ -157,6 +189,17 @@ If with others:
         scored: List[tuple[float, Dict[str, Any]]] = []
         for chunk in knowledge_chunks:
             score = self._score_chunk_against_symptoms(chunk, symptoms)
+            chunk['match_score'] = score
+            primary_overlap = float(chunk.get('primary_overlap', 0.0))
+            secondary_overlap = float(chunk.get('secondary_overlap', 0.0))
+            relevance = float(chunk.get('relevance', 0.0))
+            has_grounded_match = (
+                primary_overlap > 0.0
+                or (secondary_overlap >= 0.5 and relevance >= 0.45)
+                or score >= 0.58
+            )
+            if not has_grounded_match:
+                continue
             scored.append((score, chunk))
 
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -188,13 +231,14 @@ If with others:
             rag_query = RAGQuery(
                 query_text=query_text,
                 max_results=max_results,
-                min_certainty=0.65
+                min_certainty=0.35
             )
 
             results = await self.rag_service.search_similar_conditions(rag_query)
 
-            # Retry with a looser threshold if strict matching returns nothing.
-            if not results:
+            # Retry with a looser threshold if strict matching returns too few
+            # candidates for the Mini-Me top-3 symptom explanation.
+            if len(results) < min(3, max_results):
                 rag_query = RAGQuery(
                     query_text=query_text,
                     max_results=max_results,
@@ -377,7 +421,7 @@ Requirements:
         for chunk in knowledge_chunks[:3]:
             meta = chunk.get('metadata', {})
             condition = chunk.get('condition', 'Unknown condition')
-            relevance = float(chunk.get('relevance', 0.5))
+            relevance = float(chunk.get('match_score', chunk.get('relevance', 0.5)))
             description = chunk.get('content', '')
             severity = meta.get('severity', 'moderate')
             when_to_seek = meta.get('when_to_seek_care', '')
@@ -431,7 +475,10 @@ Requirements:
     ) -> SymptomAnalysisResult:
         """
         Complete symptom analysis pipeline.
-        Uses Gemini when available; falls back to pure RAG predictions otherwise.
+
+        Disease prediction intentionally uses the app's own DisEmbed-backed
+        medical knowledge retrieval path only. Gemini is not called here;
+        it remains available to other endpoints that refine Mini-Me wording.
         """
         start_time = time.time()
 
@@ -452,52 +499,17 @@ Requirements:
         try:
             knowledge_chunks = await self._retrieve_medical_knowledge(
                 symptom_input.symptoms,
-                max_results=5
+                max_results=10
             )
         except Exception as rag_err:
             logger.warning(f"RAG retrieval failed: {rag_err}")
 
-        # Step 3: Try Gemini (fast path)
-        if self.client is not None:
-            try:
-                prompt = self._build_rag_grounded_prompt(symptom_input, knowledge_chunks)
-                response = self.client.models.generate_content(
-                    model=self.settings.gemini_model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
-                        top_p=0.85,
-                        top_k=40,
-                        max_output_tokens=2000,
-                        candidate_count=1
-                    )
-                )
-                predictions, summary, self_care, warning_signs = self._parse_structured_predictions(response.text)
-                display_analysis = summary if summary else response.text
-                response_time = int((time.time() - start_time) * 1000)
-                sources = [chunk['source'] for chunk in knowledge_chunks]
-
-                logger.info(f"Gemini analysis completed in {response_time}ms")
-                return SymptomAnalysisResult(
-                    urgency=urgency,
-                    analysis=display_analysis,
-                    predictions=predictions if predictions else None,
-                    self_care_recommendations=self_care if self_care else None,
-                    warning_signs=warning_signs if warning_signs else None,
-                    knowledge_sources=sources,
-                    confidence_score=self._estimate_confidence(knowledge_chunks),
-                    source="gemini_rag" if knowledge_chunks else "gemini_direct",
-                    response_time_ms=response_time,
-                )
-            except Exception as e:
-                logger.warning(f"Gemini unavailable ({e}), using RAG-only predictions.")
-
-        # Step 4: RAG-only fallback — no Gemini needed
+        # Step 3: RAG-only prediction — no Gemini needed
         if knowledge_chunks:
-            logger.info("Returning RAG-only predictions.")
+            logger.info("Returning DisEmbed/RAG-only symptom predictions.")
             return self._build_rag_only_result(symptom_input, knowledge_chunks, urgency, start_time)
 
-        # Step 5: Nothing available — return a safe no-data response
+        # Step 4: Nothing available — return a safe no-data response
         response_time = int((time.time() - start_time) * 1000)
         return SymptomAnalysisResult(
             urgency=urgency,

@@ -18,6 +18,21 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = true;
   String? _notificationPreferenceUserId;
+  String? _profileStreamUserId;
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _profileStream;
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _userProfileStream(
+    String userId,
+  ) {
+    if (_profileStreamUserId != userId || _profileStream == null) {
+      _profileStreamUserId = userId;
+      _profileStream = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .snapshots();
+    }
+    return _profileStream!;
+  }
 
   String _normalizeUsername(String input) {
     var value = input.trim();
@@ -129,10 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       )
                     else
                       StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                        stream: FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(userId)
-                            .snapshots(),
+                        stream: _userProfileStream(userId),
                         builder: (context, snapshot) {
                           final profileData = snapshot.data?.data();
                           final headerName = _headerDisplayNameFor(
@@ -156,10 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   if (userId != null)
                     StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                      stream: FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(userId)
-                          .snapshots(),
+                      stream: _userProfileStream(userId),
                       builder: (context, snapshot) {
                         final data = snapshot.data?.data();
                         final username = (data?['username'] ?? '')
@@ -925,19 +934,13 @@ class _LogoutButton extends StatelessWidget {
               ),
               const SizedBox(width: 13),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Log out',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: cs.onSurface,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Log out',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),

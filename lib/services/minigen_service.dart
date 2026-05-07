@@ -22,20 +22,58 @@ class MiniGenService {
     if (_isLoaded) return;
 
     final nThreads = math.max(1, Platform.numberOfProcessors ~/ 2);
-    debugPrint('[MiniGenService] loading model: $modelPath (threads=$nThreads)');
-
-    _engine = LlamaEngine(LlamaBackend());
-    await _engine!.loadModel(
-      modelPath,
-      modelParams: ModelParams(
-        gpuLayers: 0,       // CPU-only on mobile
-        contextSize: 2048,
-        numberOfThreads: nThreads,
-      ),
+    debugPrint(
+      '[MiniGenService] loading model: $modelPath (threads=$nThreads)',
     );
+
+    final primaryParams = _modelParams(
+      threads: nThreads,
+      preferredBackend: GpuBackend.auto,
+    );
+    final fallbackParams = _modelParams(
+      threads: nThreads,
+      preferredBackend: GpuBackend.cpu,
+    );
+
+    try {
+      await _loadWithParams(modelPath, primaryParams, label: 'auto/cpu-only');
+    } catch (firstError) {
+      debugPrint(
+        '[MiniGenService] primary MiniGen load failed; retrying explicit CPU: '
+        '$firstError',
+      );
+      await dispose();
+      await _loadWithParams(modelPath, fallbackParams, label: 'explicit-cpu');
+    }
 
     _isLoaded = true;
     debugPrint('[MiniGenService] model loaded successfully');
+  }
+
+  ModelParams _modelParams({
+    required int threads,
+    required GpuBackend preferredBackend,
+  }) {
+    return ModelParams(
+      gpuLayers: 0,
+      preferredBackend: preferredBackend,
+      contextSize: 2048,
+      numberOfThreads: threads,
+      numberOfThreadsBatch: threads,
+      batchSize: 128,
+      microBatchSize: 128,
+    );
+  }
+
+  Future<void> _loadWithParams(
+    String modelPath,
+    ModelParams params, {
+    required String label,
+  }) async {
+    debugPrint('[MiniGenService] load attempt: $label');
+    _engine = LlamaEngine(LlamaBackend());
+    await _engine!.setLogLevel(LlamaLogLevel.info);
+    await _engine!.loadModel(modelPath, modelParams: params);
   }
 
   /// Reload the model (dispose then load again).

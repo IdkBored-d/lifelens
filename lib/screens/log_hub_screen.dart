@@ -332,13 +332,13 @@ class _TodayDashboardState extends State<_TodayDashboard> {
     if (!hasSleepToday) {
       return 'Next: add last night\'s sleep to make today\'s picture more complete.';
     }
-    if (todaySymptoms > 0) {
-      return 'Next: open symptoms if anything changed, then generate a summary if you need one.';
-    }
     if (todayExerciseCount == 0) {
-      return 'Next: add movement later if you want a fuller daily picture.';
+      return 'Next: log movement, or mark a no-workout day, so Mini-Me has the full context.';
     }
-    return 'Today looks covered across your core trackers.';
+    if (todaySymptoms > 0) {
+      return 'Symptoms are logged. Check Mini-Me for possible conditions or update symptoms if anything changed.';
+    }
+    return 'Today looks covered. If symptoms come up, log them so Mini-Me can factor them in.';
   }
 
   @override
