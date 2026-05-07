@@ -25,9 +25,12 @@ class DisEmbedService {
     OrtEnv.instance.init();
     final rawAssetFile = await rootBundle.load(assetPath);
     final bytes        = rawAssetFile.buffer.asUint8List();
-    final opts         = OrtSessionOptions();
-    _session           = OrtSession.fromBuffer(bytes, opts);
-    _isLoaded          = true;
+    // We cannot use Isolate.run here because OrtSession attaches a NativeFinalizer
+    // which cannot be sent across isolates. Lazy-loading alone fixes the startup ANR.
+    // To fully offload, this entire service must be rewritten as a persistent isolate worker.
+    final opts = OrtSessionOptions();
+    _session   = OrtSession.fromBuffer(bytes, opts);
+    _isLoaded  = true;
   }
 
   /// Reload the model from the last-used asset path.
