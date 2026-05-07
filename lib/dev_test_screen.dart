@@ -153,7 +153,7 @@ class _DevTestScreenState extends State<DevTestScreen> {
       ..disEmbedScore = 0.43
       ..diagnosesJson =
           '{"diagnoses": [{"disease": "Test Disease", "reasoning": "test", "next_steps": "see a doctor", "is_urgent": false}]}'
-      ..resolvedBy = 'gemma2b'
+      ..resolvedBy = EscalationLevel.onDevice.name
       ..ragUsed = false
       ..wasOffline = true
       ..status = 'active'

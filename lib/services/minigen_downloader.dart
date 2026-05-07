@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 
 /// Downloads the MiniGen F16 GGUF model from HuggingFace on first launch.
@@ -288,7 +288,7 @@ class MiniGenDownloader {
 
   static String _writeCompatibleCopy(File source, File destination) {
     final bytes = source.readAsBytesSync();
-    final patched = _patchTokenizerPretokenizer(bytes);
+    final patched = patchGgufBytes(bytes);
     destination.writeAsBytesSync(patched, flush: true);
 
     final compatibility = inspectModelCompatibility(destination);
@@ -308,7 +308,8 @@ class MiniGenDownloader {
     return destination.path;
   }
 
-  static Uint8List _patchTokenizerPretokenizer(Uint8List bytes) {
+  @visibleForTesting
+  static Uint8List patchGgufBytes(Uint8List bytes) {
     final patchedBytes = Uint8List.fromList(bytes);
     final reader = _GgufReader(patchedBytes);
     if (reader.readAscii(4) != 'GGUF') {
