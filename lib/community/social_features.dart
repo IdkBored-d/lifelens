@@ -212,6 +212,11 @@ class SocialFeatures {
           .doc(friendId)
           .collection('sphere_invites')
           .doc(docId);
+      final sphereInviteRef = _firestore
+          .collection('spheres')
+          .doc(sphereId)
+          .collection('invites')
+          .doc(friendId);
 
       try {
         await inviteRef.set({
@@ -224,6 +229,21 @@ class SocialFeatures {
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: false));
+        try {
+          await sphereInviteRef.set({
+            'sphereId': sphereId,
+            'sphereName': sphereName,
+            'fromUserId': sender.uid,
+            'fromUsername': sender.username,
+            'toUserId': friendId,
+            'status': 'pending',
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        } on FirebaseException {
+          // Older deployed rules may not allow the marker yet. The user-facing
+          // invite still works under the existing invite document path.
+        }
         sent += 1;
       } on FirebaseException catch (e) {
         // permission-denied means the doc already exists (update not allowed);

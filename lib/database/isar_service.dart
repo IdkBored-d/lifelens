@@ -140,7 +140,18 @@ class IsarService {
   /// NOTE: logic may be incorrect -- this is replacing our old version.
   Future<List<String>> getRecentRawLogs({int days = 3}) async {
     final entries = await getRecentMoodEntries(days: days);
-    return entries.map((e) => e.rawLog).toList();
+    return entries.map((e) => _stripInternalContextMetadata(e.rawLog)).toList();
+  }
+
+  String _stripInternalContextMetadata(String value) {
+    return value
+        .replaceAllMapped(
+          RegExp(r'\[context:\s*([^\]]+)\]', caseSensitive: false),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'\bcontext\s*:\s*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   // ─────────────────────────────────────────────

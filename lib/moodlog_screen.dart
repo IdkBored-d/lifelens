@@ -501,12 +501,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             final m = moods[selectedMood];
                             final notes = notesCtrl.text.trim();
 
-                            // Compose log text: notes are primary, tags appended for context.
-                            final tagPart = tags.isNotEmpty
-                                ? ' [context: ${tags.join(', ')}]'
-                                : '';
-                            final userLog =
-                                '${notes.isNotEmpty ? notes : m.label}$tagPart';
+                            final userLog = notes.isNotEmpty ? notes : m.label;
 
                             try {
                               final now = DateTime.now();

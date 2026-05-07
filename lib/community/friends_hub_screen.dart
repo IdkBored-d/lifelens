@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../avatar_store.dart';
+import '../models/sphere.dart';
 import 'social_features.dart';
 
 class FriendsHubScreen extends StatefulWidget {
@@ -183,6 +186,307 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
         setState(() => _working = false);
       }
     }
+  }
+
+  Future<List<_UserCommunityMembership>> _loadUserCommunities(
+    String userId,
+  ) async {
+    final currentUserId = _currentUserId;
+    if (currentUserId.isEmpty) return const <_UserCommunityMembership>[];
+
+    final sphereDocs = await FirebaseFirestore.instance
+        .collection('spheres')
+        .orderBy('memberCount', descending: true)
+        .limit(80)
+        .get()
+        .timeout(const Duration(seconds: 8));
+
+    final memberships = await Future.wait(
+      sphereDocs.docs.map((sphereDoc) async {
+        final sphere = Sphere.fromFirestore(sphereDoc);
+        final membersRef = sphereDoc.reference.collection('members');
+        final targetMember = await membersRef.doc(userId).get();
+        if (!targetMember.exists) return null;
+
+        final currentMember = currentUserId == userId
+            ? targetMember
+            : await membersRef.doc(currentUserId).get();
+        final joinedAt = (targetMember.data()?['joinedAt'] as Timestamp?)
+            ?.toDate();
+        return _UserCommunityMembership(
+          sphere: sphere,
+          joinedAt: joinedAt,
+          isCurrentUserMember: currentMember.exists,
+        );
+      }),
+    );
+
+    return memberships.whereType<_UserCommunityMembership>().toList(
+      growable: false,
+    );
+  }
+
+  Future<String> _defaultCommunityUsername() async {
+    final profile = await SocialFeatures.getCurrentUserProfile();
+    if (profile == null) return 'member';
+    final candidate = profile.username.trim();
+    if (candidate.isNotEmpty) return candidate;
+    final fallback = profile.displayName
+        .trim()
+        .replaceAll(' ', '_')
+        .toLowerCase();
+    return fallback.isEmpty ? 'member' : fallback;
+  }
+
+  Future<bool> _joinPublicSphere(Sphere sphere) async {
+    final userId = _currentUserId;
+    if (userId.isEmpty) return false;
+    if (!sphere.isPublic && !sphere.isPremade && sphere.creatorId != userId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This sphere is invite only.')),
+      );
+      return false;
+    }
+
+    final avatarStore = context.read<AvatarStore>();
+    final username = await _defaultCommunityUsername();
+    final miniMeData = avatarStore.toCommunityAvatarMap();
+    final sphereRef = FirebaseFirestore.instance
+        .collection('spheres')
+        .doc(sphere.id);
+    final memberRef = sphereRef.collection('members').doc(userId);
+    final memberDoc = await memberRef.get();
+    if (memberDoc.exists) return true;
+
+    await memberRef.set({
+      'username': username,
+      'joinedAt': FieldValue.serverTimestamp(),
+      'lastReadAt': FieldValue.serverTimestamp(),
+      'lastActiveAt': FieldValue.serverTimestamp(),
+      'warningCount': 0,
+      'role': (!sphere.isPremade && sphere.creatorId == userId)
+          ? 'owner'
+          : 'member',
+      'miniMe': miniMeData,
+      'miniMeName': username,
+    });
+
+    await sphereRef.set({
+      'memberCount': FieldValue.increment(1),
+      'lastActivityText': '$username has joined the sphere',
+      'lastActivityAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await sphereRef.collection('posts').add({
+      'type': 'system_join',
+      'text': '$username has joined the sphere',
+      'userId': userId,
+      'username': username,
+      'miniMe': miniMeData,
+      'miniMeName': username,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'latestActivityAt': FieldValue.serverTimestamp(),
+      'replyCount': 0,
+      'reactionCounts': <String, int>{},
+      'isPinned': false,
+    });
+
+    return true;
+  }
+
+  void _showUserCommunities(_UserSearchResult user) {
+    final communitiesFuture = _loadUserCommunities(user.userId);
+    final joinedSphereIds = <String>{};
+    final joiningSphereIds = <String>{};
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.72,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.username.isEmpty
+                            ? 'Communities'
+                            : '@${user.username}',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Spheres this person is part of',
+                        style: TextStyle(color: cs.onSurfaceVariant),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: FutureBuilder<List<_UserCommunityMembership>>(
+                          future: communitiesFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Text(
+                                  'Could not load communities.',
+                                  style: TextStyle(color: cs.error),
+                                ),
+                              );
+                            }
+
+                            final communities =
+                                snapshot.data ??
+                                const <_UserCommunityMembership>[];
+                            if (communities.isEmpty) {
+                              return Center(
+                                child: Text(
+                                  'No joined communities found.',
+                                  style: TextStyle(color: cs.onSurfaceVariant),
+                                ),
+                              );
+                            }
+
+                            return ListView.separated(
+                              itemCount: communities.length,
+                              separatorBuilder: (_, __) => Divider(
+                                height: 1,
+                                color: cs.outlineVariant.withValues(alpha: 0.5),
+                              ),
+                              itemBuilder: (context, index) {
+                                final item = communities[index];
+                                final sphere = item.sphere;
+                                final isJoined =
+                                    item.isCurrentUserMember ||
+                                    joinedSphereIds.contains(sphere.id);
+                                final isJoining = joiningSphereIds.contains(
+                                  sphere.id,
+                                );
+                                final canJoin =
+                                    sphere.isPublic ||
+                                    sphere.isPremade ||
+                                    sphere.creatorId == _currentUserId;
+
+                                Widget trailing;
+                                if (isJoined) {
+                                  trailing = _statusPill(context, 'Joined');
+                                } else if (canJoin) {
+                                  trailing = FilledButton(
+                                    onPressed: isJoining
+                                        ? null
+                                        : () async {
+                                            setSheetState(
+                                              () => joiningSphereIds.add(
+                                                sphere.id,
+                                              ),
+                                            );
+                                            try {
+                                              final joined =
+                                                  await _joinPublicSphere(
+                                                    sphere,
+                                                  );
+                                              if (!mounted) return;
+                                              if (joined) {
+                                                setSheetState(
+                                                  () => joinedSphereIds.add(
+                                                    sphere.id,
+                                                  ),
+                                                );
+                                                ScaffoldMessenger.of(
+                                                  this.context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Joined ${sphere.name}.',
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              if (!mounted) return;
+                                              ScaffoldMessenger.of(
+                                                this.context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Could not join sphere: $e',
+                                                  ),
+                                                ),
+                                              );
+                                            } finally {
+                                              setSheetState(
+                                                () => joiningSphereIds.remove(
+                                                  sphere.id,
+                                                ),
+                                              );
+                                            }
+                                          },
+                                    child: isJoining
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Text('Join'),
+                                  );
+                                } else {
+                                  trailing = _statusPill(
+                                    context,
+                                    'Invite only',
+                                  );
+                                }
+
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: CircleAvatar(
+                                    backgroundColor: sphere.isPublic
+                                        ? cs.primaryContainer
+                                        : cs.surfaceContainerHighest,
+                                    foregroundColor: sphere.isPublic
+                                        ? cs.onPrimaryContainer
+                                        : cs.onSurfaceVariant,
+                                    child: Icon(
+                                      sphere.isPublic
+                                          ? Icons.public_rounded
+                                          : Icons.lock_outline_rounded,
+                                    ),
+                                  ),
+                                  title: Text(sphere.name),
+                                  subtitle: Text(
+                                    '${sphere.memberCount} members • ${sphere.isPublic ? 'Public' : 'Invite only'}',
+                                  ),
+                                  trailing: trailing,
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _sectionHeader(
@@ -706,14 +1010,14 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
                                           user.userId,
                                         );
 
-                                        Widget trailing;
+                                        Widget action;
                                         if (isFriend) {
-                                          trailing = _statusPill(
+                                          action = _statusPill(
                                             context,
                                             'Friends',
                                           );
                                         } else if (hasIncoming) {
-                                          trailing = FilledButton(
+                                          action = FilledButton(
                                             onPressed: _working
                                                 ? null
                                                 : () => _respond(
@@ -724,9 +1028,9 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
                                             child: const Text('Accept'),
                                           );
                                         } else if (hasOutgoing) {
-                                          trailing = const Text('Pending');
+                                          action = const Text('Pending');
                                         } else {
-                                          trailing = FilledButton(
+                                          action = FilledButton(
                                             onPressed: _working
                                                 ? null
                                                 : () =>
@@ -734,6 +1038,24 @@ class _FriendsHubScreenState extends State<FriendsHubScreen> {
                                             child: const Text('Add'),
                                           );
                                         }
+
+                                        final trailing = Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              tooltip: 'View communities',
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              onPressed: () =>
+                                                  _showUserCommunities(user),
+                                              icon: const Icon(
+                                                Icons.info_outline_rounded,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
+                                            action,
+                                          ],
+                                        );
 
                                         return ListTile(
                                           contentPadding:
@@ -834,4 +1156,16 @@ class _UserSearchResult {
   final String userId;
   final String username;
   final String usernameLower;
+}
+
+class _UserCommunityMembership {
+  const _UserCommunityMembership({
+    required this.sphere,
+    required this.joinedAt,
+    required this.isCurrentUserMember,
+  });
+
+  final Sphere sphere;
+  final DateTime? joinedAt;
+  final bool isCurrentUserMember;
 }

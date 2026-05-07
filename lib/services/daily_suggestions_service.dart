@@ -544,6 +544,13 @@ class DailySuggestionsService {
       final profile = _moodSuggestionProfile(moodLabel);
       if (intensity <= 2) {
         return [
+          if (latestContext != null)
+            _GeneratedSuggestion(
+              action:
+                  'Treat "$latestContext" as the real signal today: lower one demand connected to it, then choose one small reset you can finish in five minutes.',
+              reason:
+                  'The repeated mood label matters, but the note gives Mini-Me the specific situation to respond to.',
+            ),
           _GeneratedSuggestion(
             action: profile.lowAction,
             reason: profile.lowReason,
@@ -563,8 +570,9 @@ class DailySuggestionsService {
             ),
           if (sleepHours != null && sleepHours < 7)
             _GeneratedSuggestion(
-              action:
-                  'Treat low recovery as part of the mood today: hydrate, avoid stacking hard tasks, and plan an earlier wind-down.',
+              action: latestContext == null
+                  ? 'Treat low recovery as part of the mood today: hydrate, avoid stacking hard tasks, and plan an earlier wind-down.'
+                  : 'Connect $latestContext with low recovery: avoid stacking hard tasks around it, and plan an earlier wind-down tonight.',
               reason:
                   'Your mood log and recent sleep both point toward lower recovery, so pacing should help more than pushing harder.',
             ),
@@ -615,8 +623,9 @@ class DailySuggestionsService {
                 'Your sleep entry included context, so the best next step should target what affected the night.',
           ),
         _GeneratedSuggestion(
-          action:
-              'Protect recovery for the next block: choose a lighter task first and delay anything that needs peak focus.',
+          action: latestContext == null
+              ? 'Protect recovery for the next block: choose a lighter task first and delay anything that needs peak focus.'
+              : 'Since $latestContext showed up in the sleep log, choose a lighter task first and delay anything that needs peak focus.',
           reason:
               'Your latest sleep log shows $hoursText with $quality quality, so pacing the day around recovery makes sense.',
         ),
@@ -635,8 +644,9 @@ class DailySuggestionsService {
           ),
         if (sleepHours != null && sleepHours < 6)
           _GeneratedSuggestion(
-            action:
-                'Keep the day in recovery mode: avoid adding extra intensity, hydrate early, and choose the shortest version of one demanding task.',
+            action: latestContext == null
+                ? 'Keep the day in recovery mode: avoid adding extra intensity, hydrate early, and choose the shortest version of one demanding task.'
+                : 'Keep the day in recovery mode around $latestContext: hydrate early and choose the shortest version of one demanding task.',
             reason:
                 'A shorter sleep log changes what is realistic today, so pacing matters more than adding goals.',
           ),
@@ -661,8 +671,9 @@ class DailySuggestionsService {
                   'Your exercise log says no exercise, so the useful advice is removing friction rather than giving workout recovery steps.',
             ),
           _GeneratedSuggestion(
-            action:
-                'Choose one tiny movement option for later, like a two-minute stretch or a short walk, only if your energy allows it.',
+            action: latestContext == null
+                ? 'Choose one tiny movement option for later, like a two-minute stretch or a short walk, only if your energy allows it.'
+                : 'Let $latestContext explain the no-exercise day, then choose only a two-minute stretch or short walk if your energy allows it.',
             reason:
                 'A no-exercise log means the next step should be low-pressure and realistic, not a full workout plan.',
           ),
@@ -730,8 +741,9 @@ class DailySuggestionsService {
                 'Your symptom log included context, so monitoring should focus on what might be connected to it.',
           ),
         _GeneratedSuggestion(
-          action:
-              'Track symptom intensity once later today and avoid the activity that seems most likely to worsen it.',
+          action: latestContext == null
+              ? 'Track symptom intensity once later today and avoid the activity that seems most likely to worsen it.'
+              : 'Track whether $latestContext changes later today, then avoid the activity that seems most likely to worsen it.',
           reason:
               'Your symptom log is useful for monitoring patterns, and a second intensity check makes changes easier to spot.',
         ),
@@ -901,7 +913,7 @@ class DailySuggestionsService {
   }
 
   String? _latestContextFromFocus(_LatestLogFocus? latestLogFocus) {
-    final text = latestLogFocus?.text ?? '';
+    final text = _stripInternalContextMetadata(latestLogFocus?.text ?? '');
     if (text.trim().isEmpty) return null;
 
     final fragments = text
@@ -918,6 +930,7 @@ class DailySuggestionsService {
           lower.startsWith('score ') ||
           lower.startsWith('sleep input ') ||
           lower.startsWith('activity ') ||
+          lower.startsWith('context ') ||
           lower.startsWith('heart rate ') ||
           lower.startsWith('possible ailment ') ||
           RegExp(r'^\d+(\.\d+)?h$').hasMatch(lower) ||
@@ -933,6 +946,17 @@ class DailySuggestionsService {
     }
 
     return null;
+  }
+
+  String _stripInternalContextMetadata(String value) {
+    return value
+        .replaceAllMapped(
+          RegExp(r'\[context:\s*([^\]]+)\]', caseSensitive: false),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'\bcontext\s*:\s*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   String _fallbackSymptomText(
@@ -977,6 +1001,13 @@ class DailySuggestionsService {
     for (final suggestion in suggestions) {
       if (!_hasUsefulShape(suggestion)) continue;
       if (_containsUnsupportedMedicalLanguage(suggestion)) continue;
+      if (!_usesRequiredSpecificContext(
+        suggestion,
+        latestLogFocus: latestLogFocus,
+        suggestionWindow: suggestionWindow,
+      )) {
+        continue;
+      }
       if (_isNearRepeatSuggestion(
         suggestion.action,
         suggestion.reason,
@@ -1069,6 +1100,13 @@ class DailySuggestionsService {
     );
     if (!_hasUsefulShape(generated)) return false;
     if (_containsUnsupportedMedicalLanguage(generated)) return false;
+    if (!_usesRequiredSpecificContext(
+      generated,
+      latestLogFocus: latestLogFocus,
+      suggestionWindow: suggestionWindow,
+    )) {
+      return false;
+    }
 
     final window = (suggestionWindow ?? '').trim().toLowerCase();
     final strictLatestLog =
@@ -1159,6 +1197,49 @@ class DailySuggestionsService {
       case _LatestLogKind.chat:
         return containsAny(focusTokens) ||
             containsAny(const ['chat', 'mini-me', 'message', 'talk']);
+    }
+  }
+
+  bool _usesRequiredSpecificContext(
+    _GeneratedSuggestion suggestion, {
+    required _LatestLogFocus? latestLogFocus,
+    String? suggestionWindow,
+  }) {
+    if (latestLogFocus == null) return true;
+    final window = (suggestionWindow ?? '').trim().toLowerCase();
+    final strictLatestLog =
+        window == 'log_update' || window == 'event_override';
+    if (!strictLatestLog) return true;
+
+    final context = _latestContextFromFocus(latestLogFocus);
+    if (context == null) return true;
+
+    final contextTokens = _specificContextTokens(context).take(8).toSet();
+    if (contextTokens.isEmpty) return true;
+
+    final combined = '${suggestion.action} ${suggestion.reason}'.toLowerCase();
+    if (contextTokens.any(combined.contains)) return true;
+
+    final contextWords = context
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s-]'), ' ')
+        .split(RegExp(r'\s+'))
+        .where((word) => word.length >= 4)
+        .toList(growable: false);
+    for (var index = 0; index < contextWords.length - 1; index++) {
+      final phrase = '${contextWords[index]} ${contextWords[index + 1]}';
+      if (phrase.length >= 8 && combined.contains(phrase)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Iterable<String> _specificContextTokens(String value) sync* {
+    for (final token in _keywordTokens(value)) {
+      if (token.length < 5) continue;
+      yield token;
     }
   }
 
@@ -1321,6 +1402,12 @@ class DailySuggestionsService {
       'latest',
       'recent',
       'log',
+      'logged',
+      'entry',
+      'entries',
+      'note',
+      'notes',
+      'context',
       'mood',
       'sleep',
       'symptom',
@@ -1422,8 +1509,9 @@ class DailySuggestionsService {
     for (final mood in moodStore.items.take(18)) {
       final details = <String>[
         'mood ${mood.moodLabel}',
-        if (mood.notes.trim().isNotEmpty) mood.notes.trim(),
-        if (mood.tags.isNotEmpty) 'context ${mood.tags.join(', ')}',
+        if (mood.notes.trim().isNotEmpty)
+          _stripInternalContextMetadata(mood.notes.trim()),
+        if (mood.tags.isNotEmpty) 'tags ${mood.tags.join(', ')}',
       ];
       combined.add(
         _CombinedLogPoint(
@@ -1671,7 +1759,13 @@ class DailySuggestionsService {
     final lowSleepCount = recent
         .where((item) => (item.duration.inMinutes / 60.0) < 7.0)
         .length;
-    return 'Sleep logs: average ${avgHours.toStringAsFixed(1)} hours over the recent entries. Sleep quality pattern: $qualityLabels. ${lowSleepCount == 0 ? 'Recent sleep has mostly met the baseline.' : '$lowSleepCount recent entries were under 7 hours.'}';
+    final notes = recent
+        .map((item) => item.notes.trim())
+        .where((text) => text.isNotEmpty)
+        .take(4)
+        .map(_trimShort)
+        .toList(growable: false);
+    return 'Sleep logs: average ${avgHours.toStringAsFixed(1)} hours over the recent entries. Sleep quality pattern: $qualityLabels. ${lowSleepCount == 0 ? 'Recent sleep has mostly met the baseline.' : '$lowSleepCount recent entries were under 7 hours.'}${notes.isEmpty ? '' : ' Recent sleep notes: ${notes.join(' | ')}'}';
   }
 
   String _buildSymptomContext(
@@ -1728,10 +1822,13 @@ class DailySuggestionsService {
         .where((name) => name.isNotEmpty)
         .take(5)
         .toList(growable: false);
+    final noExerciseCount = recent
+        .where((item) => (item['noExercise'] ?? '').trim() == 'true')
+        .length;
     final weeklyCount = exerciseStore
-        .getRecentExerciseActivity(days: 7)
+        .getRecentExerciseActivity(days: 7, includeNoExercise: false)
         .fold<int>(0, (sum, count) => sum + count);
-    return 'Exercise logs: $todayExerciseCount today and $weeklyCount in the last 7 days. Recent sessions include ${names.isEmpty ? 'recorded activity' : names.join(', ')}.';
+    return 'Exercise logs: $todayExerciseCount today and $weeklyCount actual movement sessions in the last 7 days. Recent entries include ${names.isEmpty ? 'recorded activity' : names.join(', ')}.${noExerciseCount == 0 ? '' : ' $noExerciseCount recent entries were no-exercise check-ins, so treat them as inactivity/recovery context rather than workouts.'}';
   }
 
   String _buildEodContext(List<EodEntry> recentEod) {
@@ -1767,7 +1864,7 @@ class DailySuggestionsService {
         .where((item) => (item.duration.inMinutes / 60.0) < 7.0)
         .length;
     final weeklyExerciseCount = exerciseStore
-        .getRecentExerciseActivity(days: 7)
+        .getRecentExerciseActivity(days: 7, includeNoExercise: false)
         .fold<int>(0, (sum, count) => sum + count);
 
     if (heavyMoodCount >= 2 && lowSleepCount >= 2) {

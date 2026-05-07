@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:lifelens/models/mini_me_companion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,8 +33,14 @@ class AvatarStore extends ChangeNotifier {
   double _trendBodyWidthScale = 1.0;
   double _fatigueAppearanceLevel = 0.0;
   double _healthTrendScore = 0.0;
+  String _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  int _loadRequestId = 0;
+  late final StreamSubscription<User?> _authSub;
 
   AvatarStore() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _handleAuthChanged(user);
+    });
     _loadFromPrefs();
   }
 
@@ -50,6 +59,33 @@ class AvatarStore extends ChangeNotifier {
   double get fatigueAppearanceLevel => _fatigueAppearanceLevel;
   double get healthTrendScore => _healthTrendScore;
   MiniMeCompanionPreset get selectedCompanion => miniMePresetById(_companionId);
+
+  String _scopedKey(String key) => '${key}_$_loadedScopeKey';
+
+  void _resetToDefaults() {
+    final preset = miniMeCompanionPresets.first;
+    _bodyModel = preset.bodyModel;
+    _hairModel = preset.hairModel;
+    _shirtModel = preset.shirtModel;
+    _bodyWidthScale = preset.bodyWidthScale;
+    _miniMeName = 'Mini-Me';
+    _companionId = preset.id;
+    _isMiniMeHatched = false;
+    _degradationLevel = 0.0;
+    _autoBodyWidthScale = 1.0;
+    _trendBodyWidthScale = 1.0;
+    _fatigueAppearanceLevel = 0.0;
+    _healthTrendScore = 0.0;
+  }
+
+  void _handleAuthChanged(User? user) {
+    final nextScopeKey = user?.uid ?? 'guest';
+    if (_loadedScopeKey == nextScopeKey) return;
+    _loadedScopeKey = nextScopeKey;
+    _resetToDefaults();
+    notifyListeners();
+    unawaited(_loadFromPrefs());
+  }
 
   Map<String, dynamic> toCommunityAvatarMap() {
     return {
@@ -127,6 +163,24 @@ class AvatarStore extends ChangeNotifier {
 
   void setAutoBodyWidthScale(double value) {
     _autoBodyWidthScale = value.clamp(0.82, 1.22).toDouble();
+    _saveToPrefs();
+    notifyListeners();
+  }
+
+  void resetAdaptiveHealthAppearance() {
+    final changed =
+        _degradationLevel != 0.0 ||
+        _autoBodyWidthScale != 1.0 ||
+        _trendBodyWidthScale != 1.0 ||
+        _fatigueAppearanceLevel != 0.0 ||
+        _healthTrendScore != 0.0;
+    if (!changed) return;
+
+    _degradationLevel = 0.0;
+    _autoBodyWidthScale = 1.0;
+    _trendBodyWidthScale = 1.0;
+    _fatigueAppearanceLevel = 0.0;
+    _healthTrendScore = 0.0;
     _saveToPrefs();
     notifyListeners();
   }
@@ -270,26 +324,37 @@ class AvatarStore extends ChangeNotifier {
   }
 
   Future<void> _loadFromPrefs() async {
+    final requestId = ++_loadRequestId;
+    _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    _resetToDefaults();
     final prefs = await SharedPreferences.getInstance();
-    final hasCustomization = prefs.getBool(_hasAvatarCustomizationKey) ?? false;
-    _companionId = prefs.getString(_companionIdKey) ?? _companionId;
-    _isMiniMeHatched = prefs.getBool(_isMiniMeHatchedKey) ?? _isMiniMeHatched;
+    if (requestId != _loadRequestId) return;
+
+    final hasCustomization =
+        prefs.getBool(_scopedKey(_hasAvatarCustomizationKey)) ?? false;
+    _companionId = prefs.getString(_scopedKey(_companionIdKey)) ?? _companionId;
+    _isMiniMeHatched =
+        prefs.getBool(_scopedKey(_isMiniMeHatchedKey)) ?? _isMiniMeHatched;
     _degradationLevel =
-        prefs.getDouble(_degradationLevelKey) ?? _degradationLevel;
+        prefs.getDouble(_scopedKey(_degradationLevelKey)) ?? _degradationLevel;
     _autoBodyWidthScale =
-        prefs.getDouble(_autoBodyWidthScaleKey) ?? _autoBodyWidthScale;
+        prefs.getDouble(_scopedKey(_autoBodyWidthScaleKey)) ??
+        _autoBodyWidthScale;
     _trendBodyWidthScale =
-        prefs.getDouble(_trendBodyWidthScaleKey) ?? _trendBodyWidthScale;
+        prefs.getDouble(_scopedKey(_trendBodyWidthScaleKey)) ??
+        _trendBodyWidthScale;
     _fatigueAppearanceLevel =
-        prefs.getDouble(_fatigueAppearanceLevelKey) ?? _fatigueAppearanceLevel;
+        prefs.getDouble(_scopedKey(_fatigueAppearanceLevelKey)) ??
+        _fatigueAppearanceLevel;
     _healthTrendScore =
-        prefs.getDouble(_healthTrendScoreKey) ?? _healthTrendScore;
+        prefs.getDouble(_scopedKey(_healthTrendScoreKey)) ?? _healthTrendScore;
 
     if (hasCustomization) {
-      _bodyModel = prefs.getString(_bodyModelKey) ?? _bodyModel;
-      _hairModel = prefs.getString(_hairModelKey) ?? _hairModel;
-      _shirtModel = prefs.getString(_shirtModelKey) ?? _shirtModel;
-      _bodyWidthScale = prefs.getDouble(_bodyWidthScaleKey) ?? _bodyWidthScale;
+      _bodyModel = prefs.getString(_scopedKey(_bodyModelKey)) ?? _bodyModel;
+      _hairModel = prefs.getString(_scopedKey(_hairModelKey)) ?? _hairModel;
+      _shirtModel = prefs.getString(_scopedKey(_shirtModelKey)) ?? _shirtModel;
+      _bodyWidthScale =
+          prefs.getDouble(_scopedKey(_bodyWidthScaleKey)) ?? _bodyWidthScale;
     } else {
       final preset = miniMePresetById(_companionId);
       _bodyModel = preset.bodyModel;
@@ -298,26 +363,41 @@ class AvatarStore extends ChangeNotifier {
       _bodyWidthScale = preset.bodyWidthScale;
     }
 
-    _miniMeName = prefs.getString(_miniMeNameKey) ?? _miniMeName;
+    _miniMeName = prefs.getString(_scopedKey(_miniMeNameKey)) ?? _miniMeName;
     notifyListeners();
   }
 
   Future<void> _saveToPrefs({bool markCustomized = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_bodyModelKey, _bodyModel);
-    await prefs.setString(_hairModelKey, _hairModel);
-    await prefs.setString(_shirtModelKey, _shirtModel);
-    await prefs.setDouble(_bodyWidthScaleKey, _bodyWidthScale);
-    await prefs.setString(_miniMeNameKey, _miniMeName);
-    await prefs.setString(_companionIdKey, _companionId);
-    await prefs.setBool(_isMiniMeHatchedKey, _isMiniMeHatched);
-    await prefs.setDouble(_degradationLevelKey, _degradationLevel);
-    await prefs.setDouble(_autoBodyWidthScaleKey, _autoBodyWidthScale);
-    await prefs.setDouble(_trendBodyWidthScaleKey, _trendBodyWidthScale);
-    await prefs.setDouble(_fatigueAppearanceLevelKey, _fatigueAppearanceLevel);
-    await prefs.setDouble(_healthTrendScoreKey, _healthTrendScore);
+    await prefs.setString(_scopedKey(_bodyModelKey), _bodyModel);
+    await prefs.setString(_scopedKey(_hairModelKey), _hairModel);
+    await prefs.setString(_scopedKey(_shirtModelKey), _shirtModel);
+    await prefs.setDouble(_scopedKey(_bodyWidthScaleKey), _bodyWidthScale);
+    await prefs.setString(_scopedKey(_miniMeNameKey), _miniMeName);
+    await prefs.setString(_scopedKey(_companionIdKey), _companionId);
+    await prefs.setBool(_scopedKey(_isMiniMeHatchedKey), _isMiniMeHatched);
+    await prefs.setDouble(_scopedKey(_degradationLevelKey), _degradationLevel);
+    await prefs.setDouble(
+      _scopedKey(_autoBodyWidthScaleKey),
+      _autoBodyWidthScale,
+    );
+    await prefs.setDouble(
+      _scopedKey(_trendBodyWidthScaleKey),
+      _trendBodyWidthScale,
+    );
+    await prefs.setDouble(
+      _scopedKey(_fatigueAppearanceLevelKey),
+      _fatigueAppearanceLevel,
+    );
+    await prefs.setDouble(_scopedKey(_healthTrendScoreKey), _healthTrendScore);
     if (markCustomized) {
-      await prefs.setBool(_hasAvatarCustomizationKey, true);
+      await prefs.setBool(_scopedKey(_hasAvatarCustomizationKey), true);
     }
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 }

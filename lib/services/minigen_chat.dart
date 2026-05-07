@@ -245,7 +245,7 @@ class MiniGenChat {
         : _compactList(recentMoods, limit: 5, itemChars: 18, separator: ' | ');
     final timeline = recentLogs.isEmpty
         ? 'No recent log timeline provided.'
-        : _compactList(recentLogs, limit: 6, itemChars: 120, separator: '\n');
+        : _compactList(recentLogs, limit: 10, itemChars: 150, separator: '\n');
     final latestFocus = (latestLogFocus ?? '').trim().isEmpty
         ? 'No single latest log focus.'
         : _compactText(latestLogFocus!.trim(), 240);
@@ -257,7 +257,7 @@ class MiniGenChat {
             itemChars: 90,
             separator: '\n',
           );
-    final summary = _compactText(summaryContext, 700);
+    final summary = _compactText(summaryContext, 1100);
 
     return prompt.buildPrompt(
       contextEntries: {
@@ -276,9 +276,10 @@ class MiniGenChat {
           '''Return valid JSON only.
 Create exactly $targetCount grounded wellness suggestion${targetCount == 1 ? '' : 's'}.
 First suggestion must answer LATEST_LOG_FOCUS. Avoid RECENT_SUGGESTIONS_TO_AVOID.
-Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, or follow-through.
-If the latest log includes notes, tags, workout details, sleep notes, or symptom context, mention that context directly and address it.
-Do not give category-only advice like "log mood" or "rest more" when a specific note/context is available.
+Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, boundary, support, or follow-through.
+If the latest log includes notes, tags, workout details, sleep notes, or symptom context, reuse at least one concrete phrase or noun from that context and address it directly.
+Do not give category-only advice like "log mood", "sleep earlier", "rest more", or "take a walk" when a specific note/context is available.
+If logs look similar to previous days, change the angle rather than the data: focus on trigger, friction, timing, environment, recovery cost, or what to protect next.
 Action: one realistic step for today. Reason: cite the matching log signal. Do not diagnose. Keep fields short.
 Use this exact shape:
 {"suggestions":[{"action":"One specific next step.","reason":"Why this fits the user's logs."}]}''',

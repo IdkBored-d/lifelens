@@ -41,6 +41,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   String? _userNickname;
   bool _isBootstrapping = true;
   bool _isSendingPost = false;
+  bool _hasShownJoinPrompt = false;
   _ReplyTarget? _composerReplyTarget;
   int _activeChatSeedVersion = 0;
   static const double _maxTimeRevealOffset = 76.0;
@@ -60,6 +61,18 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       _sphereRef.collection('members');
 
   String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+  bool get _canJoinDirectly {
+    final userId = _userId;
+    return widget.sphere.isPublic ||
+        widget.sphere.isPremade ||
+        (userId != null && widget.sphere.creatorId == userId);
+  }
+
+  bool get _isSphereOwner {
+    final userId = _userId;
+    return userId != null && widget.sphere.creatorId == userId;
+  }
+
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _postsStream =
       _postsRef.orderBy('createdAt', descending: true).snapshots();
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _membersStream =
@@ -167,6 +180,10 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     } finally {
       if (mounted) {
         setState(() => _isBootstrapping = false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _userNickname != null || !_canJoinDirectly) return;
+          unawaited(_promptToJoinSphere());
+        });
       }
     }
   }
@@ -271,12 +288,12 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     required String senderNickname,
     required String text,
   }) async {
-    const String _backendBase = String.fromEnvironment(
+    const String backendBase = String.fromEnvironment(
       'LIFELENS_API_BASE_URL',
       defaultValue: 'http://localhost:8000',
     );
     try {
-      final uri = Uri.parse('$_backendBase/api/v1/notify/sphere_message');
+      final uri = Uri.parse('$backendBase/api/v1/notify/sphere_message');
       await http
           .post(
             uri,
@@ -376,6 +393,25 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     FocusScope.of(context).requestFocus(_composerFocusNode);
   }
 
+  String _systemJoinNoticeText(Map<String, dynamic> postData) {
+    final postUserId = (postData['userId'] ?? '').toString();
+    if (postUserId.isNotEmpty && postUserId == _userId) {
+      return 'You joined the sphere';
+    }
+
+    final username =
+        (postData['username'] ??
+                postData['nickname'] ??
+                postData['miniMeName'] ??
+                '')
+            .toString()
+            .trim();
+    if (username.isNotEmpty) return '$username joined the sphere';
+
+    final fallback = (postData['text'] ?? '').toString().trim();
+    return fallback.isEmpty ? 'Someone joined the sphere' : fallback;
+  }
+
   Future<void> _submitInlinePost() async {
     if (_isSendingPost) return;
 
@@ -383,9 +419,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (message.isEmpty) return;
 
     if (_userNickname == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join with a username to post.')),
-      );
+      await _promptToJoinSphere(force: true);
       return;
     }
 
@@ -412,9 +446,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   Future<void> _showQuickShareOptions() async {
     if (_isSendingPost) return;
     if (_userNickname == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join with a username to post.')),
-      );
+      await _promptToJoinSphere(force: true);
       return;
     }
 
@@ -1181,6 +1213,12 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   Future<void> _joinSphere() async {
     final userId = _userId;
     if (userId == null) return;
+    if (!_canJoinDirectly) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This sphere is invite only.')),
+      );
+      return;
+    }
     final avatarStore = context.read<AvatarStore>();
     final miniMeData = avatarStore.toCommunityAvatarMap();
     final profile = await SocialFeatures.getCurrentUserProfile();
@@ -1230,9 +1268,107 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       setState(() => _userNickname = username);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error joining sphere: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error joining sphere: $e')));
+    }
+  }
+
+  Future<bool> _promptToJoinSphere({bool force = false}) async {
+    if (_userNickname != null) return true;
+    if (!_canJoinDirectly) {
+      await _promptForInviteRequest();
+      return false;
+    }
+    if (!force && _hasShownJoinPrompt) return false;
+    _hasShownJoinPrompt = true;
+
+    final shouldJoin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Join ${widget.sphere.name}?'),
+        content: Text(
+          'Join this sphere to post messages, reply, react, and share progress with members.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text('Join Sphere'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || shouldJoin != true) return false;
+    await _joinSphere();
+    return _userNickname != null;
+  }
+
+  Future<void> _promptForInviteRequest() async {
+    final shouldRequestInvite = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Invite only'),
+        content: const Text(
+          'You need an invite before you can join this sphere.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.mark_email_unread_outlined),
+            label: const Text('Request Invite'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || shouldRequestInvite != true) return;
+    await _requestSphereInvite();
+  }
+
+  Future<void> _requestSphereInvite() async {
+    final userId = _userId;
+    if (userId == null) return;
+    final avatarStore = context.read<AvatarStore>();
+    final profile = await SocialFeatures.getCurrentUserProfile();
+    String username = profile?.username.trim() ?? '';
+    if (username.isEmpty) {
+      final display = profile?.displayName.trim() ?? '';
+      username = display.replaceAll(' ', '_').toLowerCase();
+    }
+    if (username.isEmpty) username = 'member';
+
+    try {
+      await _sphereRef.collection('join_requests').doc(userId).set({
+        'userId': userId,
+        'username': username,
+        'displayName': profile?.displayName ?? username,
+        'status': 'pending',
+        'sphereId': widget.sphere.id,
+        'sphereName': widget.sphere.name,
+        'miniMe': avatarStore.toCommunityAvatarMap(),
+        'miniMeName': username,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Invite request sent.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not request invite: $e')));
     }
   }
 
@@ -1246,6 +1382,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       // If the fetch fails, show all friends — don't block the invite flow.
     }
 
+    if (!mounted) return;
     final selected = await SocialFeatures.showFriendPicker(
       context,
       title: 'Invite friends to ${widget.sphere.name}',
@@ -1272,8 +1409,196 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     }
   }
 
+  void _showJoinRequestsSheet() {
+    if (!_isSphereOwner) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.62,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Invite requests',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Review people asking to join ${widget.sphere.name}.',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: _sphereRef
+                          .collection('join_requests')
+                          .where('status', isEqualTo: 'pending')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        final requests = snapshot.data!.docs;
+                        if (requests.isEmpty) {
+                          return Center(
+                            child: Text(
+                              'No pending requests.',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          );
+                        }
+
+                        return ListView.separated(
+                          itemCount: requests.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: cs.outlineVariant.withValues(alpha: 0.5),
+                          ),
+                          itemBuilder: (context, index) {
+                            final requestDoc = requests[index];
+                            final data = requestDoc.data();
+                            final username = (data['username'] ?? 'member')
+                                .toString();
+                            final displayName = (data['displayName'] ?? '')
+                                .toString()
+                                .trim();
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: CircleAvatar(
+                                backgroundColor: cs.primaryContainer,
+                                foregroundColor: cs.onPrimaryContainer,
+                                child: const Icon(Icons.person_rounded),
+                              ),
+                              title: Text('@$username'),
+                              subtitle: displayName.isEmpty
+                                  ? null
+                                  : Text(displayName),
+                              trailing: Wrap(
+                                spacing: 6,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => _respondToJoinRequest(
+                                      requestDoc,
+                                      accept: false,
+                                    ),
+                                    child: const Text('Deny'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => _respondToJoinRequest(
+                                      requestDoc,
+                                      accept: true,
+                                    ),
+                                    child: const Text('Accept'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _respondToJoinRequest(
+    QueryDocumentSnapshot<Map<String, dynamic>> requestDoc, {
+    required bool accept,
+  }) async {
+    if (!_isSphereOwner) return;
+    final data = requestDoc.data();
+    final requesterId = (data['userId'] ?? requestDoc.id).toString();
+    final username = (data['username'] ?? 'member').toString().trim();
+    if (requesterId.isEmpty) return;
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final sphereDoc = await transaction.get(_sphereRef);
+        final memberRef = _membersRef.doc(requesterId);
+        final memberDoc = await transaction.get(memberRef);
+        transaction.update(requestDoc.reference, {
+          'status': accept ? 'accepted' : 'denied',
+          'updatedAt': FieldValue.serverTimestamp(),
+          'reviewedBy': _userId,
+        });
+
+        if (!accept || memberDoc.exists) return;
+        final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
+        final miniMe = data['miniMe'];
+        transaction.set(memberRef, {
+          'username': username.isEmpty ? 'member' : username,
+          'joinedAt': FieldValue.serverTimestamp(),
+          'lastReadAt': FieldValue.serverTimestamp(),
+          'lastActiveAt': FieldValue.serverTimestamp(),
+          'warningCount': 0,
+          'role': 'member',
+          if (miniMe is Map) 'miniMe': miniMe,
+          'miniMeName': (data['miniMeName'] ?? username).toString(),
+        });
+        transaction.update(_sphereRef, {
+          'memberCount': currentCount + 1,
+          'lastActivityText':
+              '${username.isEmpty ? 'member' : username} has joined the sphere',
+          'lastActivityAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(_postsRef.doc(), {
+          'type': 'system_join',
+          'text':
+              '${username.isEmpty ? 'member' : username} has joined the sphere',
+          'userId': requesterId,
+          'username': username.isEmpty ? 'member' : username,
+          if (miniMe is Map) 'miniMe': miniMe,
+          'miniMeName': (data['miniMeName'] ?? username).toString(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'latestActivityAt': FieldValue.serverTimestamp(),
+          'replyCount': 0,
+          'reactionCounts': <String, int>{},
+          'isPinned': false,
+        });
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            accept ? 'Invite request accepted.' : 'Invite request denied.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update request: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    const sphereHeaderBannerHeight = 128.0;
+    final bannerTemplate = widget.sphere.bannerTemplate?.trim() ?? '';
+    final hasTemplateBanner =
+        bannerTemplate.isNotEmpty &&
+        _chatBannerPaletteForTemplateKey(bannerTemplate) != null;
+
     return Scaffold(
       body: _isBootstrapping
           ? const Center(child: CircularProgressIndicator())
@@ -1286,7 +1611,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                   // ── Unified header banner ───────────────────────────────
                   SizedBox(
                     width: double.infinity,
-                    height: 170 +
+                    height:
+                        sphereHeaderBannerHeight +
                         MediaQuery.of(context).padding.top,
                     child: Stack(
                       fit: StackFit.expand,
@@ -1294,18 +1620,22 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                         // Banner background
                         _bannerUrl != null
                             ? _SphereChatBannerImage(imageSource: _bannerUrl!)
-                            : (_defaultChatBannerPaletteForSphere(
-                                    widget.sphere.name,
-                                  ) !=
-                                  null
-                                ? _DefaultSphereChatBanner(
-                                    sphereName: widget.sphere.name,
-                                  )
-                                : ColoredBox(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.surfaceContainerHighest,
-                                  )),
+                            : (hasTemplateBanner ||
+                                      _defaultChatBannerPaletteForSphere(
+                                            widget.sphere.name,
+                                          ) !=
+                                          null
+                                  ? _DefaultSphereChatBanner(
+                                      sphereName: widget.sphere.name,
+                                      templateKey: hasTemplateBanner
+                                          ? bannerTemplate
+                                          : null,
+                                    )
+                                  : ColoredBox(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.surfaceContainerHighest,
+                                    )),
                         // Top scrim so controls are readable over any banner
                         Positioned(
                           top: 0,
@@ -1391,47 +1721,61 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                 onSelected: (value) {
                                   if (value == 'invite_friends') {
                                     _inviteFriendsToSphere();
+                                  } else if (value == 'join_requests') {
+                                    _showJoinRequestsSheet();
                                   } else if (value == 'leave_sphere') {
                                     _showLeaveSphereDialog();
                                   } else if (value == 'join_sphere_menu') {
-                                    _joinSphere();
+                                    _promptToJoinSphere(force: true);
                                   }
                                 },
                                 itemBuilder: (context) => [
-                                  if (_userNickname != null) ...
-                                  const [
-                                  PopupMenuItem(
-                                    value: 'invite_friends',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.person_add_alt_rounded),
-                                        SizedBox(width: 12),
-                                        Text('Invite Friends'),
-                                      ],
+                                  if (_userNickname != null) ...[
+                                    const PopupMenuItem(
+                                      value: 'invite_friends',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.person_add_alt_rounded),
+                                          SizedBox(width: 12),
+                                          Text('Invite Friends'),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'leave_sphere',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.exit_to_app_outlined),
-                                        SizedBox(width: 12),
-                                        Text('Leave Sphere'),
-                                      ],
+                                    if (_isSphereOwner)
+                                      PopupMenuItem(
+                                        value: 'join_requests',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.mark_email_unread_outlined,
+                                            ),
+                                            SizedBox(width: 12),
+                                            Text('Invite Requests'),
+                                          ],
+                                        ),
+                                      ),
+                                    const PopupMenuItem(
+                                      value: 'leave_sphere',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.exit_to_app_outlined),
+                                          SizedBox(width: 12),
+                                          Text('Leave Sphere'),
+                                        ],
+                                      ),
                                     ),
-                                  ),
                                   ],
                                   if (_userNickname == null)
-                                  const PopupMenuItem(
-                                    value: 'join_sphere_menu',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.group_add_outlined),
-                                        SizedBox(width: 12),
-                                        Text('Join Sphere'),
-                                      ],
+                                    const PopupMenuItem(
+                                      value: 'join_sphere_menu',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.group_add_outlined),
+                                          SizedBox(width: 12),
+                                          Text('Join Sphere'),
+                                        ],
+                                      ),
                                     ),
-                                  ),
                                 ],
                               ),
                             ],
@@ -1467,7 +1811,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                     ),
                                   ),
                                   FilledButton(
-                                    onPressed: _joinSphere,
+                                    onPressed: () =>
+                                        _promptToJoinSphere(force: true),
                                     style: FilledButton.styleFrom(
                                       visualDensity: VisualDensity.compact,
                                       padding: const EdgeInsets.symmetric(
@@ -1475,7 +1820,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                         vertical: 6,
                                       ),
                                     ),
-                                    child: const Text('Join Sphere'),
+                                    child: Text(
+                                      _canJoinDirectly
+                                          ? 'Join Sphere'
+                                          : 'Request Invite',
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1563,7 +1912,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: _SystemEventNotice(
-                                    text: (postData['text'] ?? '').toString(),
+                                    text: _systemJoinNoticeText(postData),
                                   ),
                                 );
                               }
@@ -3285,14 +3634,107 @@ _ChatBannerPalette? _defaultChatBannerPaletteForSphere(String sphereName) {
   }
 }
 
+_ChatBannerPalette? _chatBannerPaletteForTemplateKey(String key) {
+  switch (key.trim().toLowerCase()) {
+    case 'sunrise':
+      return const _ChatBannerPalette(
+        title: 'Sunrise',
+        subtitle: 'Warm & uplifting',
+        icon: Icons.wb_sunny_rounded,
+        startColor: Color(0xFFFFCF8D),
+        endColor: Color(0xFFFF8A80),
+        accentColor: Color(0xFFFFF3E0),
+      );
+    case 'night':
+      return const _ChatBannerPalette(
+        title: 'Night',
+        subtitle: 'Calm & restful',
+        icon: Icons.bedtime_rounded,
+        startColor: Color(0xFF4B5D9B),
+        endColor: Color(0xFF9A8FE0),
+        accentColor: Color(0xFFE8EAFD),
+      );
+    case 'energy':
+      return const _ChatBannerPalette(
+        title: 'Energy',
+        subtitle: 'Bold & active',
+        icon: Icons.bolt_rounded,
+        startColor: Color(0xFFFF9A62),
+        endColor: Color(0xFFFF5A6A),
+        accentColor: Color(0xFFFFE9D6),
+      );
+    case 'ocean':
+      return const _ChatBannerPalette(
+        title: 'Ocean',
+        subtitle: 'Fresh & flowing',
+        icon: Icons.waves_rounded,
+        startColor: Color(0xFF2196F3),
+        endColor: Color(0xFF4ECDC4),
+        accentColor: Color(0xFFE3F2FD),
+      );
+    case 'forest':
+      return const _ChatBannerPalette(
+        title: 'Forest',
+        subtitle: 'Natural & grounded',
+        icon: Icons.forest_rounded,
+        startColor: Color(0xFF56AB2F),
+        endColor: Color(0xFF43C6AC),
+        accentColor: Color(0xFFE8F5E9),
+      );
+    case 'cosmic':
+      return const _ChatBannerPalette(
+        title: 'Cosmic',
+        subtitle: 'Bold & creative',
+        icon: Icons.auto_awesome_rounded,
+        startColor: Color(0xFF6B48FF),
+        endColor: Color(0xFFE040FB),
+        accentColor: Color(0xFFEDE7F6),
+      );
+    case 'rose':
+      return const _ChatBannerPalette(
+        title: 'Rose',
+        subtitle: 'Warm & caring',
+        icon: Icons.favorite_rounded,
+        startColor: Color(0xFFFF6B9D),
+        endColor: Color(0xFFFFB347),
+        accentColor: Color(0xFFFCE4EC),
+      );
+    case 'sky':
+      return const _ChatBannerPalette(
+        title: 'Sky',
+        subtitle: 'Light & airy',
+        icon: Icons.cloud_rounded,
+        startColor: Color(0xFF7BDFF2),
+        endColor: Color(0xFFB2F7EF),
+        accentColor: Color(0xFFE0F7FA),
+      );
+    case 'midnight':
+      return const _ChatBannerPalette(
+        title: 'Midnight',
+        subtitle: 'Dark & focused',
+        icon: Icons.nightlight_rounded,
+        startColor: Color(0xFF1A1A2E),
+        endColor: Color(0xFF16213E),
+        accentColor: Color(0xFF533483),
+      );
+    default:
+      return null;
+  }
+}
+
 class _DefaultSphereChatBanner extends StatelessWidget {
-  const _DefaultSphereChatBanner({required this.sphereName});
+  const _DefaultSphereChatBanner({required this.sphereName, this.templateKey});
 
   final String sphereName;
+  final String? templateKey;
 
   @override
   Widget build(BuildContext context) {
-    final palette = _defaultChatBannerPaletteForSphere(sphereName);
+    final palette =
+        (templateKey == null
+            ? null
+            : _chatBannerPaletteForTemplateKey(templateKey!)) ??
+        _defaultChatBannerPaletteForSphere(sphereName);
     if (palette == null) {
       return ColoredBox(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -3356,10 +3798,7 @@ class _MemberBadge extends StatelessWidget {
         children: [
           Icon(Icons.check_circle_rounded, color: Colors.white70, size: 13),
           SizedBox(width: 4),
-          Text(
-            'Member',
-            style: TextStyle(color: Colors.white70, fontSize: 11),
-          ),
+          Text('Member', style: TextStyle(color: Colors.white70, fontSize: 11)),
         ],
       ),
     );

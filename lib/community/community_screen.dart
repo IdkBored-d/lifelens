@@ -24,6 +24,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ValueNotifier<String> _searchQuery = ValueNotifier<String>('');
   final Set<String> _pendingDeleteIds = <String>{};
+  static bool _didInitializePremadeSpheres = false;
   String? get _currentUserId => FirebaseAuth.instance.currentUser?.uid;
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _spheresStream =
       FirebaseFirestore.instance
@@ -57,7 +58,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   void initState() {
     super.initState();
-    unawaited(_initializePremadeSpheres());
+    if (!_didInitializePremadeSpheres) {
+      _didInitializePremadeSpheres = true;
+      unawaited(_initializePremadeSpheres());
+    }
   }
 
   Future<void> _initializePremadeSpheres() async {
@@ -81,6 +85,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           'memberCount': 0,
           'createdAt': FieldValue.serverTimestamp(),
           'isPremade': true,
+          'isPublic': true,
           'creatorId': userId,
           'pinnedTitle': 'Welcome to $name',
           'pinnedBody':
@@ -363,7 +368,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           final sphere = spheres[index];
                           return _SphereCard(
                             sphere: sphere,
-                            onJoinRequired: () => _joinSphere(sphere),
+                            onJoinRequired: () => _confirmJoinSphere(sphere),
                             onOpen: () {
                               Navigator.push(
                                 context,
@@ -462,59 +467,52 @@ class _SphereCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: InkWell(
-        onTap: () async {
-          if (userId == null) return;
+      child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: memberStream,
+        builder: (context, memberSnapshot) {
+          final memberData = memberSnapshot.data?.data();
+          final lastReadAt = (memberData?['lastReadAt'] as Timestamp?)
+              ?.toDate();
+          final hasUnread =
+              lastReadAt == null ||
+              (sphere.lastActivityAt?.isAfter(lastReadAt) ?? false);
+          final isJoined = memberSnapshot.data?.exists ?? false;
+          final hasNewPostsForVisitor =
+              !isJoined && sphere.lastActivityAt != null;
+          final highlightPreview =
+              (isJoined && hasUnread) || hasNewPostsForVisitor;
+          final lastActivityLabel = sphere.lastActivityAt == null
+              ? 'No recent activity'
+              : _communityRelativeTimeLabel(sphere.lastActivityAt!);
+          final previewText = sphere.lastActivityText;
+          final bannerUrl = sphere.bannerUrl?.trim();
+          final hasBanner =
+              bannerUrl != null &&
+              bannerUrl.isNotEmpty &&
+              (_isHttpImageUrl(bannerUrl) || _isDataImageUrl(bannerUrl));
+          final bannerTemplate = sphere.bannerTemplate?.trim() ?? '';
+          final hasTemplateBanner =
+              !hasBanner &&
+              bannerTemplate.isNotEmpty &&
+              _paletteForTemplateKey(bannerTemplate) != null;
+          final hasDefaultBanner =
+              !hasBanner &&
+              !hasTemplateBanner &&
+              _defaultBannerPaletteForSphere(sphere.name) != null;
+          final showBanner = hasBanner || hasTemplateBanner || hasDefaultBanner;
 
-          final memberDoc = await sphereRef
-              .collection('members')
-              .doc(userId)
-              .get();
-          if (!context.mounted) return;
-
-          if (!memberDoc.exists) {
-            onJoinRequired();
-          } else {
-            onOpen();
-          }
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: memberStream,
-          builder: (context, memberSnapshot) {
-            final memberData = memberSnapshot.data?.data();
-            final lastReadAt = (memberData?['lastReadAt'] as Timestamp?)
-                ?.toDate();
-            final hasUnread =
-                lastReadAt == null ||
-                (sphere.lastActivityAt?.isAfter(lastReadAt) ?? false);
-            final isJoined = memberSnapshot.data?.exists ?? false;
-            final hasNewPostsForVisitor =
-                !isJoined && sphere.lastActivityAt != null;
-            final highlightPreview =
-                (isJoined && hasUnread) || hasNewPostsForVisitor;
-            final lastActivityLabel = sphere.lastActivityAt == null
-                ? 'No recent activity'
-                : _communityRelativeTimeLabel(sphere.lastActivityAt!);
-            final previewText = sphere.lastActivityText;
-            final bannerUrl = sphere.bannerUrl?.trim();
-            final hasBanner =
-                bannerUrl != null &&
-                bannerUrl.isNotEmpty &&
-                (_isHttpImageUrl(bannerUrl) || _isDataImageUrl(bannerUrl));
-            final bannerTemplate = sphere.bannerTemplate?.trim() ?? '';
-            final hasTemplateBanner =
-                !hasBanner &&
-                bannerTemplate.isNotEmpty &&
-                _paletteForTemplateKey(bannerTemplate) != null;
-            final hasDefaultBanner =
-                !hasBanner &&
-                !hasTemplateBanner &&
-                _defaultBannerPaletteForSphere(sphere.name) != null;
-            final showBanner =
-                hasBanner || hasTemplateBanner || hasDefaultBanner;
-
-            return Column(
+          return InkWell(
+            onTap: userId == null || !memberSnapshot.hasData
+                ? null
+                : () {
+                    if (isJoined) {
+                      onOpen();
+                    } else {
+                      onJoinRequired();
+                    }
+                  },
+            borderRadius: BorderRadius.circular(16),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (hasBanner || hasTemplateBanner || hasDefaultBanner) ...[
@@ -592,6 +590,16 @@ class _SphereCard extends StatelessWidget {
                                         foreground: cs.onSecondaryContainer,
                                       ),
                                     ],
+                                    _InfoPill(
+                                      icon: sphere.isPublic
+                                          ? Icons.public_rounded
+                                          : Icons.lock_outline_rounded,
+                                      label: sphere.isPublic
+                                          ? 'Public'
+                                          : 'Invite only',
+                                      background: cs.surfaceContainerHighest,
+                                      foreground: cs.onSurfaceVariant,
+                                    ),
                                     if (hasUnread && isJoined) ...[
                                       _InfoPill(
                                         icon: Icons.mark_chat_unread_rounded,
@@ -734,18 +742,123 @@ class _SphereCard extends StatelessWidget {
                   ),
                 ),
               ],
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
 extension on _CommunityScreenState {
+  Future<void> _confirmJoinSphere(Sphere sphere) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+
+    final canJoinDirectly =
+        sphere.isPublic || sphere.isPremade || sphere.creatorId == userId;
+    if (!canJoinDirectly) {
+      final shouldRequestInvite = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Invite only'),
+          content: const Text(
+            'You need an invite before you can join this sphere.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Not now'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.mark_email_unread_outlined),
+              label: const Text('Request Invite'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || shouldRequestInvite != true) return;
+      await _requestSphereInvite(sphere);
+      return;
+    }
+
+    final shouldJoin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Join ${sphere.name}?'),
+        content: const Text(
+          'Join this sphere to post messages, reply, react, and share progress with members.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text('Join Sphere'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || shouldJoin != true) return;
+    await _joinSphere(sphere);
+  }
+
+  Future<void> _requestSphereInvite(Sphere sphere) async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    final avatarStore = context.read<AvatarStore>();
+    final profile = await SocialFeatures.getCurrentUserProfile();
+    String username = profile?.username.trim() ?? '';
+    if (username.isEmpty) {
+      final display = profile?.displayName.trim() ?? '';
+      username = display.replaceAll(' ', '_').toLowerCase();
+    }
+    if (username.isEmpty) username = 'member';
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('spheres')
+          .doc(sphere.id)
+          .collection('join_requests')
+          .doc(userId)
+          .set({
+            'userId': userId,
+            'username': username,
+            'displayName': profile?.displayName ?? username,
+            'status': 'pending',
+            'sphereId': sphere.id,
+            'sphereName': sphere.name,
+            'miniMe': avatarStore.toCommunityAvatarMap(),
+            'miniMeName': username,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Invite request sent.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not request invite: $e')));
+    }
+  }
+
   Future<void> _joinSphere(Sphere sphere) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
+    if (!sphere.isPublic && !sphere.isPremade && sphere.creatorId != userId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This sphere is invite only.')),
+      );
+      return;
+    }
     final avatarStore = context.read<AvatarStore>();
     final miniMeData = avatarStore.toCommunityAvatarMap();
     final username = await _defaultCommunityUsername();
@@ -823,9 +936,9 @@ extension on _CommunityScreenState {
   ) async {
     final uid = _currentUserId;
     if (uid == null) return;
+    final avatarStore = context.read<AvatarStore>();
     final inviteData = inviteDoc.data();
     final sphereId = (inviteData['sphereId'] ?? '').toString();
-    final sphereName = (inviteData['sphereName'] ?? 'Sphere').toString();
     final inviteRef = inviteDoc.reference;
 
     if (sphereId.isEmpty) return;
@@ -849,7 +962,6 @@ extension on _CommunityScreenState {
     final memberRef = sphereRef.collection('members').doc(uid);
     final memberDoc = await memberRef.get();
     if (!memberDoc.exists) {
-      final avatarStore = context.read<AvatarStore>();
       final username = await _defaultCommunityUsername();
       final miniMeData = avatarStore.toCommunityAvatarMap();
       await memberRef.set({
@@ -887,16 +999,31 @@ extension on _CommunityScreenState {
       'status': 'accepted',
       'updatedAt': FieldValue.serverTimestamp(),
     });
-
+    await sphereRef.collection('invites').doc(uid).set({
+      'status': 'accepted',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> _declineSphereInvite(
     QueryDocumentSnapshot<Map<String, dynamic>> inviteDoc,
   ) async {
+    final uid = _currentUserId;
+    final sphereId = (inviteDoc.data()['sphereId'] ?? '').toString();
     await inviteDoc.reference.update({
       'status': 'declined',
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    if (uid == null || sphereId.isEmpty) return;
+    await FirebaseFirestore.instance
+        .collection('spheres')
+        .doc(sphereId)
+        .collection('invites')
+        .doc(uid)
+        .set({
+          'status': 'declined',
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
   }
 
   void _showCreateSphereDialog() {
@@ -921,9 +1048,11 @@ extension on _CommunityScreenState {
     String bannerUrl = '',
     String bannerTemplate = '',
     List<String> inviteFriendIds = const <String>[],
+    bool isPublic = true,
   }) async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
+    final avatarStore = context.read<AvatarStore>();
 
     try {
       final sphereRef = await FirebaseFirestore.instance.collection('spheres').add({
@@ -933,6 +1062,7 @@ extension on _CommunityScreenState {
         'createdAt': FieldValue.serverTimestamp(),
         'creatorId': userId,
         'isPremade': false,
+        'isPublic': isPublic,
         if (bannerUrl.isNotEmpty) 'bannerUrl': bannerUrl,
         if (bannerTemplate.isNotEmpty) 'bannerTemplate': bannerTemplate,
         'pinnedTitle': 'Start here',
@@ -942,7 +1072,6 @@ extension on _CommunityScreenState {
         'lastActivityAt': FieldValue.serverTimestamp(),
       });
 
-      final avatarStore = context.read<AvatarStore>();
       final username = await _defaultCommunityUsername();
       final miniMeData = avatarStore.toCommunityAvatarMap();
       await sphereRef.collection('members').doc(userId).set({
@@ -980,6 +1109,7 @@ extension on _CommunityScreenState {
                 description: description.isEmpty ? null : description,
                 creatorId: userId,
                 isPremade: false,
+                isPublic: isPublic,
                 bannerUrl: bannerUrl.isEmpty ? null : bannerUrl,
                 bannerTemplate: bannerTemplate.isEmpty ? null : bannerTemplate,
               ),
@@ -1418,6 +1548,7 @@ class _CreateSphereScreen extends StatefulWidget {
     String bannerUrl,
     String bannerTemplate,
     List<String> inviteFriendIds,
+    bool isPublic,
   })
   onCreate;
 
@@ -1431,6 +1562,7 @@ class _CreateSphereScreenState extends State<_CreateSphereScreen> {
   final Set<String> _inviteFriendIds = <String>{};
   String? _selectedTemplate;
   Uint8List? _pickedBytes;
+  bool _isPublic = true;
   bool _isUploading = false;
 
   @override
@@ -1484,6 +1616,7 @@ class _CreateSphereScreenState extends State<_CreateSphereScreen> {
       bannerUrl: uploadedBannerUrl,
       bannerTemplate: _selectedTemplate ?? '',
       inviteFriendIds: _inviteFriendIds.toList(growable: false),
+      isPublic: _isPublic,
     );
 
     if (!mounted) return;
@@ -1550,6 +1683,34 @@ class _CreateSphereScreenState extends State<_CreateSphereScreen> {
                 ),
                 maxLength: 100,
                 maxLines: 2,
+              ),
+              const SizedBox(height: 10),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment<bool>(
+                    value: true,
+                    icon: Icon(Icons.public_rounded),
+                    label: Text('Public'),
+                  ),
+                  ButtonSegment<bool>(
+                    value: false,
+                    icon: Icon(Icons.lock_outline_rounded),
+                    label: Text('Invite only'),
+                  ),
+                ],
+                selected: {_isPublic},
+                onSelectionChanged: (selection) {
+                  setState(() => _isPublic = selection.first);
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _isPublic
+                    ? 'Anyone can discover and join this sphere.'
+                    : 'Only invited people can join this sphere.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 10),
               ListTile(

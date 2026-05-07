@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 // MiniGen GGUF replaces ONNX LLM — llamadart inference
 import 'package:provider/provider.dart';
@@ -14,6 +15,7 @@ import 'package:lifelens/services/crisis_regex_net.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/chat_session_service.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
+import 'package:lifelens/services/dev_negative_week_seed_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/models/sleep.dart';
@@ -36,6 +38,11 @@ class MiniMeScreen extends StatefulWidget {
 }
 
 class _MiniMeScreenState extends State<MiniMeScreen> {
+  static const bool _autoSeedNegativeWeek = bool.fromEnvironment(
+    'LIFELENS_SEED_NEGATIVE_WEEK',
+  );
+  static bool _autoSeedAttemptedThisRun = false;
+
   final TextEditingController _chatController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _chatFocusNode = FocusNode();
@@ -46,6 +53,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   bool _isSuggestionBubbleThinking = false;
   bool _isIntelligenceLoading = false;
   bool _isNewUserAccount = false;
+  bool _hasMiniMeHealthLogs = false;
   String? _dailyLoggingPromptText;
   final List<_MiniMeChatMessage> _messages = [];
   String? _latestAssistantMessageText;
@@ -77,6 +85,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     _chatSessionService = ChatSessionService();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _attachPromptRefreshListeners();
+      if (kDebugMode && _autoSeedNegativeWeek && !_autoSeedAttemptedThisRun) {
+        _autoSeedAttemptedThisRun = true;
+        await _seedNegativeWeekForCurrentUser();
+        if (!mounted) return;
+      }
       await _refreshStartLoggingPromptState();
       if (!mounted) return;
 
@@ -345,7 +358,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           _MiniMeChatMessage(
             role: _ChatRole.assistant,
             text:
-                'Glad to hear it! I have marked $resolvedName as resolved. Keep listening to your body — log anything new if it comes up.',
+                'Glad to hear your symptoms went away. I marked them as resolved, and I will stay out of the way unless something new comes up.',
           ),
         );
       });
@@ -783,9 +796,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
       await _exerciseStore.ensureReady();
       final exercise = _exerciseStore
-          .getRecentExerciseActivity(days: 7)
+          .getRecentExerciseActivity(days: 7, includeNoExercise: false)
           .reversed
           .toList(growable: false);
+      final exerciseHistory = _exerciseStore.getRecentExerciseHistory(limit: 1);
       final activeSymptoms = await IsarService.instance
           .getActiveSymptomEntries();
       final recentSymptomEntries = await IsarService.instance
@@ -797,6 +811,33 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       avatarStore.setAutoBodyWidthScale(
         _autoBodyScaleFromFitnessEntries(recentFitnessEntries),
       );
+
+      final hasHealthLogs =
+          recentMoods.isNotEmpty ||
+          recentSleep.isNotEmpty ||
+          exerciseHistory.isNotEmpty ||
+          recentSymptomEntries.isNotEmpty ||
+          activeSymptoms.isNotEmpty;
+      if (!hasHealthLogs) {
+        avatarStore.resetAdaptiveHealthAppearance();
+        if (!mounted) return;
+        setState(() {
+          _hasMiniMeHealthLogs = false;
+          _intelligence = null;
+          _activeSymptomCount = 0;
+          _lastIntelligenceInputSignature = 'empty-health-logs';
+          _danceOnOpen = false;
+          _derivedUiSignature = null;
+          _derivedUiState = null;
+        });
+        return;
+      }
+
+      if (!_hasMiniMeHealthLogs && mounted) {
+        setState(() {
+          _hasMiniMeHealthLogs = true;
+        });
+      }
 
       final payloadMood = mood.isEmpty ? const [3, 3, 3] : mood;
       final payloadSleep = recentSleep.isNotEmpty
@@ -922,6 +963,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   String? _avatarMoodFromIntelligence(String? baseMoodLabel) {
+    if (!_hasMiniMeHealthLogs) {
+      return 'neutral';
+    }
+
     final normalizedBaseMood = baseMoodLabel?.trim();
     if (normalizedBaseMood != null && normalizedBaseMood.isNotEmpty) {
       return normalizedBaseMood;
@@ -999,6 +1044,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final text = _chatController.text.trim();
     if (text.isEmpty || _isReplying) return;
 
+    if (_isDebugSeedCommand(text)) {
+      await _handleDebugSeedCommand(text);
+      return;
+    }
+
     final moodStore = context.read<MoodLogStore>();
     final moodContext = _buildMoodContext(moodStore);
     final moodLabel = moodContext.label;
@@ -1035,6 +1085,62 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (!mounted) return;
     await _appendAssistantReplyInChunks(reply);
     await _refreshIntelligence();
+  }
+
+  bool _isDebugSeedCommand(String text) {
+    if (!kDebugMode) return false;
+
+    final normalized = text.trim().toLowerCase();
+    return normalized == DevNegativeWeekSeedService.command ||
+        normalized == 'seed negative week';
+  }
+
+  Future<void> _handleDebugSeedCommand(String text) async {
+    setState(() {
+      _isCoachExpanded = true;
+      _appendMessage(_MiniMeChatMessage(role: _ChatRole.user, text: text));
+      _isReplying = true;
+    });
+    await _persistMessages();
+    _chatController.clear();
+    _scrollToBottom();
+
+    String reply;
+    try {
+      final result = await _seedNegativeWeekForCurrentUser();
+      if (!mounted) return;
+
+      reply =
+          '${result.summary}\n\nI refreshed your Mini-Me context too, so suggestions and appearance should now react to the tougher week.';
+    } catch (error) {
+      reply = 'I could not seed the current account yet: $error';
+    }
+
+    if (!mounted) return;
+    await _appendAssistantReplyInChunks(reply);
+  }
+
+  Future<DevNegativeWeekSeedResult> _seedNegativeWeekForCurrentUser() async {
+    final result = await DevNegativeWeekSeedService.seedCurrentUser();
+    if (!mounted) return result;
+
+    final moodStore = context.read<MoodLogStore>();
+    final sleepStore = context.read<SleepStore>();
+    final inbox = context.read<MiniMeSuggestionsInbox>();
+
+    await moodStore.refreshFromPersistence();
+    await sleepStore.refresh();
+    await _exerciseStore.refreshFromCloud();
+    await _refreshStartLoggingPromptState();
+    _lastIntelligenceInputSignature = null;
+    await _refreshIntelligence();
+    await inbox.refresh(
+      moodStore: moodStore,
+      sleepStore: sleepStore,
+      fromLog: true,
+    );
+
+    return result;
   }
 
   Future<void> _syncUnreadSuggestions({required bool forceRefresh}) async {
@@ -1130,11 +1236,53 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   String _normalizeAssistantReply(String reply) {
-    final normalized = reply
+    final normalized = _correctAssistantTypos(reply)
+        .replaceAllMapped(
+          RegExp(r'\[context:\s*([^\]]+)\]', caseSensitive: false),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'\bcontext\s*:\s*', caseSensitive: false), '')
         .replaceAll(RegExp(r'[ \t]+'), ' ')
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .trim();
     return _shouldSuppressAssistantMessage(normalized) ? '' : normalized;
+  }
+
+  String _correctAssistantTypos(String text) {
+    const corrections = <String, String>{
+      'butif': 'but if',
+      'alot': 'a lot',
+      'becuase': 'because',
+      'definately': 'definitely',
+      'seperate': 'separate',
+      'seperately': 'separately',
+      'recieve': 'receive',
+      'recieved': 'received',
+      'wierd': 'weird',
+      'tommorow': 'tomorrow',
+      'occured': 'occurred',
+      'untill': 'until',
+      'enviroment': 'environment',
+      'neccessary': 'necessary',
+    };
+
+    var corrected = text;
+    for (final entry in corrections.entries) {
+      corrected = corrected.replaceAllMapped(
+        RegExp('\\b${entry.key}\\b', caseSensitive: false),
+        (match) => _matchReplacementCase(match.group(0) ?? '', entry.value),
+      );
+    }
+    return corrected;
+  }
+
+  String _matchReplacementCase(String original, String replacement) {
+    if (original.isEmpty) return replacement;
+    final first = original[0];
+    if (first == first.toUpperCase() && first != first.toLowerCase()) {
+      return '${replacement[0].toUpperCase()}${replacement.substring(1)}';
+    }
+    return replacement;
   }
 
   bool _shouldSuppressAssistantMessage(String text) {
@@ -1664,6 +1812,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     required String? effectiveMoodLabel,
   }) {
     final avatarStore = context.read<AvatarStore>();
+    if (!_hasMiniMeHealthLogs) {
+      return const MiniMeVisualState();
+    }
+
     final longTermFatigue = avatarStore.fatigueAppearanceLevel;
     final longTermRecovery = avatarStore.healthTrendScore.clamp(0.0, 1.0);
     final now = DateTime.now();
@@ -2145,7 +2297,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   selector: (context, moodStore) =>
                       _MiniMeMoodSelection.fromItems(moodStore.items),
                   builder: (context, moodSelection, _) {
-                    return _MiniMeStreakSection(moodLogs: moodSelection.items);
+                    return _MiniMeStreakSection(
+                      moodLogs: moodSelection.items,
+                      forceEmpty: _isNewUserAccount,
+                    );
                   },
                 ),
               ),
@@ -4102,9 +4257,10 @@ final Expando<Object> _messageSuggestionIntroCache = Expando<Object>(
 );
 
 class _MiniMeStreakSection extends StatefulWidget {
-  const _MiniMeStreakSection({required this.moodLogs});
+  const _MiniMeStreakSection({required this.moodLogs, this.forceEmpty = false});
 
   final List<MoodCheckIn> moodLogs;
+  final bool forceEmpty;
 
   @override
   State<_MiniMeStreakSection> createState() => _MiniMeStreakSectionState();
@@ -4125,14 +4281,37 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
   void didUpdateWidget(covariant _MiniMeStreakSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     final newSignature = _buildSignature(widget.moodLogs);
-    if (newSignature != _signature) {
+    if (newSignature != _signature ||
+        oldWidget.forceEmpty != widget.forceEmpty) {
       _signature = newSignature;
       _future = _loadSnapshot();
     }
   }
 
   Future<StreakSnapshot> _loadSnapshot() {
+    if (widget.forceEmpty) {
+      return Future.value(_emptyStreakSnapshot());
+    }
     return StreakService.instance.buildSnapshot(moodLogs: widget.moodLogs);
+  }
+
+  StreakSnapshot _emptyStreakSnapshot() {
+    final today = DateTime.now();
+    final startOfToday = DateTime(today.year, today.month, today.day);
+    return StreakSnapshot(
+      currentStreak: 0,
+      bestStreak: 0,
+      loggedToday: false,
+      recentDays: List<StreakCalendarDay>.generate(7, (index) {
+        return StreakCalendarDay(
+          date: startOfToday.subtract(Duration(days: 6 - index)),
+          isLogged: false,
+          runLevel: 0,
+        );
+      }, growable: false),
+      badge: 'Start fresh',
+      message: 'Log your first check-in to start a streak.',
+    );
   }
 
   String _buildSignature(List<MoodCheckIn> logs) {
@@ -4144,6 +4323,69 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+
+    Widget buildStreakContent(StreakSnapshot streak) {
+      final badgeIcon = _badgeToIcon(streak.badge);
+
+      return _StreakShell(
+        title: 'Daily Streak',
+        headerTrailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: cs.primaryContainer,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(badgeIcon, size: 16, color: cs.onPrimaryContainer),
+              const SizedBox(width: 6),
+              Text(
+                '${streak.currentStreak} days',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: cs.onPrimaryContainer,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: streak.recentDays.map((day) {
+                final weekday = _weekdayLetter(day.date.weekday);
+                return _DayCircle(
+                  label: Text(
+                    weekday,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  icon: _levelToIcon(day.runLevel),
+                  filled: day.isLogged,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Best streak: ${streak.bestStreak} day${streak.bestStreak == 1 ? '' : 's'}',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: cs.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (widget.forceEmpty) {
+      return buildStreakContent(_emptyStreakSnapshot());
+    }
 
     return FutureBuilder<StreakSnapshot>(
       future: _future,
@@ -4178,62 +4420,7 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
         }
 
         final streak = snapshot.data!;
-        final badgeIcon = _badgeToIcon(streak.badge);
-
-        return _StreakShell(
-          title: 'Daily Streak',
-          headerTrailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: cs.primaryContainer,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(badgeIcon, size: 16, color: cs.onPrimaryContainer),
-                const SizedBox(width: 6),
-                Text(
-                  '${streak.currentStreak} days',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: cs.onPrimaryContainer,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: streak.recentDays.map((day) {
-                  final weekday = _weekdayLetter(day.date.weekday);
-                  return _DayCircle(
-                    label: Text(
-                      weekday,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    icon: _levelToIcon(day.runLevel),
-                    filled: day.isLogged,
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Best streak: ${streak.bestStreak} day${streak.bestStreak == 1 ? '' : 's'}',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: cs.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        );
+        return buildStreakContent(streak);
       },
     );
   }

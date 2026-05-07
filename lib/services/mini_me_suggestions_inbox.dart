@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,6 +13,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class MiniMeSuggestionsInbox extends ChangeNotifier {
   MiniMeSuggestionsInbox() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _handleAuthChanged(user);
+    });
     _init();
   }
 
@@ -28,6 +32,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   bool _refreshQueued = false;
   bool _refreshQueuedFromLog = false;
   String? _loadedScopeKey;
+  late final StreamSubscription<User?> _authSub;
   final Set<String> _viewedDigests = <String>{};
   List<_StoredSuggestion> _unread = const <_StoredSuggestion>[];
   _SuggestionDeliveryState _deliveryState = const _SuggestionDeliveryState();
@@ -48,6 +53,25 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   String get _unreadSuggestionsKey => '${_unreadSuggestionsKeyBase}_$_scopeKey';
   String get _deliveryStateKey => '${_deliveryStateKeyBase}_$_scopeKey';
 
+  void _clearInMemoryStateForScope(String scopeKey) {
+    _loadedScopeKey = scopeKey;
+    _viewedDigests.clear();
+    _unread = const <_StoredSuggestion>[];
+    _deliveryState = const _SuggestionDeliveryState();
+    _refreshQueued = false;
+    _refreshQueuedFromLog = false;
+  }
+
+  void _handleAuthChanged(User? user) {
+    final nextScopeKey = user?.uid ?? 'guest';
+    if (_loadedScopeKey == nextScopeKey) return;
+    _clearInMemoryStateForScope(nextScopeKey);
+    notifyListeners();
+    if (_isInitialized) {
+      unawaited(_loadScopedState().then((_) => notifyListeners()));
+    }
+  }
+
   Future<void> _init() async {
     if (_isInitialized) return;
     _prefs = await SharedPreferences.getInstance();
@@ -64,6 +88,8 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     _viewedDigests
       ..clear()
       ..addAll(prefs.getStringList(_viewedDigestsKey) ?? const []);
+    _unread = const <_StoredSuggestion>[];
+    _deliveryState = const _SuggestionDeliveryState();
 
     final rawUnread = prefs.getString(_unreadSuggestionsKey);
     if (rawUnread != null && rawUnread.isNotEmpty) {
@@ -679,6 +705,12 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       _deliveryStateKey,
       jsonEncode(_deliveryState.toJson()),
     );
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 }
 

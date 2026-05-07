@@ -89,7 +89,11 @@ class _LogHubScreenState extends State<LogHubScreen> {
       _selectedHistoryDate = date;
     });
     await _openTracker(
-      HistoryCalendarScreen(initialDate: date, showCalendar: false),
+      HistoryCalendarScreen(
+        initialDate: date,
+        showCalendar: false,
+        refreshOnInitialLoad: false,
+      ),
     );
     if (!mounted) return;
     setState(() {

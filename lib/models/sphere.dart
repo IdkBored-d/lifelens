@@ -8,6 +8,7 @@ class Sphere {
   final String? description;
   final String? creatorId;
   final bool isPremade;
+  final bool isPublic;
   final String? pinnedTitle;
   final String? pinnedBody;
   final String? lastActivityText;
@@ -26,6 +27,7 @@ class Sphere {
     this.description,
     this.creatorId,
     this.isPremade = false,
+    this.isPublic = true,
     this.pinnedTitle,
     this.pinnedBody,
     this.lastActivityText,
@@ -47,6 +49,7 @@ class Sphere {
       description: data['description'],
       creatorId: data['creatorId'],
       isPremade: data['isPremade'] ?? false,
+      isPublic: data['isPublic'] ?? true,
       pinnedTitle: data['pinnedTitle'],
       pinnedBody: data['pinnedBody'],
       lastActivityText: data['lastActivityText'],
@@ -67,6 +70,7 @@ class Sphere {
       'description': description,
       'creatorId': creatorId,
       'isPremade': isPremade,
+      'isPublic': isPublic,
       'pinnedTitle': pinnedTitle,
       'pinnedBody': pinnedBody,
       'lastActivityText': lastActivityText,

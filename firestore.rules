@@ -26,6 +26,16 @@ service cloud.firestore {
         get(spherePath(sphereId)).data.creatorId == request.auth.uid;
     }
 
+    function isPublicSphere(sphereId) {
+      return get(spherePath(sphereId)).data.get('isPublic', true) == true;
+    }
+
+    function hasSphereInvite(sphereId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/spheres/$(sphereId)/invites/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/spheres/$(sphereId)/invites/$(request.auth.uid)).data.status in ['pending', 'accepted'];
+    }
+
     function affectedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
@@ -116,7 +126,8 @@ service cloud.firestore {
           'memberCount',
           'createdAt',
           'creatorId',
-          'isPremade'
+          'isPremade',
+          'isPublic'
         ]);
 
       allow update: if signedIn() && (
@@ -139,8 +150,10 @@ service cloud.firestore {
       match /members/{memberId} {
         allow read: if signedIn();
 
-        allow create: if isSelf(memberId) &&
-          request.resource.data.username is string;
+        allow create: if (isSelf(memberId) &&
+          request.resource.data.username is string &&
+          (isPublicSphere(sphereId) || isSphereOwner(sphereId) || hasSphereInvite(sphereId))) ||
+          (isSphereOwner(sphereId) && request.resource.data.username is string);
 
         allow update: if (
           isSelf(memberId) &&
@@ -169,6 +182,38 @@ service cloud.firestore {
           (isSphereMember(sphereId) && resource.data.get('reportCount', 0) >= 3);
       }
 
+      match /invites/{inviteeId} {
+        allow read: if isSelf(inviteeId) || isSphereMember(sphereId) || isSphereOwner(sphereId);
+        allow create: if signedIn() &&
+          isSphereMember(sphereId) &&
+          request.resource.data.toUserId == inviteeId;
+        allow update: if (
+          signedIn() &&
+          isSphereMember(sphereId) &&
+          request.resource.data.toUserId == inviteeId
+        ) || (
+          isSelf(inviteeId) &&
+          affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          request.resource.data.status in ['declined', 'accepted']
+        );
+        allow delete: if isSelf(inviteeId) || isSphereOwner(sphereId);
+      }
+
+      match /join_requests/{requesterId} {
+        allow read: if isSelf(requesterId) || isSphereOwner(sphereId);
+
+        allow create, update: if isSelf(requesterId) &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.username is string;
+
+        allow update: if isSphereOwner(sphereId) &&
+          affectedKeys().hasOnly(['status', 'updatedAt', 'reviewedBy']) &&
+          request.resource.data.status in ['accepted', 'denied'];
+
+        allow delete: if isSelf(requesterId) || isSphereOwner(sphereId);
+      }
+
       match /messages/{messageId} {
         allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
         allow create: if isSphereMember(sphereId) &&
@@ -182,10 +227,17 @@ service cloud.firestore {
       match /posts/{postId} {
         allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
 
-        allow create: if isSphereMember(sphereId) &&
+        allow create: if (
+          isSphereMember(sphereId) &&
           request.resource.data.userId == request.auth.uid &&
           request.resource.data.username is string &&
-          request.resource.data.text is string;
+          request.resource.data.text is string
+        ) || (
+          isSphereOwner(sphereId) &&
+          request.resource.data.type == 'system_join' &&
+          request.resource.data.username is string &&
+          request.resource.data.text is string
+        );
 
         allow update: if isSphereMember(sphereId) && (
           (

@@ -24,19 +24,32 @@ class MoodCheckIn {
 
 class MoodLogStore extends ChangeNotifier {
   MoodLogStore() {
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
-      refreshFromPersistence();
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _handleAuthChanged(user);
     });
     refreshFromPersistence();
   }
 
   final List<MoodCheckIn> _items = [];
   late final StreamSubscription<User?> _authSub;
+  String _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  int _loadRequestId = 0;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
   List<MoodCheckIn> get items => List.unmodifiable(_items);
+
+  void _handleAuthChanged(User? user) {
+    final nextScopeKey = user?.uid ?? 'guest';
+    if (_loadedScopeKey != nextScopeKey) {
+      _loadedScopeKey = nextScopeKey;
+      _items.clear();
+      _isLoading = true;
+      notifyListeners();
+    }
+    refreshFromPersistence();
+  }
 
   void add(MoodCheckIn item) {
     _items.insert(0, item);
@@ -44,14 +57,22 @@ class MoodLogStore extends ChangeNotifier {
   }
 
   Future<void> refreshFromPersistence() async {
+    final requestId = ++_loadRequestId;
+    final scopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    if (_loadedScopeKey != scopeKey) {
+      _loadedScopeKey = scopeKey;
+      _items.clear();
+    }
     _isLoading = true;
     notifyListeners();
 
     try {
       await IsarService.instance.init();
+      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
       final entries = await IsarService.instance.getRecentMoodEntries(
         days: 365,
       );
+      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
       final persisted =
           entries
               .where((entry) => entry.resolvedBy != 'minime')
@@ -65,8 +86,10 @@ class MoodLogStore extends ChangeNotifier {
     } catch (_) {
       // Keep the in-memory items if persistence is unavailable.
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (requestId == _loadRequestId && _loadedScopeKey == scopeKey) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -87,9 +110,19 @@ class MoodLogStore extends ChangeNotifier {
       emoji: _emojiForMood(entry.resolvedMood),
       intensity: _intensityFromMoodEntry(entry),
       tags: const [],
-      notes: entry.rawLog,
+      notes: _stripInternalContextMetadata(entry.rawLog),
       createdAt: entry.timestamp,
     );
+  }
+
+  String _stripInternalContextMetadata(String value) {
+    return value
+        .replaceAll(
+          RegExp(r'\s*\[context:\s*[^\]]+\]\s*', caseSensitive: false),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   String _emojiForMood(String moodLabel) {

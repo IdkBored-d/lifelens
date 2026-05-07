@@ -944,6 +944,9 @@ Requirements:
 - Each suggestion must be based on whole-picture patterns, not a single log entry.
 - Every suggestion should combine at least two signal types when available (for example mood + sleep, or symptoms + exercise, or chat + trend summary).
 - Across the 3 suggestions, cover different pattern angles (stabilize, investigate trigger, practical next step).
+- If logs contain notes, tags, sleep notes, workout details, or symptom context, reuse at least one concrete phrase/noun from those details in the action or reason.
+- If recent logs are similar to previous days, change the angle instead of repeating the same advice: trigger, friction, timing, environment, recovery cost, boundary, support, or what to protect next.
+- Do not give category-only advice like "log mood", "sleep earlier", "rest more", or "take a walk" when a specific note/context is available.
 - Do not repeat or quote prior Mini-Me replies verbatim.
 - Use clear, casual, easy-to-understand language.
 - Each suggestion should be practical, specific, and warm.
@@ -1005,6 +1008,8 @@ def _build_suggestions_refinement_prompt(
 Task:
 - Rewrite each suggestion so it is clearer and more natural for users.
 - Preserve the original intent and practical next step.
+- Preserve concrete user context from notes/logs when it appears in the original suggestion or summary.
+- If a suggestion is generic but the context includes notes, tags, sleep notes, workout details, or symptom context, make the wording point to that concrete detail without inventing facts.
 - Keep the same number of suggestions ({target_count}).
 - Keep each action and reason concise, warm, and easy to understand.
 - Do not add medical diagnosis or new high-risk guidance.
