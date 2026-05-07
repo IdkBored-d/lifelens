@@ -14,6 +14,7 @@ import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/sleep_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 import 'package:provider/provider.dart';
 
@@ -67,6 +68,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   @override
   void initState() {
     super.initState();
+    // Ensure MobileBERT doesn't unload while the user is logging their mood.
+    ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
     notesCtrl.addListener(_persistDraft);
     _restoreDraft();
   }
@@ -75,6 +78,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   void dispose() {
     notesCtrl.removeListener(_persistDraft);
     notesCtrl.dispose();
+    // Schedule MobileBERT unload 15 seconds after leaving the mood log.
+    ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
     super.dispose();
   }
 

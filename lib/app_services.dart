@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -129,9 +129,11 @@ class AppServices {
     );
 
     symptomPipeline = SymptomPipelineService(
-      disEmbed: disEmbed,
+      disEmbed:   disEmbed,
+      gemini:     gemini,
+      weaviate:   weaviate,
       confidence: confidence,
-      tokenize: _disEmbedTokenize,
+      tokenize:   _disEmbedTokenize,
     );
 
     fitnessPipeline = FitnessPipelineService(
@@ -160,44 +162,31 @@ class AppServices {
       }
     }
 
-    final miniGenAvailable = await MiniGenDownloader.isModelAvailable();
-
+    // MobileBERT and DisEmbed are now lazy — loaded on demand by ModelLifecycleService.
+    // FitnessMLP is the only model that blocks startup.
     await Future.wait([
-      loadModel('MobileBERT', () => mobileBert.load(_mobileBertAsset)),
-      loadModel('DisEmbed', () => disEmbed.load(_disEmbedAsset)),
       loadModel('FitnessMLP', () => fitnessMlp.load(_fitnessAsset)),
-      if (miniGenAvailable)
-        loadModel('MiniGen', () async {
-          final path = await MiniGenDownloader.ensureModel();
-          await miniGen.load(path);
-        }),
     ]);
 
-    // First launch can spend significant time downloading MiniGen from HF.
-    // Do not block app startup; preload it in background instead.
-    if (!miniGenAvailable) {
-      unawaited(
-        loadModel('MiniGen (background)', () async {
-          final path = await MiniGenDownloader.ensureModel();
-          await miniGen.load(path);
-        }),
-      );
-      debugPrint(
-        '[AppServices] init: MiniGen not cached yet; background preload started',
-      );
-    }
+    // MiniGen requires an OTA download on first launch (~96 MB); fire it in the
+    // background so the 30-second startup timeout in app_init.dart doesn't kill it.
+    unawaited(loadModel('MiniGen', () async {
+      final path = await MiniGenDownloader.ensureModel();
+      await miniGen.load(path);
+    }));
 
-    final expectedBlockingModels = miniGenAvailable ? 4 : 3;
     debugPrint(
-      '[AppServices] init: blocking model preload ready $loadedCount/$expectedBlockingModels in ${sw.elapsedMilliseconds - modelsStart}ms',
+      '[AppServices] init: models ready $loadedCount/4 (1 sync, 3 lazy) in ${sw.elapsedMilliseconds - modelsStart}ms',
     );
 
     // ── 6. Lifecycle + startup repair ───────────────────────────────────────
     ModelLifecycleService.instance.init(
-      mobileBert: mobileBert,
-      disEmbed: disEmbed,
-      fitnessMlp: fitnessMlp,
-      miniGen: miniGen,
+      mobileBert:          mobileBert,
+      disEmbed:            disEmbed,
+      fitnessMlp:          fitnessMlp,
+      miniGen:             miniGen,
+      mobileBertAssetPath: _mobileBertAsset,
+      disEmbedAssetPath:   _disEmbedAsset,
     );
     WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
 

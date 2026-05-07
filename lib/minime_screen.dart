@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 // MiniGen GGUF replaces ONNX LLM — llamadart inference
 import 'package:provider/provider.dart';
 import 'package:lifelens/app_services.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'moodlog_store.dart';
 import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
@@ -75,6 +76,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void initState() {
     super.initState();
     _chatSessionService = ChatSessionService();
+    // Ensure MobileBERT doesn't unload while the chat tab is active.
+    if (widget.isActive) {
+      ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _attachPromptRefreshListeners();
       await _refreshStartLoggingPromptState();
@@ -96,6 +101,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   @override
   void dispose() {
+    if (widget.isActive) {
+      ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+    }
     _moodStoreSource?.removeListener(_onTrackedLogsChanged);
     _sleepStoreSource?.removeListener(_onTrackedLogsChanged);
     _suggestionsInboxSource?.removeListener(_onSuggestionsInboxChanged);
@@ -110,14 +118,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   @override
   void didUpdateWidget(covariant MiniMeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isActive && widget.isActive) {
+    if (oldWidget.isActive && !widget.isActive) {
+      // User switched away from the chat tab.
+      ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+    } else if (!oldWidget.isActive && widget.isActive) {
+      // User switched back to the chat tab.
+      ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
       setState(() => _avatarWaveToken += 1);
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await _refreshStartLoggingPromptState();
         if (!mounted) return;
         unawaited(_checkSymptomCheckupPending());
-        await _syncUnreadSuggestions(forceRefresh: false);
+        await _syncUnreadSuggestions(forceRefresh: true);
       });
     }
   }

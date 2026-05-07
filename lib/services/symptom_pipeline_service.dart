@@ -1,12 +1,12 @@
 import 'dart:convert';
-
 import 'package:flutter/foundation.dart' show debugPrint;
 import '../models/symptom_result.dart';
 import '../models/escalation_level.dart';
 import 'confidence_manager.dart';
 import 'disembed_service.dart';
 import 'model_lifecycle_service.dart';
-import 'minime_backend_service.dart';
+import 'weaviate_service.dart';
+import 'gemini_service.dart';
 import '../database/isar_service.dart';
 import '../database/symptom_entry.dart';
 
@@ -24,15 +24,21 @@ import '../database/symptom_entry.dart';
 ///   Same but Weaviate RAG is skipped, offline warning shown.
 class SymptomPipelineService {
   final DisEmbedService _disEmbed;
+  final GeminiService _gemini;
+  final WeaviateService _weaviate;
   final ConfidenceManager _confidence;
 
   final Map<String, List<int>> Function(String text, int maxLen) _tokenize;
 
   SymptomPipelineService({
     required DisEmbedService disEmbed,
+    required GeminiService gemini,
+    required WeaviateService weaviate,
     required ConfidenceManager confidence,
     required Map<String, List<int>> Function(String, int) tokenize,
   }) : _disEmbed = disEmbed,
+       _gemini = gemini,
+       _weaviate = weaviate,
        _confidence = confidence,
        _tokenize = tokenize;
 
@@ -43,17 +49,11 @@ class SymptomPipelineService {
     required bool isOnline,
   }) async {
     // ── STEP 1: DisEmbed fast embedding ───────────────────────────────────
-    // If local model loading fails, continue with backend/Gemini paths so
-    // symptom analysis still works instead of saving a tracking-only stub.
-    List<double> embedding = const <double>[];
-    try {
-      await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
-      embedding = await _disEmbed.embed(userSymptoms, _tokenize);
-    } catch (e) {
-      debugPrint(
-        '[SymptomPipeline] DisEmbed unavailable, continuing without local embedding: $e',
-      );
-    }
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
+    // Start the 15-second timer immediately so the model is unloaded shortly after inference completes.
+    ModelLifecycleService.instance.scheduleUnload(ModelType.disEmbed);
+    
+    final embedding = await _disEmbed.embed(userSymptoms, _tokenize);
 
     // ── STEP 2: Disease index lookup ───────────────────────────────────────
     // TODO(index): Replace with a real on-device disease embedding index once
@@ -119,33 +119,40 @@ class SymptomPipelineService {
       ],
       ragUsed: false,
       isOffline: !isOnline,
-      resolvedBy: EscalationLevel.base,
+      resolvedBy: EscalationLevel.gemini,
       disEmbedPrediction: null,
       disEmbedResult: null,
     );
   }
 
-  /// Request a second pass through the same non-Gemini backend disease predictor.
+  /// Request a second opinion from Gemini using all available context.
+  /// Only callable when online.
   Future<SymptomPipelineResult> requestSecondOpinion({
     required String userSymptoms,
     required List<double> embedding,
     required SymptomPipelineResult previousResult,
   }) async {
-    final symptomList = userSymptoms
-        .split(RegExp(r'[,.]'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    final backendReply = await MiniMeBackendService.instance.analyzeSymptoms(
-      symptoms: symptomList,
+    final ragResults = await _weaviate.queryByVector(embedding, topK: 5);
+    final ragContext = _weaviate.buildRagContext(ragResults);
+    final prevDiseases = previousResult.diagnoses
+        .map((d) => d.diseaseName)
+        .join(', ');
+
+    final geminiRaw = await _gemini.analyzeSymptoms(
+      userSymptoms: userSymptoms,
+      context: '',
+      ragContext: ragContext,
+      previousDiagnoses: prevDiseases,
     );
+
+    final diagnoses = _parseDiagnoses(geminiRaw);
 
     return _buildAndStore(
       userSymptoms: userSymptoms,
-      diagnoses: _backendReplyToDiagnoses(backendReply),
-      ragUsed: backendReply.source.contains('rag'),
+      diagnoses: diagnoses,
+      ragUsed: ragResults.isNotEmpty,
       isOffline: false,
-      resolvedBy: EscalationLevel.base,
+      resolvedBy: EscalationLevel.gemini,
       disEmbedPrediction: previousResult.disEmbedPrediction,
       disEmbedResult: previousResult.disEmbedResult,
     );
@@ -160,73 +167,31 @@ class SymptomPipelineService {
     required String disEmbedPrediction,
     required DisEmbedResult disEmbedResult,
   }) async {
-    return _buildAndStore(
-      userSymptoms: userSymptoms,
-      diagnoses: _fallbackDiagnoses(''),
-      ragUsed: false,
-      isOffline: !isOnline,
-      resolvedBy: EscalationLevel.base,
-      disEmbedPrediction: disEmbedPrediction,
-      disEmbedResult: disEmbedResult,
-    );
-  }
-
-  /// Convert a backend [SymptomAnalysisReply] into the shared [DiagnosisEntry] list.
-  List<DiagnosisEntry> _backendReplyToDiagnoses(SymptomAnalysisReply reply) {
-    if (reply.predictions.isNotEmpty) {
-      final isEmergency = reply.urgency == 'emergency';
-      return reply.predictions.map((p) {
-        final nextSteps = p.whenToSeekCare.isNotEmpty
-            ? p.whenToSeekCare
-            : reply.selfCareRecommendations.take(2).join(' ');
-        return DiagnosisEntry(
-          diseaseName: p.condition,
-          reasoning: p.description,
-          nextSteps: nextSteps,
-          isUrgent: isEmergency,
-        );
-      }).toList();
+    List<WeaviateDisease> ragResults = [];
+    if (isOnline) {
+      ragResults = await _weaviate.queryByVector(embedding, topK: 5);
     }
-    // Backend returned analysis text but no structured predictions
-    return [
-      DiagnosisEntry(
-        diseaseName: 'See analysis',
-        reasoning: reply.analysis,
-        nextSteps: reply.selfCareRecommendations.take(2).join(' '),
-        isUrgent: reply.urgency == 'emergency',
-      ),
-    ];
-  }
+    final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
 
-  Future<SymptomPipelineResult> _handleEscalation({
-    required String userSymptoms,
-    required List<double> embedding,
-    required bool isOnline,
-    required DisEmbedResult? disEmbedResult,
-  }) async {
-    // ── Backend (online, DisEmbed + RAG on server) ─────────────────────────
+    // ── Gemini (online only) ───────────────────────────────────────────────
     if (isOnline) {
       try {
-        final symptomList = userSymptoms
-            .split(RegExp(r'[,.]'))
-            .map((s) => s.trim())
-            .where((s) => s.isNotEmpty)
-            .toList();
-        final backendReply = await MiniMeBackendService.instance
-            .analyzeSymptoms(symptoms: symptomList);
+        final geminiRaw = await _gemini.analyzeSymptoms(
+          userSymptoms: userSymptoms,
+          context: '',
+          ragContext: ragContext ?? '',
+        );
         return _buildAndStore(
           userSymptoms: userSymptoms,
-          diagnoses: _backendReplyToDiagnoses(backendReply),
-          ragUsed: backendReply.source.contains('rag'),
+          diagnoses: _parseDiagnoses(geminiRaw),
+          ragUsed: ragResults.isNotEmpty,
           isOffline: false,
-          resolvedBy: EscalationLevel.base,
-          disEmbedPrediction: null,
+          resolvedBy: EscalationLevel.gemini,
+          disEmbedPrediction: disEmbedPrediction,
           disEmbedResult: disEmbedResult,
         );
       } catch (e) {
-        debugPrint(
-          '[SymptomPipeline] Backend analyze failed, using fallback: $e',
-        );
+        debugPrint('[SymptomPipeline] Gemini failed, using fallback: $e');
       }
     }
 
@@ -235,7 +200,52 @@ class SymptomPipelineService {
       diagnoses: _fallbackDiagnoses(''),
       ragUsed: false,
       isOffline: !isOnline,
-      resolvedBy: EscalationLevel.base,
+      resolvedBy: EscalationLevel.gemini,
+      disEmbedPrediction: disEmbedPrediction,
+      disEmbedResult: disEmbedResult,
+    );
+  }
+
+  Future<SymptomPipelineResult> _handleEscalation({
+    required String userSymptoms,
+    required List<double> embedding,
+    required bool isOnline,
+    required DisEmbedResult? disEmbedResult,
+  }) async {
+    List<WeaviateDisease> ragResults = [];
+    if (isOnline) {
+      ragResults = await _weaviate.queryByVector(embedding, topK: 5);
+    }
+    final ragContext = isOnline ? _weaviate.buildRagContext(ragResults) : null;
+
+    // ── Gemini (online only) ───────────────────────────────────────────────
+    if (isOnline) {
+      try {
+        final geminiRaw = await _gemini.analyzeSymptoms(
+          userSymptoms: userSymptoms,
+          context: '',
+          ragContext: ragContext ?? '',
+        );
+        return _buildAndStore(
+          userSymptoms: userSymptoms,
+          diagnoses: _parseDiagnoses(geminiRaw),
+          ragUsed: ragResults.isNotEmpty,
+          isOffline: false,
+          resolvedBy: EscalationLevel.gemini,
+          disEmbedPrediction: null,
+          disEmbedResult: disEmbedResult,
+        );
+      } catch (e) {
+        debugPrint('[SymptomPipeline] Gemini failed, using fallback: $e');
+      }
+    }
+
+    return _buildAndStore(
+      userSymptoms: userSymptoms,
+      diagnoses: _fallbackDiagnoses(''),
+      ragUsed: false,
+      isOffline: !isOnline,
+      resolvedBy: EscalationLevel.gemini,
       disEmbedPrediction: null,
       disEmbedResult: disEmbedResult,
     );
@@ -299,6 +309,33 @@ class SymptomPipelineService {
       disEmbedPrediction: disEmbedPrediction,
       disEmbedResult: disEmbedResult,
     );
+  }
+
+  List<DiagnosisEntry> _parseDiagnoses(String rawResponse) {
+    try {
+      final jsonStart = rawResponse.indexOf('{');
+      final jsonEnd = rawResponse.lastIndexOf('}');
+      if (jsonStart == -1 || jsonEnd == -1) {
+        return _fallbackDiagnoses(rawResponse);
+      }
+
+      final decoded =
+          jsonDecode(rawResponse.substring(jsonStart, jsonEnd + 1))
+              as Map<String, dynamic>;
+      final list = decoded['diagnoses'] as List<dynamic>;
+
+      return list.map((e) {
+        final entry = e as Map<String, dynamic>;
+        return DiagnosisEntry(
+          diseaseName: entry['disease'] as String? ?? 'Unknown',
+          reasoning: entry['reasoning'] as String? ?? '',
+          nextSteps: entry['next_steps'] as String? ?? '',
+          isUrgent: entry['is_urgent'] as bool? ?? false,
+        );
+      }).toList();
+    } catch (_) {
+      return _fallbackDiagnoses(rawResponse);
+    }
   }
 
   List<DiagnosisEntry> _fallbackDiagnoses(String rawText) => [
