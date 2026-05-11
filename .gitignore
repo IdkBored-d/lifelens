@@ -61,3 +61,5 @@ backend/ml/summarization/summarization_model/
 backend/ml/summarization/summarization_dataset.json
 ml_pipeline/summarization/summarization_dataset.json
 backend/ml/summarization/quality_check_output.txt
+
+.md

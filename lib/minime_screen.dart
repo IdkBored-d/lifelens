@@ -130,6 +130,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         await _refreshStartLoggingPromptState();
         if (!mounted) return;
         unawaited(_checkSymptomCheckupPending());
+        await _checkPipelineReplies();
         await _syncUnreadSuggestions(forceRefresh: true);
       });
     }
@@ -251,6 +252,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       ..addAll(visibleMessages);
 
     _latestAssistantMessageText = null;
+  }
+
+  Future<void> _checkPipelineReplies() async {
+    if (!mounted) return;
+    final inbox = context.read<MiniMeSuggestionsInbox>();
+    final replies = await inbox.consumePipelineMessages();
+    if (replies.isEmpty || !mounted) return;
+
+    setState(() {
+      _isCoachExpanded = true;
+      _isReplying = true;
+    });
+    await _appendAssistantRepliesSequence(replies);
   }
 
   Future<void> _checkSymptomCheckupPending() async {
@@ -997,6 +1011,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           );
         });
         _scrollToBottom();
+        await _checkPipelineReplies();
         await _loadOpeningSuggestion();
         await _syncUnreadSuggestions(forceRefresh: false);
         return;
@@ -1005,6 +1020,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     await _ensureChatSessionStarted();
     await _loadOpeningSuggestion();
+    await _checkPipelineReplies();
     await _syncUnreadSuggestions(forceRefresh: false);
   }
 
@@ -1060,7 +1076,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     final moodStore = context.read<MoodLogStore>();
     final sleepStore = context.read<SleepStore>();
 
-    await inbox.ensureReady();
     if (!mounted) return;
 
     if (forceRefresh && inbox.unreadCount == 0) {
@@ -2107,14 +2122,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
                     if (shouldClear != true || !context.mounted) return;
 
-                    final inbox = context.read<MiniMeSuggestionsInbox>();
-
-                    // Clear visible chat, persisted chat history, and queued
-                    // suggestions so nothing is immediately re-surfaced.
                     if (_sessionId != null) {
                       _chatSessionService.endSession(_sessionId!);
                     }
-                    await inbox.clearUnreadSuggestions();
                     await IsarService.instance.clearChatHistory();
                     if (!context.mounted) return;
 

@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 
+import '../app_services.dart';
 import 'crisis_regex_net.dart';
 import 'minigen_prompt.dart' as prompt;
 import 'minigen_service.dart';
+import 'model_lifecycle_service.dart';
 
 /// High-level chat interface wrapping [MiniGenService].
 ///
@@ -139,53 +141,6 @@ class MiniGenChat {
     }
   }
 
-  /// One-shot JSON suggestions for Mini-Me daily guidance.
-  ///
-  /// The caller validates the JSON shape and falls back if output is unusable.
-  Future<String> generateMiniMeSuggestionsJson({
-    required String summaryContext,
-    required String latestMoodLabel,
-    required int latestMoodIntensity,
-    required List<String> recentMoods,
-    required List<String> recentLogs,
-    required List<String> activeSymptoms,
-    String? latestLogFocus,
-    List<String> avoidedSuggestions = const <String>[],
-    required int targetCount,
-    String? suggestionWindow,
-    String? triggerReason,
-  }) async {
-    final fullPrompt = _buildMiniMeSuggestionsPrompt(
-      summaryContext: summaryContext,
-      latestMoodLabel: latestMoodLabel,
-      latestMoodIntensity: latestMoodIntensity,
-      recentMoods: recentMoods,
-      recentLogs: recentLogs,
-      activeSymptoms: activeSymptoms,
-      latestLogFocus: latestLogFocus,
-      avoidedSuggestions: avoidedSuggestions,
-      targetCount: targetCount,
-      suggestionWindow: suggestionWindow,
-      triggerReason: triggerReason,
-    );
-
-    CrisisRegexNet.guard(fullPrompt, context: 'suggestions prompt');
-
-    final normalizedWindow = (suggestionWindow ?? '').trim().toLowerCase();
-    final raw = await _service.generateFull(
-      fullPrompt,
-      maxTokens: 420,
-      temperature: normalizedWindow == 'log_update' ? 0.35 : 0.2,
-      topK: 40,
-      repetitionPenalty: 1.08,
-    );
-    final cleaned = _cleanOutput(raw);
-
-    CrisisRegexNet.guard(cleaned, context: 'suggestions output');
-
-    return cleaned;
-  }
-
   // ── Private helpers ──────────────────────────────────────────────────────
 
   String _buildMiniMePrompt({
@@ -201,11 +156,11 @@ class MiniGenChat {
   }) {
     return prompt.buildPrompt(
       contextEntries: {
-        'USER': user,
-        'MOOD_LOG': moodLog ?? moodLabel,
-        'SYMPTOMS': symptoms,
-        'CONDITIONS': conditions,
-        'TRENDS': trends ?? intelligenceSummary,
+        'USER':          user,
+        'MOOD_LOG':      moodLog ?? moodLabel,
+        'SYMPTOMS':      symptoms,
+        'CONDITIONS':    conditions,
+        'TRENDS':        trends ?? intelligenceSummary,
         'LATEST_ACTION': 'Chat',
       },
       chatHistory: chatHistory,
@@ -213,98 +168,66 @@ class MiniGenChat {
     );
   }
 
-  String _buildMiniMeSuggestionsPrompt({
-    required String summaryContext,
-    required String latestMoodLabel,
-    required int latestMoodIntensity,
-    required List<String> recentMoods,
-    required List<String> recentLogs,
-    required List<String> activeSymptoms,
-    String? latestLogFocus,
-    List<String> avoidedSuggestions = const <String>[],
-    required int targetCount,
-    String? suggestionWindow,
-    String? triggerReason,
-  }) {
-    final window = (suggestionWindow ?? '').trim().isEmpty
-        ? 'general'
-        : suggestionWindow!.trim();
-    final trigger = (triggerReason ?? '').trim().isEmpty
-        ? 'regular refresh'
-        : triggerReason!.trim();
-    final symptoms = activeSymptoms.isEmpty
-        ? 'none reported currently'
-        : _compactList(
-            activeSymptoms,
-            limit: 5,
-            itemChars: 34,
-            separator: ', ',
-          );
-    final moods = recentMoods.isEmpty
-        ? latestMoodLabel
-        : _compactList(recentMoods, limit: 5, itemChars: 18, separator: ' | ');
-    final timeline = recentLogs.isEmpty
-        ? 'No recent log timeline provided.'
-        : _compactList(recentLogs, limit: 6, itemChars: 120, separator: '\n');
-    final latestFocus = (latestLogFocus ?? '').trim().isEmpty
-        ? 'No single latest log focus.'
-        : _compactText(latestLogFocus!.trim(), 240);
-    final avoidList = avoidedSuggestions.isEmpty
-        ? 'No recent suggestions to avoid.'
-        : _compactList(
-            avoidedSuggestions,
-            limit: 4,
-            itemChars: 90,
-            separator: '\n',
-          );
-    final summary = _compactText(summaryContext, 700);
+  // ── Mood log reply ───────────────────────────────────────────────────────
 
-    return prompt.buildPrompt(
+  static const _toneLabels = ['sadness', 'joy', 'love', 'anger', 'fear', 'surprise'];
+  static const _neutralThreshold = 0.45;
+  static const _intensityLabels = ['very low', 'low', 'moderate', 'high', 'very high'];
+
+  String _predictTone(List<double> probs) {
+    final maxProb = probs.reduce((a, b) => a > b ? a : b);
+    if (maxProb < _neutralThreshold) return 'neutral';
+    return _toneLabels[probs.indexOf(maxProb)];
+  }
+
+  /// One-shot reply acknowledging a mood log. Runs MobileBERT on the note
+  /// text (if provided) to derive CURRENT_TONE; falls back to omitting the
+  /// field when note is empty.
+  Future<String> generateMoodLogReply({
+    required String mood,
+    required int intensity,
+    required Set<String> tags,
+    required String? note,
+    required String userName,
+  }) async {
+    final intensityLabel = _intensityLabels[intensity.clamp(1, 5) - 1];
+
+    String? tone;
+    if (note != null && note.isNotEmpty) {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.mobileBert]);
+      final probs = await AppServices.mobileBert.classify(
+        note,
+        AppServices.mobileBertTokenize,
+      );
+      tone = _predictTone(probs);
+    }
+
+    var moodLog = '$intensityLabel $mood';
+    if (tags.isNotEmpty) moodLog += '. Tags: ${tags.join(', ')}';
+    if (note != null && note.isNotEmpty) moodLog += '. Note: $note';
+
+    final userMessage =
+        (note != null && note.isNotEmpty) ? note : 'I feel $mood';
+
+    final fullPrompt = prompt.buildPrompt(
       contextEntries: {
-        'TASK': 'Mini-Me suggestion JSON generation',
-        'LATEST_MOOD': '$latestMoodLabel ($latestMoodIntensity/5)',
-        'RECENT_MOODS': moods,
-        'ACTIVE_SYMPTOMS': symptoms,
-        'WINDOW': window,
-        'TRIGGER': trigger,
-        'LATEST_LOG_FOCUS': latestFocus,
-        'RECENT_SUGGESTIONS_TO_AVOID': avoidList,
-        'SUMMARY': summary,
-        'TIMELINE': timeline,
+        'USER': userName,
+        'MOOD_LOG': moodLog,
+        if (tone != null) 'CURRENT_TONE': tone,
+        'LATEST_ACTION': 'Mood Log',
       },
-      userMessage:
-          '''Return valid JSON only.
-Create exactly $targetCount grounded wellness suggestion${targetCount == 1 ? '' : 's'}.
-First suggestion must answer LATEST_LOG_FOCUS. Avoid RECENT_SUGGESTIONS_TO_AVOID.
-Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, or follow-through.
-If the latest log includes notes, tags, workout details, sleep notes, or symptom context, mention that context directly and address it.
-Do not give category-only advice like "log mood" or "rest more" when a specific note/context is available.
-Action: one realistic step for today. Reason: cite the matching log signal. Do not diagnose. Keep fields short.
-Use this exact shape:
-{"suggestions":[{"action":"One specific next step.","reason":"Why this fits the user's logs."}]}''',
+      userMessage: userMessage,
     );
-  }
 
-  String _compactList(
-    List<String> items, {
-    required int limit,
-    required int itemChars,
-    required String separator,
-  }) {
-    return items
-        .map((item) => _compactText(item, itemChars))
-        .where((item) => item.isNotEmpty)
-        .take(limit)
-        .join(separator);
-  }
+    CrisisRegexNet.guard(fullPrompt, context: 'mood log prompt');
 
-  String _compactText(String value, int maxChars) {
-    final clean = prompt
-        .sanitizeInput(value)
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    if (clean.length <= maxChars) return clean;
-    return '${clean.substring(0, maxChars).trimRight()}...';
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.miniGen]);
+    final raw = await _service.generateFull(fullPrompt);
+    final reply = _cleanOutput(raw);
+
+    CrisisRegexNet.guard(reply, context: 'mood log output');
+
+    return reply;
   }
 
   /// Strip stop sequences and trailing whitespace from model output.

@@ -14,7 +14,9 @@ import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/sleep_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
+import 'package:lifelens/app_services.dart';
 import 'package:lifelens/services/model_lifecycle_service.dart';
+import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 import 'package:provider/provider.dart';
 
@@ -552,7 +554,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                       .refresh(
                                         moodStore: moodStore,
                                         sleepStore: context.read<SleepStore>(),
-                                        fromLog: true,
                                       ),
                                 );
                               }
@@ -566,6 +567,37 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               } catch (_) {
                                 syncWarning =
                                     'Saved on this device. Cloud sync failed for this mood log.';
+                              }
+
+                              unawaited(
+                                SymptomAutoDetectorService
+                                    .autoRegisterDetectedSymptoms(
+                                      userLog,
+                                      'mood_log',
+                                    ),
+                              );
+
+                              if (context.mounted &&
+                                  AppServices.isMiniGenLoaded) {
+                                final inbox =
+                                    context.read<MiniMeSuggestionsInbox>();
+                                final userName =
+                                    FirebaseAuth.instance.currentUser
+                                        ?.displayName ??
+                                    FirebaseAuth.instance.currentUser?.email
+                                        ?.split('@')
+                                        .first ??
+                                    'User';
+                                unawaited(
+                                  _triggerMoodLogReply(
+                                    mood: m.label,
+                                    intensity: intensity,
+                                    tags: Set.from(tags),
+                                    note: notes.isEmpty ? null : notes,
+                                    userName: userName,
+                                    inbox: inbox,
+                                  ),
+                                );
                               }
                             } catch (e) {
                               if (!context.mounted) return;
@@ -657,6 +689,28 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
           'tags': selectedTags,
           'createdAt': Timestamp.fromDate(entry.timestamp),
         });
+  }
+
+  static Future<void> _triggerMoodLogReply({
+    required String mood,
+    required int intensity,
+    required Set<String> tags,
+    required String? note,
+    required String userName,
+    required MiniMeSuggestionsInbox inbox,
+  }) async {
+    try {
+      final reply = await AppServices.miniGenChat.generateMoodLogReply(
+        mood: mood,
+        intensity: intensity,
+        tags: tags,
+        note: note,
+        userName: userName,
+      );
+      await inbox.injectPipelineMessage(reply);
+    } catch (_) {
+      // Non-fatal — MiniMe just won't have a proactive reply this session.
+    }
   }
 }
 
