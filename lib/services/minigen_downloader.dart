@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -27,16 +28,54 @@ class MiniGenDownloader {
   static const String _sourcePretokenizer = 'gpt2';
   static const String _compatiblePretokenizer = 'gpt-2';
 
+  // Guard against partial downloads. Floor at half of expected size.
+  static const int _minValidBytes = _expectedBytes ~/ 2;
+
+  // At most one download in flight; concurrent callers await the same future.
+  static Completer<String>? _inFlight;
+
   /// Returns the local filesystem path to the GGUF model file.
   /// Downloads it from HuggingFace if not already present.
+  ///
+  /// Concurrent calls are collapsed onto the same download future.
   ///
   /// [onProgress] receives values from 0.0 to 1.0.
   static Future<String> ensureModel({
     void Function(double progress)? onProgress,
   }) async {
+    if (_inFlight != null) {
+      debugPrint('[MiniGenDownloader] download already in progress, waiting…');
+      return _inFlight!.future;
+    }
+    final completer = Completer<String>();
+    _inFlight = completer;
+    try {
+      final result = await _doEnsureModel(onProgress: onProgress);
+      completer.complete(result);
+      return result;
+    } catch (e) {
+      completer.completeError(e);
+      rethrow;
+    } finally {
+      _inFlight = null;
+    }
+  }
+
+  static Future<String> _doEnsureModel({
+    void Function(double progress)? onProgress,
+  }) async {
     final dir = await getApplicationSupportDirectory();
-    final file = File('${dir.path}/$_filename');
-    final compatibleFile = File('${dir.path}/$_compatibleFilename');
+    final file = File('${dir.path}${Platform.pathSeparator}$_filename');
+    final compatibleFile = File('${dir.path}${Platform.pathSeparator}$_compatibleFilename');
+
+    // Partial-download guard: if cached file is too small, delete and re-download.
+    if (file.existsSync() && file.lengthSync() < _minValidBytes) {
+      debugPrint(
+        '[MiniGenDownloader] deleting partial download '
+        '(${file.lengthSync()} bytes < $_minValidBytes minimum)',
+      );
+      file.deleteSync();
+    }
 
     if (compatibleFile.existsSync()) {
       final compatibility = inspectModelCompatibility(compatibleFile);
@@ -130,23 +169,23 @@ class MiniGenDownloader {
   /// Check if the model file already exists locally.
   static Future<bool> isModelAvailable() async {
     final dir = await getApplicationSupportDirectory();
-    final compatibleFile = File('${dir.path}/$_compatibleFilename');
+    final compatibleFile = File('${dir.path}${Platform.pathSeparator}$_compatibleFilename');
     if (compatibleFile.existsSync() &&
         inspectModelCompatibility(compatibleFile).canAttemptLoad) {
       return true;
     }
-    return _hasExpectedDownloadShape(File('${dir.path}/$_filename'));
+    return _hasExpectedDownloadShape(File('${dir.path}${Platform.pathSeparator}$_filename'));
   }
 
   /// Delete the cached model file (e.g. to force re-download).
   static Future<void> deleteModel() async {
     final dir = await getApplicationSupportDirectory();
-    final file = File('${dir.path}/$_filename');
+    final file = File('${dir.path}${Platform.pathSeparator}$_filename');
     if (file.existsSync()) {
       file.deleteSync();
       debugPrint('[MiniGenDownloader] deleted cached model');
     }
-    final compatibleFile = File('${dir.path}/$_compatibleFilename');
+    final compatibleFile = File('${dir.path}${Platform.pathSeparator}$_compatibleFilename');
     if (compatibleFile.existsSync()) {
       compatibleFile.deleteSync();
       debugPrint('[MiniGenDownloader] deleted compatible cached model');

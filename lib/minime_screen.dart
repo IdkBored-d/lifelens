@@ -103,6 +103,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   void dispose() {
     if (widget.isActive) {
       ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+      ModelLifecycleService.instance.scheduleUnload(ModelType.miniGen);
     }
     _moodStoreSource?.removeListener(_onTrackedLogsChanged);
     _sleepStoreSource?.removeListener(_onTrackedLogsChanged);
@@ -121,9 +122,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (oldWidget.isActive && !widget.isActive) {
       // User switched away from the chat tab.
       ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+      ModelLifecycleService.instance.scheduleUnload(ModelType.miniGen);
     } else if (!oldWidget.isActive && widget.isActive) {
       // User switched back to the chat tab.
       ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
+      ModelLifecycleService.instance.cancelUnload(ModelType.miniGen);
       setState(() => _avatarWaveToken += 1);
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
@@ -1436,36 +1439,35 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     required _MiniMeMoodContext moodContext,
   }) async {
     // Tier 1: MiniGen on-device (stream collected to buffer)
-    if (AppServices.isMiniGenLoaded) {
-      try {
-        final ctx = await _buildMiniMeIsarContext();
-        final history = _buildTaggedHistory();
-        final buffer = StringBuffer();
-        await for (final token
-            in AppServices.miniGenChat.generateMiniMeReplyStream(
-              userMessage: userText,
-              moodLabel: moodContext.label,
-              user: widget.userName,
-              moodLog: moodContext.recentMoodSummary.take(3).join(', '),
-              symptoms: ctx['symptoms'],
-              conditions: ctx['conditions'],
-              trends: ctx['trends'],
-              chatHistory: history,
-            )) {
-          buffer.write(token);
-        }
-        final result = buffer.toString().trim();
-        if (result.isNotEmpty) return result;
-      } on CrisisInterventionException catch (e) {
-        // Do NOT append — discard the incomplete turn entirely
-        _showCrisisOverlay(e.type);
-        return _buildOfflineReply(
-          userText: userText,
-          moodLabel: moodContext.label,
-        );
-      } catch (_) {
-        // fall through to backend fallback
+    try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.miniGen]);
+      final ctx = await _buildMiniMeIsarContext();
+      final history = _buildTaggedHistory();
+      final buffer = StringBuffer();
+      await for (final token
+          in AppServices.miniGenChat.generateMiniMeReplyStream(
+            userMessage: userText,
+            moodLabel: moodContext.label,
+            user: widget.userName,
+            moodLog: moodContext.recentMoodSummary.take(3).join(', '),
+            symptoms: ctx['symptoms'],
+            conditions: ctx['conditions'],
+            trends: ctx['trends'],
+            chatHistory: history,
+          )) {
+        buffer.write(token);
       }
+      final result = buffer.toString().trim();
+      if (result.isNotEmpty) return result;
+    } on CrisisInterventionException catch (e) {
+      // Do NOT append — discard the incomplete turn entirely
+      _showCrisisOverlay(e.type);
+      return _buildOfflineReply(
+        userText: userText,
+        moodLabel: moodContext.label,
+      );
+    } catch (_) {
+      // ensureLoaded or generation failed — fall through to backend fallback
     }
 
     // Tier 2: Backend Mini-Me chat

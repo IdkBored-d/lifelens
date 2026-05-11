@@ -231,7 +231,6 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       context.read<MiniMeSuggestionsInbox>().refresh(
         moodStore: context.read<MoodLogStore>(),
         sleepStore: context.read<SleepStore>(),
-        fromLog: true,
       ),
     );
 

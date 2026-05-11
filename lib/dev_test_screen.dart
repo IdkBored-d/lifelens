@@ -8,6 +8,8 @@ import 'package:lifelens/models/escalation_level.dart'; // ← ADD
 import 'package:lifelens/models/mood_result.dart'; // ← ADD (kMobileBertLabels)
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
+import 'package:lifelens/services/minigen_downloader.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 
@@ -230,6 +232,9 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testMobileBert() async {
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.mobileBert]);
+    ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
+
     if (!AppServices.mobileBert.isLoaded) {
       return '✗ MobileBERT not loaded — check asset path in app_services.dart';
     }
@@ -256,6 +261,9 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testDisEmbed() async {
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
+    ModelLifecycleService.instance.scheduleUnload(ModelType.disEmbed);
+
     if (!AppServices.disEmbed.isLoaded) {
       return '✗ DisEmbed not loaded — check asset path in app_services.dart';
     }
@@ -373,9 +381,31 @@ class _DevTestScreenState extends State<DevTestScreen> {
   }
 
   Future<String> _testMiniGenStatus() async {
-    return AppServices.isMiniGenLoaded
-        ? '✓ MiniGen model is loaded and ready'
-        : '✗ MiniGen model is not loaded';
+    if (AppServices.isMiniGenLoaded) {
+      return '✓ MiniGen model is loaded and ready';
+    }
+    final fileOnDisk = await MiniGenDownloader.isModelAvailable();
+    if (!fileOnDisk) {
+      return '✗ MiniGen not loaded — model file not yet downloaded\n'
+          'Tap "Load MiniGen Now" to download and load it.';
+    }
+    return '✗ MiniGen not loaded — file exists on disk but load failed\n'
+        'Check logcat for [AppServices] MiniGen load error.\n'
+        'Tap "Load MiniGen Now" to retry.';
+  }
+
+  Future<String> _testMiniGenLoad() async {
+    if (AppServices.isMiniGenLoaded) {
+      return '✓ MiniGen already loaded — nothing to do';
+    }
+    try {
+      await ModelLifecycleService.instance.loadModel(ModelType.miniGen);
+      return AppServices.isMiniGenLoaded
+          ? '✓ MiniGen loaded successfully'
+          : '✗ loadModel() completed but isLoaded is still false';
+    } catch (e) {
+      return '✗ MiniGen load failed: $e';
+    }
   }
 
   Future<String> _testMiniGenInference() async {
@@ -388,6 +418,28 @@ class _DevTestScreenState extends State<DevTestScreen> {
       moodLabel: 'Anxious',
     );
     return '✓ MiniGen inference succeeded\nReply: $reply';
+  }
+
+  Future<String> _testMiniGenSuggestions() async {
+    await ModelLifecycleService.instance.ensureLoaded([ModelType.miniGen]);
+    final raw = await AppServices.miniGenChat.generateMiniMeSuggestionsJson(
+      summaryContext: 'Dev test run',
+      latestMoodLabel: 'neutral',
+      latestMoodIntensity: 3,
+      recentMoods: const ['neutral', 'tired'],
+      recentLogs: const ['Slept 6h', 'Walked 20 min'],
+      activeSymptoms: const [],
+      targetCount: 3,
+      suggestionWindow: 'log_update',
+      triggerReason: 'dev test',
+    );
+    ModelLifecycleService.instance.scheduleUnload(ModelType.miniGen);
+    return '✓ On-device suggestions generated\n$raw';
+  }
+
+  Future<String> _testDeleteMiniGen() async {
+    await MiniGenDownloader.deleteModel();
+    return '✓ Cached MiniGen model deleted from disk';
   }
 
   Future<String> _testReminderStatus() async {
@@ -510,7 +562,14 @@ class _DevTestScreenState extends State<DevTestScreen> {
 
                   _sectionHeader('MINIGEN'),
                   _testBtn('MiniGen Status', _testMiniGenStatus),
+                  _testBtn('Load MiniGen Now', _testMiniGenLoad),
                   _testBtn('MiniGen Inference', _testMiniGenInference),
+                  _testBtn('On-Device Suggestions', _testMiniGenSuggestions),
+                  _testBtn(
+                    'Delete MiniGen Model',
+                    _testDeleteMiniGen,
+                    color: Colors.red.shade800,
+                  ),
                 ],
               ),
             ),

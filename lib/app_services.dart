@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -75,7 +76,10 @@ class AppServices {
   // ── Initialisation ───────────────────────────────────────────────────────────
 
   /// Initialise all services. Call once before runApp().
-  static Future<void> init() async {
+  ///
+  /// Pass [skipMiniGen] = true in headless isolates (e.g. BackgroundFetch) to
+  /// prevent the ~96 MB model download from running inside a 30-second budget.
+  static Future<void> init({bool skipMiniGen = false}) async {
     WidgetsFlutterBinding.ensureInitialized();
     final sw = Stopwatch()..start();
     debugPrint('[AppServices] init: start');
@@ -170,10 +174,16 @@ class AppServices {
 
     // MiniGen requires an OTA download on first launch (~96 MB); fire it in the
     // background so the 30-second startup timeout in app_init.dart doesn't kill it.
-    unawaited(loadModel('MiniGen', () async {
-      final path = await MiniGenDownloader.ensureModel();
-      await miniGen.load(path);
-    }));
+    // Skip on non-mobile platforms (llamadart unsupported) or when caller requests it
+    // (e.g. background isolates with a 30 s budget).
+    if (!skipMiniGen && (Platform.isAndroid || Platform.isIOS)) {
+      unawaited(loadModel('MiniGen', () async {
+        final path = await MiniGenDownloader.ensureModel();
+        await miniGen.load(path);
+      }));
+    } else {
+      debugPrint('[AppServices] skipping MiniGen (skipMiniGen=$skipMiniGen platform=${Platform.operatingSystem})');
+    }
 
     debugPrint(
       '[AppServices] init: models ready $loadedCount/4 (1 sync, 3 lazy) in ${sw.elapsedMilliseconds - modelsStart}ms',

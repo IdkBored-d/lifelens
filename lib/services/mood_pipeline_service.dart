@@ -166,25 +166,7 @@ class MoodPipelineService {
     bool?   userConfirmed,
     String? onDeviceResponse,
   }) async {
-    // Generate response text if not already provided by MiniGen/Gemini
-    // TODO: re-enable MiniGen response generation when ready
-    // NOTE: logic may be incorrect -- this is replacing our old version.
-    String responseText;
-    if (onDeviceResponse != null) {
-      responseText = onDeviceResponse;
-    } else {
-      // try {
-      //   await ModelLifecycleService.instance.ensureLoaded([ModelType.miniGen]);
-      //   responseText = await _miniGen.generateMoodResponse(
-      //     predictedMood: resolvedMood,
-      //     userLog:       userLog,
-      //     context:       await _quickTrack.buildMoodContext(),
-      //   );
-      // } on StateError {
-      //   responseText = 'Mood logged as $resolvedMood.';
-      // }
-      responseText = 'Mood logged as $resolvedMood.';
-    }
+    final responseText = onDeviceResponse ?? 'Mood logged as $resolvedMood.';
 
     final now       = DateTime.now();
     final dateStr   = now.toIso8601String().split('T').first;

@@ -59,8 +59,8 @@ class FitnessMlpService {
     final runOptions = OrtRunOptions();
     final outputs    = await _session!.runAsync(runOptions, inputs);
 
-    // skl2onnx outputs: [0] = label [1], [1] = probabilities [1, 2]
-    final probaRaw = outputs![1]!.value as List<Map<int, double>>;
+    // The fixed model outputs probabilities as a raw tensor [1, 2] instead of a Map
+    final probaRaw = outputs![1]!.value as List<List<double>>;
     final proba    = probaRaw[0];
 
     inputTensor.release();
@@ -68,8 +68,8 @@ class FitnessMlpService {
     for (final e in outputs) { e?.release(); }
 
     return [
-      proba[0] ?? 0.0,  // P(is_fit = 0)
-      proba[1] ?? 0.0,  // P(is_fit = 1)
+      proba[0],  // P(is_fit = 0)
+      proba[1],  // P(is_fit = 1)
     ];
   }
 

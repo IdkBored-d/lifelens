@@ -408,10 +408,6 @@ class DailySuggestionsService {
     String? suggestionWindow,
     String? triggerReason,
   }) async {
-    if (!AppServices.isMiniGenLoaded) {
-      return const <DailySuggestion>[];
-    }
-
     final targetCount = _targetSuggestionCount(suggestionWindow);
     final candidateCount = _candidateSuggestionCount(
       targetCount: targetCount,

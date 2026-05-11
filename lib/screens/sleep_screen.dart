@@ -42,7 +42,6 @@ class _SleepScreenState extends State<SleepScreen> {
       context.read<MiniMeSuggestionsInbox>().refresh(
         moodStore: context.read<MoodLogStore>(),
         sleepStore: sleepStore,
-        fromLog: true,
       ),
     );
 
