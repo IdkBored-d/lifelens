@@ -117,7 +117,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     }
 
     _exerciseStore.exercises = exercises;
-    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
+    final activity = _exerciseStore.getRecentExerciseActivity(
+      days: 7,
+      includeNoExercise: false,
+    );
     final history = _exerciseStore.getRecentExerciseHistory(limit: 20);
 
     if (!mounted) return;
@@ -223,7 +226,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
           .toList(growable: false),
     );
 
-    final activity = _exerciseStore.getRecentExerciseActivity(days: 7);
+    final activity = _exerciseStore.getRecentExerciseActivity(
+      days: 7,
+      includeNoExercise: false,
+    );
     final history = _exerciseStore.getRecentExerciseHistory(limit: 20);
 
     if (!mounted) return;
