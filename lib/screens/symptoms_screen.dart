@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lifelens/app_services.dart';
+import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
+import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
-import 'package:lifelens/services/model_lifecycle_service.dart';
+import 'package:provider/provider.dart';
 
 class SymptomsScreen extends StatefulWidget {
   const SymptomsScreen({super.key});
@@ -34,8 +36,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
   @override
   void dispose() {
     _symptomsController.dispose();
-    // Schedule DisEmbed unload 15 seconds after leaving the symptom logging screen.
-    ModelLifecycleService.instance.scheduleUnload(ModelType.disEmbed);
     super.dispose();
   }
 
@@ -76,14 +76,28 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     try {
       HapticFeedback.mediumImpact();
 
-      final savedAt = DateTime.now();
-      await _saveSymptomsLocally(
-        rawInput: rawInput,
-        symptoms: symptomsForPipeline,
-        timestamp: savedAt,
+      final isOnline = await AppServices.isOnline();
+      const List<String> miniMeTop3 = [];
+      final now = DateTime.now();
+      await IsarService.instance.writeSymptomEntry(
+        SymptomEntry()
+          ..date = now.toIso8601String().substring(0, 10)
+          ..rawSymptoms = symptomsForPipeline.join(', ')
+          ..symptomList = symptomsForPipeline
+          ..predictedAilment = ''
+          ..disEmbedScore = null
+          ..diagnosesJson = '[]'
+          ..resolvedBy = 'none'
+          ..ragUsed = false
+          ..wasOffline = !isOnline
+          ..status = 'monitoring'
+          ..timestamp = now
+          ..updatedAt = now,
       );
+
       await TrackingReminderService.instance.handleLogRecorded();
 
+      final savedAt = DateTime.now();
       try {
         await _syncSymptomsToCloud(
           rawInput: rawInput,
@@ -104,6 +118,17 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
             behavior: SnackBarBehavior.floating,
           ),
         );
+      }
+      if (mounted) {
+        final inbox = context.read<MiniMeSuggestionsInbox>();
+        if (miniMeTop3.isNotEmpty) {
+          await inbox.enqueueSymptomInsight(
+            topConditions: miniMeTop3,
+            symptoms: symptomsForPipeline,
+          );
+        } else {
+          await inbox.enqueueSymptomLogSaved(symptoms: symptomsForPipeline);
+        }
       }
       await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!mounted) return;
@@ -129,6 +154,14 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     }
   }
 
+  void _clearDraft() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _symptomsController.clear();
+      _saveButtonState = LogButtonVisualState.idle;
+    });
+  }
+
   Future<void> _syncSymptomsToCloud({
     required String rawInput,
     required List<String> symptoms,
@@ -146,30 +179,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       'createdAt': Timestamp.fromDate(timestamp),
       'date': Timestamp.fromDate(timestamp),
     });
-  }
-
-  Future<void> _saveSymptomsLocally({
-    required String rawInput,
-    required List<String> symptoms,
-    required DateTime timestamp,
-  }) async {
-    final today = timestamp.toIso8601String().split('T').first;
-
-    final entry = SymptomEntry()
-      ..date = today
-      ..rawSymptoms = rawInput.isNotEmpty ? rawInput : symptoms.join(', ')
-      ..symptomList = symptoms
-      ..predictedAilment = 'tracking-only'
-      ..disEmbedScore = null
-      ..diagnosesJson = '[]'
-      ..resolvedBy = 'tracking'
-      ..ragUsed = false
-      ..wasOffline = true
-      ..status = 'active'
-      ..timestamp = timestamp
-      ..updatedAt = timestamp;
-
-    await AppServices.isar.writeSymptomEntry(entry);
   }
 
   String _formatDate(DateTime date) {
@@ -207,6 +216,18 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
         title: const Text('Symptoms Log'),
+        actions: [
+          IconButton(
+            tooltip: 'Clear draft',
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(52),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: _clearDraft,
+            icon: const Icon(Icons.restart_alt_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: GestureDetector(
@@ -218,12 +239,19 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Describe how you're feeling, you can get into detail with your Mini-Me",
+                  'Log your symptoms',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 6),
+                Text(
+                  'Add a quick list or a short note. Use commas to separate symptoms.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 18),
                 _SectionCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,35 +265,32 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                           _WordLimitTextInputFormatter(_symptomWordLimit),
                         ],
                         onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          hintText: 'headache, nausea, fatigue',
-                        ),
+                        decoration: const InputDecoration(),
                       ),
                       const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          '${_wordCount(_symptomsController.text)}/$_symptomWordLimit',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 16,
                             color: cs.onSurfaceVariant,
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: cs.primaryContainer.withValues(alpha: 0.45),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Text(
-                          "Note: separate your symptoms with ','",
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onPrimaryContainer,
-                            fontWeight: FontWeight.w700,
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              "Example: headache, nausea, fatigue",
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
                           ),
-                        ),
+                          Text(
+                            '${_wordCount(_symptomsController.text)}/$_symptomWordLimit',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -290,7 +315,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                         : _saveSymptoms,
                     child: LogButtonContent(
                       state: _saveButtonState,
-                      idleLabel: 'Save entry',
+                      idleLabel: 'Log symptom entry',
                       loadingLabel: 'Saving symptoms',
                       successLabel: 'Saved',
                     ),
@@ -389,6 +414,8 @@ class _HistoryDisclosureCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
                 children: [
+                  Icon(Icons.healing_outlined, size: 20, color: cs.primary),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       expanded ? 'Hide previous logs' : 'View previous logs',
@@ -423,6 +450,19 @@ class _SymptomHistoryList extends StatelessWidget {
   final Stream<List<SymptomEntry>> entriesStream;
   final String Function(DateTime date) formatDateTime;
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool _isTodayEntry(SymptomEntry entry) {
+    final today = DateTime.now();
+    final entryDate = DateTime.tryParse(entry.date);
+    if (entryDate != null) {
+      return _isSameDay(entryDate, today);
+    }
+    return _isSameDay(entry.timestamp, today);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -447,8 +487,18 @@ class _SymptomHistoryList extends StatelessWidget {
           );
         }
 
-        final entries = snapshot.data!.toList(growable: false)
-          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        final entries =
+            snapshot.data!.where(_isTodayEntry).toList(growable: false)
+              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+        if (entries.isEmpty) {
+          return Text(
+            'No symptom entries yet today. Save one above and it will show up here.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+            ),
+          );
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

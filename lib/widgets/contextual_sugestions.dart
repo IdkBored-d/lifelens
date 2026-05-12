@@ -10,6 +10,7 @@ class ContextualSuggestions extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     final suggestions = _suggestionsForMood(moodLabel);
 
@@ -18,7 +19,12 @@ class ContextualSuggestions extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha:0.45)),
+        border: Border.all(
+          color: isLight
+              ? cs.outlineVariant.withValues(alpha: 0.95)
+              : cs.outlineVariant.withValues(alpha: 0.45),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +67,8 @@ class ContextualSuggestions extends StatelessWidget {
       return const [
         Suggestion(
           icon: Icons.favorite_rounded,
-          text: "Hold onto this connection by noting who or what made today feel warm",
+          text:
+              "Hold onto this connection by noting who or what made today feel warm",
         ),
         Suggestion(
           icon: Icons.bookmark_border_rounded,
@@ -70,7 +77,10 @@ class ContextualSuggestions extends StatelessWidget {
       ];
     }
 
-    if (m.contains("scared") || m.contains("fear") || m.contains("anxious") || m.contains("stress")) {
+    if (m.contains("scared") ||
+        m.contains("fear") ||
+        m.contains("anxious") ||
+        m.contains("stress")) {
       return const [
         Suggestion(
           icon: Icons.air_rounded,
@@ -83,7 +93,8 @@ class ContextualSuggestions extends StatelessWidget {
       return const [
         Suggestion(
           icon: Icons.directions_walk_rounded,
-          text: "Step away for a minute and let your body burn off some tension",
+          text:
+              "Step away for a minute and let your body burn off some tension",
         ),
       ];
     }

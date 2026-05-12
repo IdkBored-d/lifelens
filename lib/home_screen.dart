@@ -14,17 +14,23 @@ import 'package:provider/provider.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.userName});
 
+  static int _lastNavIndex = 0;
+
   final String userName;
+
+  static void resetCachedNavigation() {
+    _lastNavIndex = 0;
+  }
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  int _navIndex = 0;
+  late int _navIndex = HomeScreen._lastNavIndex;
   late final List<bool> _visitedTabs = List<bool>.generate(
     4,
-    (index) => index == 0,
+    (index) => index == 0 || index == _navIndex,
     growable: false,
   );
   late final LogHubScreen _logHubScreen = LogHubScreen(
@@ -91,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     setState(() {
       _navIndex = index;
+      HomeScreen._lastNavIndex = index;
       _visitedTabs[index] = true;
     });
 
@@ -126,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }, growable: false);
 
     return Scaffold(
+      resizeToAvoidBottomInset: _navIndex != 0,
       body: IndexedStack(index: _navIndex, children: visiblePages),
       bottomNavigationBar: BottomNav(
         currentIndex: _navIndex,

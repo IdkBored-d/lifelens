@@ -9,6 +9,7 @@ class QuickActionsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return GridView.builder(
       shrinkWrap: true,
@@ -30,13 +31,19 @@ class QuickActionsGrid extends StatelessWidget {
             decoration: BoxDecoration(
               color: cs.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: cs.outlineVariant.withValues(alpha:0.6)),
+              border: Border.all(
+                color: isLight
+                    ? cs.outlineVariant.withValues(alpha: 0.95)
+                    : cs.outlineVariant.withValues(alpha: 0.6),
+                width: 1,
+              ),
               boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha:0.03),
-                  blurRadius: 12,
-                  offset: const Offset(0, 8),
-                ),
+                if (!isLight)
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 12,
+                    offset: const Offset(0, 8),
+                  ),
               ],
             ),
             child: Row(
@@ -45,10 +52,12 @@ class QuickActionsGrid extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: cs.primaryContainer.withValues(alpha:0.7),
+                    color: cs.primaryContainer.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: cs.outlineVariant.withValues(alpha:0.35),
+                      color: isLight
+                          ? cs.outlineVariant.withValues(alpha: 0.95)
+                          : cs.outlineVariant.withValues(alpha: 0.35),
                     ),
                   ),
                   child: Icon(a.icon, color: cs.primary),

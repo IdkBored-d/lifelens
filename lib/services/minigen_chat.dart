@@ -230,6 +230,136 @@ class MiniGenChat {
     return reply;
   }
 
+  /// Generate a JSON string of wellness suggestions via MiniGen.
+  Future<String> generateMiniMeSuggestionsJson({
+    required String summaryContext,
+    required String latestMoodLabel,
+    required int latestMoodIntensity,
+    required List<String> recentMoods,
+    required List<String> recentLogs,
+    required List<String> activeSymptoms,
+    String? latestLogFocus,
+    List<String> avoidedSuggestions = const <String>[],
+    required int targetCount,
+    String? suggestionWindow,
+    String? triggerReason,
+  }) async {
+    final fullPrompt = _buildMiniMeSuggestionsPrompt(
+      summaryContext: summaryContext,
+      latestMoodLabel: latestMoodLabel,
+      latestMoodIntensity: latestMoodIntensity,
+      recentMoods: recentMoods,
+      recentLogs: recentLogs,
+      activeSymptoms: activeSymptoms,
+      latestLogFocus: latestLogFocus,
+      avoidedSuggestions: avoidedSuggestions,
+      targetCount: targetCount,
+      suggestionWindow: suggestionWindow,
+      triggerReason: triggerReason,
+    );
+
+    CrisisRegexNet.guard(fullPrompt, context: 'suggestions prompt');
+
+    final normalizedWindow = (suggestionWindow ?? '').trim().toLowerCase();
+    final raw = await _service.generateFull(
+      fullPrompt,
+      maxTokens: 420,
+      temperature: normalizedWindow == 'log_update' ? 0.35 : 0.2,
+      topK: 40,
+      repetitionPenalty: 1.08,
+    );
+    final cleaned = _cleanOutput(raw);
+
+    CrisisRegexNet.guard(cleaned, context: 'suggestions output');
+
+    return cleaned;
+  }
+
+  String _buildMiniMeSuggestionsPrompt({
+    required String summaryContext,
+    required String latestMoodLabel,
+    required int latestMoodIntensity,
+    required List<String> recentMoods,
+    required List<String> recentLogs,
+    required List<String> activeSymptoms,
+    String? latestLogFocus,
+    List<String> avoidedSuggestions = const <String>[],
+    required int targetCount,
+    String? suggestionWindow,
+    String? triggerReason,
+  }) {
+    final window = (suggestionWindow ?? '').trim().isEmpty
+        ? 'general'
+        : suggestionWindow!.trim();
+    final trigger = (triggerReason ?? '').trim().isEmpty
+        ? 'regular refresh'
+        : triggerReason!.trim();
+    final symptoms = activeSymptoms.isEmpty
+        ? 'none reported currently'
+        : _compactList(activeSymptoms, limit: 5, itemChars: 34, separator: ', ');
+    final moods = recentMoods.isEmpty
+        ? latestMoodLabel
+        : _compactList(recentMoods, limit: 5, itemChars: 18, separator: ' | ');
+    final timeline = recentLogs.isEmpty
+        ? 'No recent log timeline provided.'
+        : _compactList(recentLogs, limit: 10, itemChars: 150, separator: '\n');
+    final latestFocus = (latestLogFocus ?? '').trim().isEmpty
+        ? 'No single latest log focus.'
+        : _compactText(latestLogFocus!.trim(), 240);
+    final avoidList = avoidedSuggestions.isEmpty
+        ? 'No recent suggestions to avoid.'
+        : _compactList(avoidedSuggestions, limit: 4, itemChars: 90, separator: '\n');
+    final summary = _compactText(summaryContext, 1100);
+
+    return prompt.buildPrompt(
+      contextEntries: {
+        'TASK': 'Mini-Me suggestion JSON generation',
+        'LATEST_MOOD': '$latestMoodLabel ($latestMoodIntensity/5)',
+        'RECENT_MOODS': moods,
+        'ACTIVE_SYMPTOMS': symptoms,
+        'WINDOW': window,
+        'TRIGGER': trigger,
+        'LATEST_LOG_FOCUS': latestFocus,
+        'RECENT_SUGGESTIONS_TO_AVOID': avoidList,
+        'SUMMARY': summary,
+        'TIMELINE': timeline,
+      },
+      userMessage:
+          '''Return valid JSON only.
+Create exactly $targetCount grounded wellness suggestion${targetCount == 1 ? '' : 's'}.
+First suggestion must answer LATEST_LOG_FOCUS. Avoid RECENT_SUGGESTIONS_TO_AVOID.
+Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, boundary, support, or follow-through.
+If the latest log includes notes, tags, workout details, sleep notes, or symptom context, reuse at least one concrete phrase or noun from that context and address it directly.
+Do not give category-only advice like "log mood", "sleep earlier", "rest more", or "take a walk" when a specific note/context is available.
+If logs look similar to previous days, change the angle rather than the data: focus on trigger, friction, timing, environment, recovery cost, or what to protect next.
+Action: one realistic step for today. Reason: cite the matching log signal. Do not diagnose. Keep fields short.
+Use this exact shape:
+{"suggestions":[{"action":"One specific next step.","reason":"Why this fits the user's logs."}]}''',
+    );
+  }
+
+  String _compactList(
+    List<String> items, {
+    required int limit,
+    required int itemChars,
+    required String separator,
+  }) {
+    return items
+        .map((item) => _compactText(item, itemChars))
+        .where((item) => item.isNotEmpty)
+        .take(limit)
+        .join(separator);
+  }
+
+  String _compactText(String value, int maxChars) {
+    final clean = prompt
+        .sanitizeInput(value)
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (clean.length <= maxChars) return clean;
+    return '${clean.substring(0, maxChars).trimRight()}...';
+  }
+
   /// Strip stop sequences and trailing whitespace from model output.
   String _cleanOutput(String raw) {
     var result = raw;

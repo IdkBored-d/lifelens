@@ -26,12 +26,23 @@ service cloud.firestore {
         get(spherePath(sphereId)).data.creatorId == request.auth.uid;
     }
 
+    function isPublicSphere(sphereId) {
+      return get(spherePath(sphereId)).data.get('isPublic', true) == true;
+    }
+
+    function hasSphereInvite(sphereId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/spheres/$(sphereId)/invites/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/spheres/$(sphereId)/invites/$(request.auth.uid)).data.status in ['pending', 'accepted'];
+    }
+
     function affectedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
     match /users/{userId} {
-      allow read, create, update, delete: if isSelf(userId);
+      allow read: if signedIn();
+      allow create, update, delete: if isSelf(userId);
 
       match /sleep_logs/{logId} {
         allow read, create, update, delete: if isSelf(userId);
@@ -48,6 +59,46 @@ service cloud.firestore {
       match /streaks/{streakId} {
         allow read, create, update, delete: if isSelf(userId);
       }
+
+      match /friends/{friendId} {
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId) ||
+          request.resource.data.userId == request.auth.uid;
+        allow delete: if isSelf(userId) ||
+          resource.data.userId == request.auth.uid;
+      }
+
+      match /sphere_invites/{inviteId} {
+        allow read: if isSelf(userId);
+        allow create: if signedIn() &&
+          request.resource.data.fromUserId == request.auth.uid &&
+          request.resource.data.toUserId == userId;
+        allow update, delete: if isSelf(userId);
+      }
+    }
+
+    match /usernames/{usernameLower} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    match /friend_requests/{requestId} {
+      allow read: if signedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+
+      allow create: if signedIn() &&
+        request.resource.data.fromUserId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+
+      allow update: if signedIn() && (
+        resource.data.fromUserId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+
+      allow delete: if false;
     }
 
     match /symptom_entries/{entryId} {
@@ -75,7 +126,8 @@ service cloud.firestore {
           'memberCount',
           'createdAt',
           'creatorId',
-          'isPremade'
+          'isPremade',
+          'isPublic'
         ]);
 
       allow update: if signedIn() && (
@@ -98,42 +150,94 @@ service cloud.firestore {
       match /members/{memberId} {
         allow read: if signedIn();
 
-        allow create: if isSelf(memberId) &&
-          request.resource.data.nickname is string;
+        allow create: if (isSelf(memberId) &&
+          request.resource.data.username is string &&
+          (isPublicSphere(sphereId) || isSphereOwner(sphereId) || hasSphereInvite(sphereId))) ||
+          (isSphereOwner(sphereId) && request.resource.data.username is string);
 
         allow update: if (
           isSelf(memberId) &&
           affectedKeys().hasOnly([
-            'nickname',
+            'username',
             'lastReadAt',
             'lastActiveAt',
             'warningCount',
             'miniMe',
-            'miniMeName'
+            'miniMeName',
+            'isTyping',
+            'typingAt'
           ])
         ) || (
           isSphereOwner(sphereId) &&
           affectedKeys().hasOnly(['role'])
+        ) || (
+          isSphereMember(sphereId) &&
+          !isSelf(memberId) &&
+          affectedKeys().hasOnly(['reportCount']) &&
+          request.resource.data.reportCount == resource.data.get('reportCount', 0) + 1
         );
 
-        allow delete: if isSelf(memberId) || isSphereOwner(sphereId) || get(spherePath(sphereId)).data.isPremade == true;
+        allow delete: if isSelf(memberId) || isSphereOwner(sphereId) ||
+          get(spherePath(sphereId)).data.isPremade == true ||
+          (isSphereMember(sphereId) && resource.data.get('reportCount', 0) >= 3);
+      }
+
+      match /invites/{inviteeId} {
+        allow read: if isSelf(inviteeId) || isSphereMember(sphereId) || isSphereOwner(sphereId);
+        allow create: if signedIn() &&
+          isSphereMember(sphereId) &&
+          request.resource.data.toUserId == inviteeId;
+        allow update: if (
+          signedIn() &&
+          isSphereMember(sphereId) &&
+          request.resource.data.toUserId == inviteeId
+        ) || (
+          isSelf(inviteeId) &&
+          affectedKeys().hasOnly(['status', 'updatedAt']) &&
+          request.resource.data.status in ['declined', 'accepted']
+        );
+        allow delete: if isSelf(inviteeId) || isSphereOwner(sphereId);
+      }
+
+      match /join_requests/{requesterId} {
+        allow read: if isSelf(requesterId) || isSphereOwner(sphereId);
+
+        allow create, update: if isSelf(requesterId) &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.username is string;
+
+        allow update: if isSphereOwner(sphereId) &&
+          affectedKeys().hasOnly(['status', 'updatedAt', 'reviewedBy']) &&
+          request.resource.data.status in ['accepted', 'denied'];
+
+        allow delete: if isSelf(requesterId) || isSphereOwner(sphereId);
       }
 
       match /messages/{messageId} {
-        allow read: if isSphereMember(sphereId);
+        allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
         allow create: if isSphereMember(sphereId) &&
           request.resource.data.userId == request.auth.uid;
-        allow update, delete: if isSphereMember(sphereId) &&
+        allow update: if isSphereMember(sphereId) &&
           resource.data.userId == request.auth.uid;
+        allow delete: if isSphereMember(sphereId) &&
+          (resource.data.userId == request.auth.uid || isSphereOwner(sphereId));
       }
 
       match /posts/{postId} {
-        allow read: if isSphereMember(sphereId);
+        allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
 
-        allow create: if isSphereMember(sphereId) &&
+        allow create: if (
+          isSphereMember(sphereId) &&
           request.resource.data.userId == request.auth.uid &&
-          request.resource.data.nickname is string &&
-          request.resource.data.text is string;
+          request.resource.data.username is string &&
+          request.resource.data.text is string
+        ) || (
+          isSphereOwner(sphereId) &&
+          request.resource.data.type == 'system_join' &&
+          request.resource.data.username is string &&
+          request.resource.data.text is string
+        );
 
         allow update: if isSphereMember(sphereId) && (
           (
@@ -156,26 +260,30 @@ service cloud.firestore {
           (resource.data.userId == request.auth.uid || isSphereOwner(sphereId));
 
         match /replies/{replyId} {
-          allow read: if isSphereMember(sphereId);
+          allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
           allow create: if isSphereMember(sphereId) &&
             request.resource.data.userId == request.auth.uid &&
-            request.resource.data.nickname is string &&
+            request.resource.data.username is string &&
             request.resource.data.text is string;
-          allow update, delete: if isSphereMember(sphereId) &&
+          allow update: if isSphereMember(sphereId) &&
             resource.data.userId == request.auth.uid;
+          allow delete: if isSphereMember(sphereId) &&
+            (resource.data.userId == request.auth.uid || isSphereOwner(sphereId));
         }
 
         match /reactions/{reactionUserId} {
-          allow read: if isSphereMember(sphereId);
-          allow create, update, delete: if isSelf(reactionUserId) &&
+          allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
+          allow create, update: if isSelf(reactionUserId) &&
             isSphereMember(sphereId);
+          allow delete: if isSphereMember(sphereId) &&
+            (isSelf(reactionUserId) || isSphereOwner(sphereId));
         }
       }
 
       match /reports/{reportId} {
         allow create: if isSphereMember(sphereId) &&
           request.resource.data.reportedBy == request.auth.uid;
-        allow read: if isSphereOwner(sphereId);
+        allow read: if isSphereMember(sphereId) || isSphereOwner(sphereId);
         allow update, delete: if isSphereOwner(sphereId);
       }
 
@@ -184,11 +292,12 @@ service cloud.firestore {
           request.resource.data.userId == request.auth.uid;
         allow read: if isSphereOwner(sphereId) ||
           (signedIn() && resource.data.userId == request.auth.uid);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isSphereOwner(sphereId);
       }
 
       match /moderation_actions/{actionId} {
-        allow create: if isSphereOwner(sphereId);
+        allow create: if isSphereMember(sphereId) || isSphereOwner(sphereId);
         allow read: if isSphereOwner(sphereId);
         allow update, delete: if false;
       }

@@ -175,8 +175,10 @@ class ExerciseStore {
       'sets': hasWorkoutItems ? (primaryItem!['sets'] ?? '') : sets.toString(),
       'reps': hasWorkoutItems ? (primaryItem!['reps'] ?? '') : reps.toString(),
       'noExercise': noExercise.toString(),
-      if (hasWorkoutItems) 'workoutItemsJson': jsonEncode(normalizedWorkoutItems),
-      if (hasWorkoutItems) 'workoutCount': normalizedWorkoutItems.length.toString(),
+      if (hasWorkoutItems)
+        'workoutItemsJson': jsonEncode(normalizedWorkoutItems),
+      if (hasWorkoutItems)
+        'workoutCount': normalizedWorkoutItems.length.toString(),
       'timestamp': timestamp.toIso8601String(),
     };
     final history = List<Map<String, String>>.from(_loadExerciseHistory());
@@ -210,12 +212,18 @@ class ExerciseStore {
 
   /// Return recent exercise activity as daily counts for the last [days] days.
   /// Index 0 is today.
-  List<int> getRecentExerciseActivity({int days = 7}) {
+  List<int> getRecentExerciseActivity({
+    int days = 7,
+    bool includeNoExercise = true,
+  }) {
     final history = _loadExerciseHistory();
     final buckets = List<int>.filled(days, 0);
     final now = DateTime.now();
 
     for (final record in history) {
+      if (!includeNoExercise && (record['noExercise'] ?? '').trim() == 'true') {
+        continue;
+      }
       final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
       if (timestamp == null) continue;
       final diffDays = now.difference(timestamp).inDays;
@@ -497,7 +505,9 @@ class ExerciseStore {
             'exerciseName': (item['exerciseName'] ?? '').toString().trim(),
             'sets': (item['sets'] ?? '').toString().trim(),
             'reps': (item['reps'] ?? '').toString().trim(),
-            'durationMinutes': (item['durationMinutes'] ?? '').toString().trim(),
+            'durationMinutes': (item['durationMinutes'] ?? '')
+                .toString()
+                .trim(),
           },
         )
         .where((item) => (item['exerciseId'] ?? '').isNotEmpty)

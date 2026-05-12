@@ -63,8 +63,11 @@ class _ForgotPasswordState extends State<ForgotPassword> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: cs.surface,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -77,14 +80,13 @@ class _ForgotPasswordState extends State<ForgotPassword> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Forgot Password',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
+              Text('Forgot Password', style: theme.textTheme.headlineSmall),
               const SizedBox(height: 10),
               Text(
                 'Enter your email address and we\'ll send you a link to reset your password.',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: cs.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 40),
               TextField(
@@ -103,10 +105,9 @@ class _ForgotPasswordState extends State<ForgotPassword> {
               SizedBox(
                 width: double.infinity,
                 height: 50,
-                child: ElevatedButton(
+                child: FilledButton(
                   onPressed: _isLoading ? null : _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
+                  style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -123,7 +124,6 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                       : const Text(
                           'Send Reset Link',
                           style: TextStyle(
-                            color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
@@ -136,7 +136,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                   onPressed: widget.onBackPressed,
                   child: const Text(
                     'Back to Login',
-                    style: TextStyle(color: Colors.blue, fontSize: 16),
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
               ),
@@ -144,17 +144,17 @@ class _ForgotPasswordState extends State<ForgotPassword> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.blue[50],
+                  color: cs.primaryContainer.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info, color: Colors.blue),
+                    Icon(Icons.info, color: cs.onPrimaryContainer),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'Check your email inbox and spam folder for the reset link.',
-                        style: TextStyle(color: Colors.blue[800]),
+                        style: TextStyle(color: cs.onPrimaryContainer),
                       ),
                     ),
                   ],

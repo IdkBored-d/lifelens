@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,6 +13,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class MiniMeSuggestionsInbox extends ChangeNotifier {
   MiniMeSuggestionsInbox() {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _handleAuthChanged(user);
+    });
     _init();
   }
 
@@ -27,7 +31,10 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   SharedPreferences? _prefs;
   bool _isInitialized = false;
   bool _isRefreshing = false;
+  bool _refreshQueued = false;
+  bool _refreshQueuedFromLog = false;
   String? _loadedScopeKey;
+  late final StreamSubscription<User?> _authSub;
   final Set<String> _viewedDigests = <String>{};
   List<_StoredSuggestion> _unread = const <_StoredSuggestion>[];
   _SuggestionDeliveryState _deliveryState = const _SuggestionDeliveryState();
@@ -40,11 +47,34 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   List<DailySuggestion> get unreadSuggestions =>
       _unread.map((item) => item.toDailySuggestion()).toList(growable: false);
 
+  Future<void> ensureReady() async {
+    await _ensureCurrentScopeLoaded();
+  }
+
   String get _scopeKey => FirebaseAuth.instance.currentUser?.uid ?? 'guest';
   String get _viewedDigestsKey => '${_viewedDigestsKeyBase}_$_scopeKey';
   String get _unreadSuggestionsKey => '${_unreadSuggestionsKeyBase}_$_scopeKey';
   String get _deliveryStateKey => '${_deliveryStateKeyBase}_$_scopeKey';
   String get _pipelineMessagesKey => '${_pipelineMessagesKeyBase}_$_scopeKey';
+
+  void _clearInMemoryStateForScope(String scopeKey) {
+    _loadedScopeKey = scopeKey;
+    _viewedDigests.clear();
+    _unread = const <_StoredSuggestion>[];
+    _deliveryState = const _SuggestionDeliveryState();
+    _refreshQueued = false;
+    _refreshQueuedFromLog = false;
+  }
+
+  void _handleAuthChanged(User? user) {
+    final nextScopeKey = user?.uid ?? 'guest';
+    if (_loadedScopeKey == nextScopeKey) return;
+    _clearInMemoryStateForScope(nextScopeKey);
+    notifyListeners();
+    if (_isInitialized) {
+      unawaited(_loadScopedState().then((_) => notifyListeners()));
+    }
+  }
 
   Future<void> _init() async {
     if (_isInitialized) return;
@@ -62,6 +92,8 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     _viewedDigests
       ..clear()
       ..addAll(prefs.getStringList(_viewedDigestsKey) ?? const []);
+    _unread = const <_StoredSuggestion>[];
+    _deliveryState = const _SuggestionDeliveryState();
 
     final rawUnread = prefs.getString(_unreadSuggestionsKey);
     if (rawUnread != null && rawUnread.isNotEmpty) {
@@ -141,54 +173,111 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   Future<void> refresh({
     required MoodLogStore moodStore,
     required SleepStore sleepStore,
+    bool fromLog = false,
   }) async {
     await _ensureCurrentScopeLoaded();
-    if (_isRefreshing) return;
+    if (_isRefreshing) {
+      _refreshQueued = true;
+      _refreshQueuedFromLog = _refreshQueuedFromLog || fromLog;
+      return;
+    }
 
     _isRefreshing = true;
     try {
-      final cadenceDecision = await _evaluateCadenceDecision(
-        moodStore: moodStore,
-        sleepStore: sleepStore,
-      );
-      if (!cadenceDecision.shouldRequest) {
-        return;
-      }
-
-      final snapshot = await DailySuggestionsService.instance.buildSnapshot(
-        moodStore: moodStore,
-        sleepStore: sleepStore,
-        suggestionWindow: cadenceDecision.window,
-        triggerReason: cadenceDecision.triggerReason,
-        eventOverride: cadenceDecision.eventOverride,
-      );
-
-      final currentSuggestions = snapshot.suggestions
-          .where((item) => item.action.trim().isNotEmpty)
-          .take(1)
-          .map(_StoredSuggestion.fromDailySuggestion)
-          .toList(growable: false);
-
-      var nextUnread = currentSuggestions
-          .where((item) => !_viewedDigests.contains(item.digest))
-          .toList(growable: false);
-
-      if (currentSuggestions.isNotEmpty) {
-        _recordDeliveryIfRequested(cadenceDecision);
-      }
-
-      if (_sameDigests(_unread, nextUnread)) {
-        await _persistDeliveryState();
-        return;
-      }
-
-      _unread = nextUnread;
-      await _persistUnread();
-      await _persistDeliveryState();
-      notifyListeners();
+      var currentFromLog = fromLog;
+      do {
+        _refreshQueued = false;
+        final nextFromLog = currentFromLog || _refreshQueuedFromLog;
+        _refreshQueuedFromLog = false;
+        await _refreshOnce(
+          moodStore: moodStore,
+          sleepStore: sleepStore,
+          fromLog: nextFromLog,
+        );
+        currentFromLog = false;
+      } while (_refreshQueued);
     } finally {
       _isRefreshing = false;
+      _refreshQueuedFromLog = false;
     }
+  }
+
+  Future<void> _refreshOnce({
+    required MoodLogStore moodStore,
+    required SleepStore sleepStore,
+    required bool fromLog,
+  }) async {
+    if (!fromLog) {
+      return;
+    }
+
+    final cadenceDecision = await _evaluateCadenceDecision(
+      moodStore: moodStore,
+      sleepStore: sleepStore,
+      fromLog: fromLog,
+    );
+    if (!cadenceDecision.shouldRequest) {
+      return;
+    }
+
+    final forceSurface =
+        cadenceDecision.eventOverride || cadenceDecision.window == 'log_update';
+    final avoidedSuggestions = _recentSuggestionActionsForAvoidance();
+    if (forceSurface && _unread.isNotEmpty) {
+      _unread = const <_StoredSuggestion>[];
+      await _persistUnread();
+      notifyListeners();
+    }
+
+    final snapshot = await DailySuggestionsService.instance.buildSnapshot(
+      moodStore: moodStore,
+      sleepStore: sleepStore,
+      recentSuggestionActions: avoidedSuggestions,
+      suggestionWindow: cadenceDecision.window,
+      triggerReason: cadenceDecision.triggerReason,
+      eventOverride: cadenceDecision.eventOverride,
+    );
+
+    final currentSuggestions = snapshot.suggestions
+        .where((item) => item.action.trim().isNotEmpty)
+        .take(1)
+        .map(_StoredSuggestion.fromDailySuggestion)
+        .toList(growable: false);
+
+    var nextUnread = forceSurface
+        ? currentSuggestions
+        : currentSuggestions
+              .where((item) => !_viewedDigests.contains(item.digest))
+              .toList(growable: false);
+
+    if (!forceSurface && nextUnread.isNotEmpty) {
+      final merged = <_StoredSuggestion>[...nextUnread];
+      for (final item in _unread) {
+        if (merged.any((existing) => existing.digest == item.digest)) {
+          continue;
+        }
+        merged.add(item);
+        if (merged.length >= 12) break;
+      }
+      nextUnread = merged;
+    }
+
+    if (currentSuggestions.isNotEmpty) {
+      _recordDeliveryIfRequested(
+        cadenceDecision,
+        deliveredSuggestions: currentSuggestions,
+      );
+    }
+
+    if (_sameDigests(_unread, nextUnread)) {
+      await _persistDeliveryState();
+      return;
+    }
+
+    _unread = nextUnread;
+    await _persistUnread();
+    await _persistDeliveryState();
+    notifyListeners();
   }
 
   Future<void> markSuggestionsViewed(
@@ -225,38 +314,132 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> clearUnreadSuggestions({bool markAsViewed = true}) async {
+    await _ensureCurrentScopeLoaded();
+
+    if (_unread.isEmpty) return;
+
+    if (markAsViewed) {
+      _viewedDigests.addAll(_unread.map((item) => item.digest));
+    }
+    _unread = const <_StoredSuggestion>[];
+
+    if (markAsViewed) {
+      await _persistViewedDigests();
+    }
+    await _persistUnread();
+    notifyListeners();
+  }
+
+  Future<void> enqueueSymptomInsight({
+    required List<String> topConditions,
+    required List<String> symptoms,
+  }) async {
+    await _ensureCurrentScopeLoaded();
+
+    final cleanedConditions = topConditions
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .take(3)
+        .toList(growable: false);
+    if (cleanedConditions.isEmpty) return;
+
+    final action =
+        'Here are your possible conditions: ${cleanedConditions.join(', ')}.';
+    final reason = 'This is just a quick guide, not a diagnosis.';
+
+    final suggestion = DailySuggestion(
+      title: 'Symptom analysis ready',
+      action: action,
+      reason: reason,
+      category: 'Symptoms',
+      priority: 5,
+      icon: Icons.health_and_safety_rounded,
+    );
+
+    final stored = _StoredSuggestion.fromDailySuggestion(suggestion);
+    final nextUnread = <_StoredSuggestion>[stored];
+
+    if (_sameDigests(_unread, nextUnread)) return;
+
+    _unread = nextUnread;
+    await _persistUnread();
+    notifyListeners();
+  }
+
+  Future<void> enqueueSymptomLogSaved({required List<String> symptoms}) async {
+    await _ensureCurrentScopeLoaded();
+
+    final cleanedSymptoms = symptoms
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .take(3)
+        .toList(growable: false);
+    final symptomText = cleanedSymptoms.isEmpty
+        ? 'your symptom log'
+        : cleanedSymptoms.join(', ');
+
+    final suggestion = DailySuggestion(
+      title: 'Symptom log saved',
+      action:
+          'I saved your symptom log for $symptomText. I could not get condition matches yet, but I will keep watching for changes.',
+      reason: 'Mini-Me can still help you track whether symptoms improve.',
+      category: 'Symptoms',
+      priority: 4,
+      icon: Icons.health_and_safety_rounded,
+    );
+
+    final stored = _StoredSuggestion.fromDailySuggestion(suggestion);
+    final nextUnread = <_StoredSuggestion>[stored];
+
+    if (_sameDigests(_unread, nextUnread)) return;
+
+    _unread = nextUnread;
+    await _persistUnread();
+    notifyListeners();
+  }
+
   Future<_SuggestionCadenceDecision> _evaluateCadenceDecision({
     required MoodLogStore moodStore,
     required SleepStore sleepStore,
+    required bool fromLog,
   }) async {
+    if (!fromLog) {
+      return _SuggestionCadenceDecision.skip();
+    }
+
     final now = DateTime.now();
     final activeSymptomsCount = await _activeSymptomsCount();
     final latestMood = moodStore.items.isEmpty ? null : moodStore.items.first;
     final previousMood = moodStore.items.length < 2 ? null : moodStore.items[1];
-    final latestSleep = sleepStore.items.isEmpty ? null : sleepStore.items.first;
+    final latestSleep = sleepStore.items.isEmpty
+        ? null
+        : sleepStore.items.first;
     final latestExerciseTimestamp = await _latestExerciseTimestamp();
-    final latestLogTimestamp = _maxTimestamp(
-      <DateTime?>[
-        latestMood?.createdAt,
-        latestSleep?.wakeTime,
-        latestSleep?.date,
-        latestExerciseTimestamp,
-      ],
-    );
+    final latestSymptomTimestamp = await _latestSymptomTimestamp();
+    final latestLogTimestamp = _maxTimestamp(<DateTime?>[
+      latestMood?.createdAt,
+      latestSleep?.wakeTime,
+      latestSleep?.date,
+      latestExerciseTimestamp,
+      latestSymptomTimestamp,
+    ]);
     final contextSignature = _buildContextSignature(
       latestMood: latestMood,
       latestSleep: latestSleep,
       latestExerciseTimestamp: latestExerciseTimestamp,
+      latestSymptomTimestamp: latestSymptomTimestamp,
       activeSymptomsCount: activeSymptomsCount,
     );
 
     final lastDeliveredAt = _deliveryState.lastDeliveredAt;
     final hasNewLogSinceLast =
         latestLogTimestamp != null &&
-        (lastDeliveredAt == null || latestLogTimestamp.isAfter(lastDeliveredAt));
+        (lastDeliveredAt == null ||
+            latestLogTimestamp.isAfter(lastDeliveredAt));
     final contextChanged =
-      contextSignature.isNotEmpty &&
-      contextSignature != _deliveryState.lastDeliveredContextSignature;
+        contextSignature.isNotEmpty &&
+        contextSignature != _deliveryState.lastDeliveredContextSignature;
 
     final strongStateShift = _hasStrongStateShift(latestMood, previousMood);
     final majorDrop = _hasMajorDrop(latestMood, previousMood);
@@ -280,15 +463,26 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       );
     }
 
-    // Any newly logged or materially changed context should trigger a fresh
-    // suggestion immediately, regardless of daypart.
-    if ((hasNewLogSinceLast || contextChanged) && _passesUpdateCooldown(now)) {
+    // Always request after new logs so each update can surface a fresh
+    // suggestion; for context-only changes keep a cooldown.
+    if (hasNewLogSinceLast) {
       return _SuggestionCadenceDecision(
         shouldRequest: true,
         window: 'log_update',
-        triggerReason: hasNewLogSinceLast
-            ? 'new logs were added since the last delivered suggestion'
-            : 'context changed enough to justify a refreshed suggestion',
+        triggerReason:
+            'new logs were added since the last delivered suggestion',
+        eventOverride: false,
+        now: now,
+        contextSignature: contextSignature,
+      );
+    }
+
+    if (contextChanged && _passesUpdateCooldown(now)) {
+      return _SuggestionCadenceDecision(
+        shouldRequest: true,
+        window: 'log_update',
+        triggerReason:
+            'context changed enough to justify a refreshed suggestion',
         eventOverride: false,
         now: now,
         contextSignature: contextSignature,
@@ -305,7 +499,9 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       return _SuggestionCadenceDecision.skip();
     }
 
-    if (window == 'midday_checkin' && !hasNewLogSinceLast && !strongStateShift) {
+    if (window == 'midday_checkin' &&
+        !hasNewLogSinceLast &&
+        !strongStateShift) {
       return _SuggestionCadenceDecision.skip();
     }
 
@@ -317,9 +513,10 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     final triggerReason = switch (window) {
       'morning_anchor' =>
         'first morning suggestion using overnight sleep and recent mood trend',
-      'midday_checkin' => hasNewLogSinceLast
-          ? 'new logs detected since last suggestion'
-          : 'strong state shift detected since last suggestion',
+      'midday_checkin' =>
+        hasNewLogSinceLast
+            ? 'new logs detected since last suggestion'
+            : 'strong state shift detected since last suggestion',
       'evening_reflection' =>
         'evening wrap-up with review and next-day preparation context',
       _ => 'scheduled refresh',
@@ -357,6 +554,17 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     }
   }
 
+  Future<DateTime?> _latestSymptomTimestamp() async {
+    try {
+      await AppServices.isar.init();
+      final latest = await AppServices.isar.getRecentSymptomEntries(days: 45);
+      if (latest.isEmpty) return null;
+      return latest.first.timestamp;
+    } catch (_) {
+      return null;
+    }
+  }
+
   DateTime? _maxTimestamp(List<DateTime?> values) {
     DateTime? maxValue;
     for (final value in values) {
@@ -371,8 +579,8 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   bool _hasStrongStateShift(MoodCheckIn? latest, MoodCheckIn? previous) {
     if (latest == null || previous == null) return false;
     final intensityShift = (latest.intensity - previous.intensity).abs() >= 2;
-    final valenceShift = _moodValence(latest.moodLabel) !=
-        _moodValence(previous.moodLabel);
+    final valenceShift =
+        _moodValence(latest.moodLabel) != _moodValence(previous.moodLabel);
     return intensityShift || valenceShift;
   }
 
@@ -398,7 +606,8 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
       'anger',
       'frustrated',
     }.contains(mood);
-    return (distressMood && latestMoodIntensity >= 4) || activeSymptomsCount >= 3;
+    return (distressMood && latestMoodIntensity >= 4) ||
+        activeSymptomsCount >= 3;
   }
 
   int _moodValence(String moodLabel) {
@@ -437,6 +646,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     required MoodCheckIn? latestMood,
     required Sleep? latestSleep,
     required DateTime? latestExerciseTimestamp,
+    required DateTime? latestSymptomTimestamp,
     required int activeSymptomsCount,
   }) {
     final moodStamp = latestMood == null
@@ -448,7 +658,9 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     final exerciseStamp = latestExerciseTimestamp == null
         ? 'exercise:none'
         : 'exercise:${latestExerciseTimestamp.microsecondsSinceEpoch}';
-    final symptomStamp = 'symptoms:$activeSymptomsCount';
+    final symptomStamp = latestSymptomTimestamp == null
+        ? 'symptoms:$activeSymptomsCount:none'
+        : 'symptoms:$activeSymptomsCount:${latestSymptomTimestamp.microsecondsSinceEpoch}';
     return [moodStamp, sleepStamp, exerciseStamp, symptomStamp].join('|');
   }
 
@@ -466,8 +678,31 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     return '${value.year}-$month-$day';
   }
 
-  void _recordDeliveryIfRequested(_SuggestionCadenceDecision decision) {
-    if (!decision.shouldRequest || decision.window == null || decision.now == null) {
+  List<String> _recentSuggestionActionsForAvoidance() {
+    final values = <String>[
+      ..._deliveryState.recentDeliveredSuggestionActions,
+      ..._unread.map((item) => item.action),
+    ];
+    final deduped = <String>[];
+    for (final value in values.reversed) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) continue;
+      if (deduped.any((item) => item.toLowerCase() == trimmed.toLowerCase())) {
+        continue;
+      }
+      deduped.add(trimmed);
+      if (deduped.length >= 10) break;
+    }
+    return deduped.toList(growable: false);
+  }
+
+  void _recordDeliveryIfRequested(
+    _SuggestionCadenceDecision decision, {
+    required List<_StoredSuggestion> deliveredSuggestions,
+  }) {
+    if (!decision.shouldRequest ||
+        decision.window == null ||
+        decision.now == null) {
       return;
     }
 
@@ -477,14 +712,24 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     if (nextWindows.length > 40) {
       nextWindows.removeRange(0, nextWindows.length - 40);
     }
+    final nextRecentSuggestions = <String>[
+      ..._deliveryState.recentDeliveredSuggestionActions,
+      ...deliveredSuggestions.map((item) => item.action.trim()),
+    ].where((item) => item.isNotEmpty).toList(growable: true);
+    if (nextRecentSuggestions.length > 20) {
+      nextRecentSuggestions.removeRange(0, nextRecentSuggestions.length - 20);
+    }
 
     _deliveryState = _deliveryState.copyWith(
       lastDeliveredAtIso: now.toIso8601String(),
       deliveredWindowStamps: nextWindows,
-      lastEventOverrideAtIso:
-          decision.eventOverride ? now.toIso8601String() : _deliveryState.lastEventOverrideAtIso,
+      recentDeliveredSuggestionActions: nextRecentSuggestions,
+      lastEventOverrideAtIso: decision.eventOverride
+          ? now.toIso8601String()
+          : _deliveryState.lastEventOverrideAtIso,
       lastDeliveredContextSignature:
-          decision.contextSignature ?? _deliveryState.lastDeliveredContextSignature,
+          decision.contextSignature ??
+          _deliveryState.lastDeliveredContextSignature,
     );
   }
 
@@ -505,7 +750,7 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   Future<void> _persistViewedDigests() async {
     final prefs = _prefs;
     if (prefs == null) return;
-    final values = _viewedDigests.toList(growable: false);
+    final values = _viewedDigests.toList(growable: true);
     if (values.length > 120) {
       values.removeRange(0, values.length - 120);
     }
@@ -524,7 +769,16 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
   Future<void> _persistDeliveryState() async {
     final prefs = _prefs;
     if (prefs == null) return;
-    await prefs.setString(_deliveryStateKey, jsonEncode(_deliveryState.toJson()));
+    await prefs.setString(
+      _deliveryStateKey,
+      jsonEncode(_deliveryState.toJson()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 }
 
@@ -622,18 +876,22 @@ class _SuggestionDeliveryState {
     this.lastEventOverrideAtIso = '',
     this.lastDeliveredContextSignature = '',
     this.deliveredWindowStamps = const <String>[],
+    this.recentDeliveredSuggestionActions = const <String>[],
   });
 
   final String lastDeliveredAtIso;
   final String lastEventOverrideAtIso;
   final String lastDeliveredContextSignature;
   final List<String> deliveredWindowStamps;
+  final List<String> recentDeliveredSuggestionActions;
 
   DateTime? get lastDeliveredAt => DateTime.tryParse(lastDeliveredAtIso);
-  DateTime? get lastEventOverrideAt => DateTime.tryParse(lastEventOverrideAtIso);
+  DateTime? get lastEventOverrideAt =>
+      DateTime.tryParse(lastEventOverrideAtIso);
 
   factory _SuggestionDeliveryState.fromJson(Map<String, dynamic> json) {
     final rawWindows = json['deliveredWindowStamps'];
+    final rawRecentSuggestions = json['recentDeliveredSuggestionActions'];
     return _SuggestionDeliveryState(
       lastDeliveredAtIso: (json['lastDeliveredAtIso'] ?? '').toString(),
       lastEventOverrideAtIso: (json['lastEventOverrideAtIso'] ?? '').toString(),
@@ -641,6 +899,13 @@ class _SuggestionDeliveryState {
           (json['lastDeliveredContextSignature'] ?? '').toString(),
       deliveredWindowStamps: rawWindows is List
           ? rawWindows.map((item) => item.toString()).toList(growable: false)
+          : const <String>[],
+      recentDeliveredSuggestionActions: rawRecentSuggestions is List
+          ? rawRecentSuggestions
+                .map((item) => item.toString())
+                .where((item) => item.trim().isNotEmpty)
+                .take(20)
+                .toList(growable: false)
           : const <String>[],
     );
   }
@@ -650,6 +915,7 @@ class _SuggestionDeliveryState {
     String? lastEventOverrideAtIso,
     String? lastDeliveredContextSignature,
     List<String>? deliveredWindowStamps,
+    List<String>? recentDeliveredSuggestionActions,
   }) {
     return _SuggestionDeliveryState(
       lastDeliveredAtIso: lastDeliveredAtIso ?? this.lastDeliveredAtIso,
@@ -659,6 +925,9 @@ class _SuggestionDeliveryState {
           lastDeliveredContextSignature ?? this.lastDeliveredContextSignature,
       deliveredWindowStamps:
           deliveredWindowStamps ?? this.deliveredWindowStamps,
+      recentDeliveredSuggestionActions:
+          recentDeliveredSuggestionActions ??
+          this.recentDeliveredSuggestionActions,
     );
   }
 
@@ -668,6 +937,7 @@ class _SuggestionDeliveryState {
       'lastEventOverrideAtIso': lastEventOverrideAtIso,
       'lastDeliveredContextSignature': lastDeliveredContextSignature,
       'deliveredWindowStamps': deliveredWindowStamps,
+      'recentDeliveredSuggestionActions': recentDeliveredSuggestionActions,
     };
   }
 }

@@ -13,6 +13,7 @@ class SleepLogWidget extends StatelessWidget {
 
     if (sleepData.isEmpty) {
       return Container(
+        width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest,
@@ -20,6 +21,7 @@ class SleepLogWidget extends StatelessWidget {
           border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(Icons.bedtime_outlined, size: 48, color: cs.onSurfaceVariant),
 
@@ -46,6 +48,7 @@ class SleepLogWidget extends StatelessWidget {
     }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: sleepData
           .map(
             (sleep) => Padding(
@@ -69,6 +72,7 @@ class _SleepEntryCard extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
@@ -193,13 +197,13 @@ class _SleepEntryCard extends StatelessWidget {
   Color _getQualityColor(SleepQuality quality, ColorScheme cs) {
     switch (quality) {
       case SleepQuality.poor:
-        return Colors.red;
+        return const Color(0xFFE06C75);
       case SleepQuality.fair:
-        return Colors.orange;
+        return const Color(0xFFE7A94C);
       case SleepQuality.good:
         return cs.primary;
       case SleepQuality.excellent:
-        return Colors.green;
+        return const Color(0xFF4DBB8A);
     }
   }
 }

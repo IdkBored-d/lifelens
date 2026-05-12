@@ -1,12 +1,17 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:lifelens/models/exercise_model.dart';
+import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/exercise_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
+import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
+import 'package:lifelens/sleep_store.dart';
+import 'package:provider/provider.dart';
 
 class ExerciseScreen extends StatefulWidget {
   const ExerciseScreen({super.key});
@@ -41,6 +46,23 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   int _loggedWeek = 0;
   LogButtonVisualState _logButtonState = LogButtonVisualState.idle;
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  List<Map<String, String>> _filterHistoryToToday(
+    List<Map<String, String>> history,
+  ) {
+    final today = DateTime.now();
+    return history
+        .where((record) {
+          final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
+          if (timestamp == null) return false;
+          return _isSameDay(timestamp, today);
+        })
+        .toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -69,7 +91,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     final selected = _selectedExercise;
     final sets = _parsedSets;
     final reps = _parsedReps;
-    if (selectedId == null || selected == null || sets == null || reps == null) {
+    if (selectedId == null ||
+        selected == null ||
+        sets == null ||
+        reps == null) {
       return null;
     }
     if (sets <= 0 || reps <= 0) return null;
@@ -101,7 +126,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _exerciseById = {for (final exercise in exercises) exercise.id: exercise};
       _lastFilterQuery = '';
       _cachedFilteredExercises = const <ExerciseModel>[];
-      _history = history;
+      _history = _filterHistoryToToday(history);
       _loggedToday = activity.isEmpty ? 0 : activity.first;
       _loggedWeek = activity.fold(0, (sum, value) => sum + value);
     });
@@ -112,6 +137,22 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       _future = _load();
     });
     await _future;
+  }
+
+  void _clearDraft() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _selectedExerciseId = null;
+      _pendingWorkouts = const <_WorkoutDraftItem>[];
+      _noExercise = false;
+      _searchQuery = '';
+      _lastFilterQuery = '';
+      _cachedFilteredExercises = const <ExerciseModel>[];
+      _logButtonState = LogButtonVisualState.idle;
+      _searchController.clear();
+      _setsController.text = '3';
+      _repsController.text = '10';
+    });
   }
 
   ExerciseModel? get _selectedExercise {
@@ -141,7 +182,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
   }
 
   Future<void> _logSelectedExercise() async {
-    if (!_noExercise && _pendingWorkouts.isEmpty && _currentDraftWorkout == null) {
+    if (!_noExercise &&
+        _pendingWorkouts.isEmpty &&
+        _currentDraftWorkout == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Add at least one workout first.'),
@@ -184,8 +227,16 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
     final history = _exerciseStore.getRecentExerciseHistory(limit: 20);
 
     if (!mounted) return;
+    unawaited(
+      context.read<MiniMeSuggestionsInbox>().refresh(
+        moodStore: context.read<MoodLogStore>(),
+        sleepStore: context.read<SleepStore>(),
+        fromLog: true,
+      ),
+    );
+
     setState(() {
-      _history = history;
+      _history = _filterHistoryToToday(history);
       _loggedToday = activity.isEmpty ? 0 : activity.first;
       _loggedWeek = activity.fold(0, (sum, value) => sum + value);
       _logButtonState = LogButtonVisualState.success;
@@ -264,6 +315,18 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
       appBar: AppBar(
         leading: canPop ? const BackButton() : null,
         title: const Text('Exercise Log'),
+        actions: [
+          IconButton(
+            tooltip: 'Clear draft',
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(52),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: _clearDraft,
+            icon: const Icon(Icons.restart_alt_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
@@ -278,7 +341,7 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
               }
 
               return ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                 children: [
                   _TrackerSummary(
                     loggedToday: _loggedToday,
@@ -395,14 +458,17 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                         if (_pendingWorkouts.isNotEmpty) ...[
                           _ExercisePickerSection(
                             title: 'Workouts in this log',
-                            subtitle: 'You can add multiple workouts before logging.',
+                            subtitle:
+                                'You can add multiple workouts before logging.',
                             child: Column(
                               children: _pendingWorkouts
                                   .asMap()
                                   .entries
                                   .map(
                                     (entry) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.only(
+                                        bottom: 10,
+                                      ),
                                       child: _PendingWorkoutCard(
                                         item: entry.value,
                                         onRemove: () {
@@ -410,7 +476,10 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                             _pendingWorkouts = _pendingWorkouts
                                                 .asMap()
                                                 .entries
-                                                .where((item) => item.key != entry.key)
+                                                .where(
+                                                  (item) =>
+                                                      item.key != entry.key,
+                                                )
                                                 .map((item) => item.value)
                                                 .toList(growable: false);
                                           });
@@ -437,7 +506,8 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                                 _noExercise = value ?? false;
                                 if (_noExercise) {
                                   _selectedExerciseId = null;
-                                  _pendingWorkouts = const <_WorkoutDraftItem>[];
+                                  _pendingWorkouts =
+                                      const <_WorkoutDraftItem>[];
                                   _searchQuery = '';
                                   _lastFilterQuery = '';
                                   _cachedFilteredExercises =
@@ -493,7 +563,9 @@ class _ExerciseScreenState extends State<ExerciseScreen> {
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
-                            onPressed: _noExercise ? null : _addWorkoutToPending,
+                            onPressed: _noExercise
+                                ? null
+                                : _addWorkoutToPending,
                             icon: const Icon(Icons.add_rounded),
                             label: const Text('Add workout to this log'),
                           ),
@@ -577,6 +649,8 @@ class _HistoryDisclosureButton extends StatelessWidget {
         ),
         child: Row(
           children: [
+            Icon(Icons.fitness_center_outlined, size: 20, color: cs.primary),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 expanded ? 'Hide previous logs' : 'View previous logs',

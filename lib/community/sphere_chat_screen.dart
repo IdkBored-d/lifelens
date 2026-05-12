@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
@@ -12,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../avatar_store.dart';
 import '../models/sphere.dart';
+import 'social_features.dart';
 import '../services/content_moderation_service.dart';
 import '../services/exercise_store.dart';
 import '../sleep_store.dart';
@@ -37,11 +41,15 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   String? _userNickname;
   bool _isBootstrapping = true;
   bool _isSendingPost = false;
+  bool _hasShownJoinPrompt = false;
   _ReplyTarget? _composerReplyTarget;
   int _activeChatSeedVersion = 0;
   static const double _maxTimeRevealOffset = 76.0;
   double _timeRevealOffset = 0.0;
   late final AnimationController _timeRevealController;
+  final Set<String> _pendingDeletePostIds = <String>{};
+  Timer? _typingTimer;
+  bool _isCurrentlyTyping = false;
 
   DocumentReference<Map<String, dynamic>> get _sphereRef =>
       FirebaseFirestore.instance.collection('spheres').doc(widget.sphere.id);
@@ -53,10 +61,24 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       _sphereRef.collection('members');
 
   String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+  bool get _canJoinDirectly {
+    final userId = _userId;
+    return widget.sphere.isPublic ||
+        widget.sphere.isPremade ||
+        (userId != null && widget.sphere.creatorId == userId);
+  }
+
+  bool get _isSphereOwner {
+    final userId = _userId;
+    return userId != null && widget.sphere.creatorId == userId;
+  }
+
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _postsStream =
       _postsRef.orderBy('createdAt', descending: true).snapshots();
   late final Stream<QuerySnapshot<Map<String, dynamic>>> _membersStream =
       _membersRef.snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _typingStream =
+      _membersRef.where('isTyping', isEqualTo: true).snapshots();
 
   bool get _isSleepSphere {
     final normalized = widget.sphere.name.trim().toLowerCase();
@@ -95,6 +117,45 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     _bootstrapSphere();
   }
 
+  void _onComposerChanged(String text) {
+    setState(() {});
+    if (text.trim().isNotEmpty) {
+      _reportTyping();
+    } else {
+      _clearTyping();
+    }
+  }
+
+  void _reportTyping() {
+    final userId = _userId;
+    if (userId == null || _userNickname == null) return;
+    _typingTimer?.cancel();
+    if (!_isCurrentlyTyping) {
+      _isCurrentlyTyping = true;
+      _membersRef
+          .doc(userId)
+          .update({'isTyping': true, 'typingAt': FieldValue.serverTimestamp()})
+          .catchError((_) {});
+    }
+    _typingTimer = Timer(const Duration(seconds: 3), _clearTyping);
+  }
+
+  void _clearTyping() {
+    _typingTimer?.cancel();
+    _typingTimer = null;
+    if (!_isCurrentlyTyping) return;
+    _isCurrentlyTyping = false;
+    final userId = _userId;
+    if (userId == null) return;
+    _membersRef
+        .doc(userId)
+        .update({
+          'isTyping': FieldValue.delete(),
+          'typingAt': FieldValue.delete(),
+        })
+        .catchError((_) {});
+  }
+
   Future<void> _bootstrapSphere() async {
     try {
       await _exerciseStore.ensureReady();
@@ -119,6 +180,10 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     } finally {
       if (mounted) {
         setState(() => _isBootstrapping = false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _userNickname != null || !_canJoinDirectly) return;
+          unawaited(_promptToJoinSphere());
+        });
       }
     }
   }
@@ -145,7 +210,13 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (!memberDoc.exists || !mounted) return;
 
     setState(() {
-      _userNickname = memberDoc.data()?['nickname'] as String?;
+      final data = memberDoc.data() ?? <String, dynamic>{};
+      _userNickname = (data['username'] ?? data['nickname'] ?? '')
+          .toString()
+          .trim();
+      if (_userNickname!.isEmpty) {
+        _userNickname = null;
+      }
     });
   }
 
@@ -207,6 +278,40 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     });
   }
 
+  /// Calls the backend to push notifications to other sphere members.
+  /// Runs fire-and-forget — failures are silently ignored so they never
+  /// block the message send flow.
+  Future<void> _notifySphereMembersInBackground({
+    required String sphereId,
+    required String sphereName,
+    required String senderUserId,
+    required String senderNickname,
+    required String text,
+  }) async {
+    const String backendBase = String.fromEnvironment(
+      'LIFELENS_API_BASE_URL',
+      defaultValue: 'http://localhost:8000',
+    );
+    try {
+      final uri = Uri.parse('$backendBase/api/v1/notify/sphere_message');
+      await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'sphere_id': sphereId,
+              'sphere_name': sphereName,
+              'sender_user_id': senderUserId,
+              'sender_nickname': senderNickname,
+              'text': text,
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Non-fatal — notification delivery is best-effort.
+    }
+  }
+
   Future<void> _syncMemberMiniMe() async {
     final userId = _userId;
     if (userId == null) return;
@@ -227,9 +332,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     Map<String, dynamic>? extraData,
   }) async {
     final userId = _userId;
-    final nickname = _userNickname;
+    final username = _userNickname;
     final avatarStore = context.read<AvatarStore>();
-    if (userId == null || nickname == null) return;
+    if (userId == null || username == null) return;
 
     final moderationResult = ContentModerationService.checkMessage(text);
     if (moderationResult.isViolation) {
@@ -245,7 +350,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       'type': type,
       'text': text,
       'userId': userId,
-      'nickname': nickname,
+      'username': username,
       'seedVersion': _activeChatSeedVersion,
       'miniMe': avatarStore.toCommunityAvatarMap(),
       'miniMeName': avatarStore.miniMeName,
@@ -270,15 +375,41 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     }, SetOptions(merge: true));
 
     await _touchMemberActivity();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Post shared with the sphere')),
+
+    // Fire-and-forget: ask the backend to push a notification to other members.
+    unawaited(
+      _notifySphereMembersInBackground(
+        sphereId: widget.sphere.id,
+        sphereName: widget.sphere.name,
+        senderUserId: userId,
+        senderNickname: username,
+        text: text,
+      ),
     );
   }
 
   void _focusInlineComposer() {
     if (!mounted) return;
     FocusScope.of(context).requestFocus(_composerFocusNode);
+  }
+
+  String _systemJoinNoticeText(Map<String, dynamic> postData) {
+    final postUserId = (postData['userId'] ?? '').toString();
+    if (postUserId.isNotEmpty && postUserId == _userId) {
+      return 'You joined the sphere';
+    }
+
+    final username =
+        (postData['username'] ??
+                postData['nickname'] ??
+                postData['miniMeName'] ??
+                '')
+            .toString()
+            .trim();
+    if (username.isNotEmpty) return '$username joined the sphere';
+
+    final fallback = (postData['text'] ?? '').toString().trim();
+    return fallback.isEmpty ? 'Someone joined the sphere' : fallback;
   }
 
   Future<void> _submitInlinePost() async {
@@ -288,24 +419,23 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (message.isEmpty) return;
 
     if (_userNickname == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join with a nickname to post.')),
-      );
+      await _promptToJoinSphere(force: true);
       return;
     }
 
-    setState(() => _isSendingPost = true);
+    final replyTarget = _composerReplyTarget;
+    _clearTyping();
+    setState(() {
+      _isSendingPost = true;
+      _composerController.clear();
+      _composerReplyTarget = null;
+    });
     try {
       await _createPost(
         type: 'check_in',
         text: message,
-        replyTarget: _composerReplyTarget,
+        replyTarget: replyTarget,
       );
-      if (!mounted) return;
-      setState(() {
-        _composerController.clear();
-        _composerReplyTarget = null;
-      });
     } finally {
       if (mounted) {
         setState(() => _isSendingPost = false);
@@ -316,9 +446,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   Future<void> _showQuickShareOptions() async {
     if (_isSendingPost) return;
     if (_userNickname == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Join with a nickname to post.')),
-      );
+      await _promptToJoinSphere(force: true);
       return;
     }
 
@@ -334,21 +462,24 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                 leading: const Icon(Icons.emoji_events_outlined),
                 title: const Text('Milestone'),
                 subtitle: const Text('Share a personal win'),
-                onTap: () => Navigator.of(context).pop(_QuickShareAction.milestone),
+                onTap: () =>
+                    Navigator.of(context).pop(_QuickShareAction.milestone),
               ),
               if (_isSleepSphere)
                 ListTile(
                   leading: const Icon(Icons.support_agent_outlined),
                   title: const Text('Sleep help request'),
                   subtitle: const Text('Only for rough nights (under 6 hours)'),
-                  onTap: () => Navigator.of(context).pop(_QuickShareAction.sleepHelp),
+                  onTap: () =>
+                      Navigator.of(context).pop(_QuickShareAction.sleepHelp),
                 ),
               if (_isExerciseSphere)
                 ListTile(
                   leading: const Icon(Icons.fitness_center_outlined),
                   title: const Text('Share exercise log'),
                   subtitle: const Text('Post your latest exercise entry'),
-                  onTap: () => Navigator.of(context).pop(_QuickShareAction.exercise),
+                  onTap: () =>
+                      Navigator.of(context).pop(_QuickShareAction.exercise),
                 ),
             ],
           ),
@@ -396,15 +527,15 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                       Text(
                         'Achievement card',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Fill out each box, then post your milestone to the sphere.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       const SizedBox(height: 14),
                       _MilestoneInputField(
@@ -438,7 +569,8 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                             final safeDescription = description.trim();
                             if (safeTitle.isEmpty || safeDescription.isEmpty) {
                               setModalState(() {
-                                errorText = 'Please fill out all boxes before sharing.';
+                                errorText =
+                                    'Please fill out all boxes before sharing.';
                               });
                               return;
                             }
@@ -481,7 +613,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (!_isSleepSphere) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sleep help requests can only be shared in the Sleep sphere.')),
+        const SnackBar(
+          content: Text(
+            'Sleep help requests can only be shared in the Sleep sphere.',
+          ),
+        ),
       );
       return;
     }
@@ -503,7 +639,9 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Sleep help request is only for short sleep nights (under 6 hours).'),
+          content: Text(
+            'Sleep help request is only for short sleep nights (under 6 hours).',
+          ),
         ),
       );
       return;
@@ -534,7 +672,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     if (!_isExerciseSphere) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Exercise logs can only be shared in the Exercise sphere.')),
+        const SnackBar(
+          content: Text(
+            'Exercise logs can only be shared in the Exercise sphere.',
+          ),
+        ),
       );
       return;
     }
@@ -586,10 +728,10 @@ class _SphereChatScreenState extends State<SphereChatScreen>
           ].join(' • ');
 
     final text = workoutItems.isNotEmpty
-      ? detail
-      : detail.isEmpty
-      ? 'Exercise log: Completed a workout session.'
-      : 'Exercise log: $detail';
+        ? detail
+        : detail.isEmpty
+        ? 'Exercise log: Completed a workout session.'
+        : 'Exercise log: $detail';
 
     await _postQuickShare(
       type: 'exercise_log',
@@ -630,14 +772,33 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
   Future<void> _reportPost({
     required String postId,
+    required String reportedUserId,
     required String text,
     required String reason,
   }) async {
     final userId = _userId;
-    if (userId == null) return;
+    if (userId == null || reportedUserId.isEmpty) return;
+    if (userId == reportedUserId) return;
+
+    // Prevent the same user from reporting the same person more than once.
+    final existing = await _sphereRef
+        .collection('reports')
+        .where('reportedUserId', isEqualTo: reportedUserId)
+        .where('reportedBy', isEqualTo: userId)
+        .limit(1)
+        .get();
+
+    if (existing.docs.isNotEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You have already reported this user.')),
+      );
+      return;
+    }
 
     await _sphereRef.collection('reports').add({
       'postId': postId,
+      'reportedUserId': reportedUserId,
       'sphereId': widget.sphere.id,
       'reportedBy': userId,
       'reason': reason,
@@ -646,6 +807,32 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       'createdAt': FieldValue.serverTimestamp(),
     });
 
+    // Increment the report counter on the reported member's doc.
+    final memberRef = _membersRef.doc(reportedUserId);
+    await memberRef.update({'reportCount': FieldValue.increment(1)});
+
+    final memberDoc = await memberRef.get();
+    final reportCount =
+        (memberDoc.data()?['reportCount'] as num?)?.toInt() ?? 0;
+
+    if (reportCount >= 3) {
+      await _kickUserFromSphere(
+        reportedUserId,
+        reason: 'Received 3 reports from community members',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'User has been removed from the sphere after 3 reports.',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
+
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -653,35 +840,39 @@ class _SphereChatScreenState extends State<SphereChatScreen>
   }
 
   Future<void> _deletePost(String postId) async {
+    setState(() => _pendingDeletePostIds.add(postId));
     final postRef = _postsRef.doc(postId);
     final postSnapshot = await postRef.get();
     final sphereSnapshot = await _sphereRef.get();
     final pinnedPostId = sphereSnapshot.data()?['pinnedPostId'] as String?;
 
-    final replies = await postRef.collection('replies').get();
-    for (final reply in replies.docs) {
-      await reply.reference.delete();
-    }
+    try {
+      final replies = await postRef.collection('replies').get();
+      for (final reply in replies.docs) {
+        await reply.reference.delete();
+      }
 
-    final reactions = await postRef.collection('reactions').get();
-    for (final reaction in reactions.docs) {
-      await reaction.reference.delete();
-    }
+      final reactions = await postRef.collection('reactions').get();
+      for (final reaction in reactions.docs) {
+        await reaction.reference.delete();
+      }
 
-    await postRef.delete();
-    if (pinnedPostId == postId || postSnapshot.data()?['isPinned'] == true) {
-      await _sphereRef.set({
-        'pinnedTitle': 'Community focus',
-        'pinnedBody':
-            widget.sphere.pinnedBody ??
-            'Introduce yourself, protect your privacy, and keep replies practical and kind.',
-        'pinnedPostId': null,
-      }, SetOptions(merge: true));
+      await postRef.delete();
+      if (pinnedPostId == postId || postSnapshot.data()?['isPinned'] == true) {
+        await _sphereRef.set({
+          'pinnedTitle': 'Community focus',
+          'pinnedBody':
+              widget.sphere.pinnedBody ??
+              'Introduce yourself, protect your privacy, and keep replies practical and kind.',
+          'pinnedPostId': null,
+        }, SetOptions(merge: true));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _pendingDeletePostIds.remove(postId));
+      }
+      rethrow;
     }
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Post deleted')));
   }
 
   Future<void> _handleContentViolation(
@@ -705,7 +896,11 @@ class _SphereChatScreenState extends State<SphereChatScreen>
       });
 
       if (newWarningCount >= 3) {
-        await _kickUserFromSphere(userId);
+        await _kickUserFromSphere(
+          userId,
+          reason:
+              'Exceeded warning limit (3 warnings): ${detectedWords.join(", ")}',
+        );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -741,31 +936,35 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     }
   }
 
-  Future<void> _kickUserFromSphere(String userId) async {
-    try {
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final sphereDoc = await transaction.get(_sphereRef);
-        final memberRef = _membersRef.doc(userId);
-        final memberDoc = await transaction.get(memberRef);
-        if (!memberDoc.exists) return;
-        final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
-        transaction.delete(memberRef);
-        transaction.update(_sphereRef, {
-          'memberCount': currentCount > 0 ? currentCount - 1 : 0,
-        });
+  Future<void> _kickUserFromSphere(
+    String userId, {
+    String reason = 'Exceeded warning limit (3 warnings)',
+  }) async {
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final sphereDoc = await transaction.get(_sphereRef);
+      final memberRef = _membersRef.doc(userId);
+      final memberDoc = await transaction.get(memberRef);
+      if (!memberDoc.exists) return;
+      final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
+      transaction.delete(memberRef);
+      transaction.update(_sphereRef, {
+        'memberCount': currentCount > 0 ? currentCount - 1 : 0,
       });
-      await _sphereRef.collection('moderation_actions').add({
-        'action': 'kicked',
-        'userId': userId,
-        'reason': 'Exceeded warning limit (3 warnings)',
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      debugPrint('Error kicking user: $e');
-    }
+    });
+    await _sphereRef.collection('moderation_actions').add({
+      'action': 'kicked',
+      'userId': userId,
+      'performedBy': _userId,
+      'reason': reason,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
   }
 
-  void _showReportDialog({required String postId, required String text}) {
+  void _showReportDialog({
+    required String postId,
+    required String reportedUserId,
+    required String text,
+  }) {
     final controller = TextEditingController();
 
     showDialog<void>(
@@ -787,7 +986,12 @@ class _SphereChatScreenState extends State<SphereChatScreen>
               final reason = controller.text.trim();
               if (reason.isEmpty) return;
               Navigator.pop(context);
-              await _reportPost(postId: postId, text: text, reason: reason);
+              await _reportPost(
+                postId: postId,
+                reportedUserId: reportedUserId,
+                text: text,
+                reason: reason,
+              );
             },
             child: const Text('Submit'),
           ),
@@ -798,6 +1002,7 @@ class _SphereChatScreenState extends State<SphereChatScreen>
 
   void _showMembersSheet() {
     final cs = Theme.of(context).colorScheme;
+    final isOwner = _userId != null && _userId == widget.sphere.creatorId;
 
     showModalBottomSheet<void>(
       context: context,
@@ -836,8 +1041,17 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                         final memberId = members[index].id;
                         final isMe = memberId == _userId;
                         final member = members[index].data();
-                        final memberNickname = member['nickname'] as String?;
-                        final displayNickname = isMe ? 'You' : (memberNickname ?? 'Anonymous');
+                        final memberUsername =
+                            (member['username'] ?? member['nickname'] ?? '')
+                                .toString();
+                        final displayUsername = isMe
+                            ? 'You'
+                            : (memberUsername.isEmpty
+                                  ? 'Anonymous'
+                                  : '@$memberUsername');
+                        final isMemberOwner =
+                            (member['role'] ?? 'member') == 'owner' ||
+                            memberId == widget.sphere.creatorId;
                         final miniMe = Map<String, dynamic>.from(
                           member['miniMe'] as Map? ?? {},
                         );
@@ -861,14 +1075,28 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                                 (miniMe['degradationLevel'] as num?)
                                     ?.toDouble() ??
                                 0,
-                            fallbackLabel: memberNickname,
+                            fallbackLabel: memberUsername,
                           ),
-                          title: Text(displayNickname),
+                          title: Text(displayUsername),
                           subtitle: Text(
                             'Joined ${_timeLabel((member['joinedAt'] as Timestamp?)?.toDate())}',
                           ),
-                          trailing: (member['role'] ?? 'member') == 'owner'
+                          trailing: isMemberOwner
                               ? const Text('Owner')
+                              : isOwner && !isMe
+                              ? IconButton(
+                                  tooltip: 'Kick member',
+                                  icon: Icon(
+                                    Icons.remove_circle_outline,
+                                    color: cs.error,
+                                  ),
+                                  onPressed: () => _confirmKickMember(
+                                    memberId: memberId,
+                                    username: memberUsername.isEmpty
+                                        ? 'this member'
+                                        : '@$memberUsername',
+                                  ),
+                                )
                               : null,
                         );
                       },
@@ -883,75 +1111,52 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     );
   }
 
-  void _showChangeNicknameDialog() {
-    final nicknameController = TextEditingController(text: _userNickname);
-    final cs = Theme.of(context).colorScheme;
-
-    showDialog<void>(
+  Future<void> _confirmKickMember({
+    required String memberId,
+    required String username,
+  }) async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Change Nickname'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Current: $_userNickname',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'DO NOT use your real name',
-              style: TextStyle(
-                color: cs.error,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nicknameController,
-              decoration: const InputDecoration(
-                hintText: 'Enter new nickname...',
-              ),
-              maxLength: 20,
-            ),
-          ],
+        title: const Text('Kick Member'),
+        content: Text(
+          'Remove "$username" from the sphere? They will be able to re-join unless you delete the sphere.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () async {
-              final newNickname = nicknameController.text.trim();
-              if (newNickname.isEmpty) return;
-              Navigator.pop(context);
-              await _changeNickname(newNickname);
-            },
-            child: const Text('Save'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Kick'),
           ),
         ],
       ),
     );
-  }
 
-  Future<void> _changeNickname(String newNickname) async {
-    final userId = _userId;
-    if (userId == null) return;
+    if (confirmed != true || !mounted) return;
 
-    final avatarStore = context.read<AvatarStore>();
-    await _membersRef.doc(userId).update({
-      'nickname': newNickname,
-      'miniMe': avatarStore.toCommunityAvatarMap(),
-      'miniMeName': avatarStore.miniMeName,
-    });
-    if (!mounted) return;
-    setState(() => _userNickname = newNickname);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Nickname updated successfully')),
-    );
+    // Close the members sheet first so we don't hold a stale context.
+    Navigator.pop(context);
+
+    try {
+      await _kickUserFromSphere(memberId, reason: 'Removed by sphere owner');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('"$username" has been removed from the sphere.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to kick member: $e')));
+    }
   }
 
   void _showLeaveSphereDialog() {
@@ -1005,68 +1210,396 @@ class _SphereChatScreenState extends State<SphereChatScreen>
     ).showSnackBar(const SnackBar(content: Text('Left sphere successfully')));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  Future<void> _joinSphere() async {
+    final userId = _userId;
+    if (userId == null) return;
+    if (!_canJoinDirectly) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This sphere is invite only.')),
+      );
+      return;
+    }
+    final avatarStore = context.read<AvatarStore>();
+    final miniMeData = avatarStore.toCommunityAvatarMap();
+    final profile = await SocialFeatures.getCurrentUserProfile();
+    String username = profile?.username.trim() ?? '';
+    if (username.isEmpty) {
+      final display = profile?.displayName.trim() ?? '';
+      username = display.replaceAll(' ', '_').toLowerCase();
+    }
+    if (username.isEmpty) username = 'member';
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.sphere.name),
-            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _membersStream,
-              builder: (context, snapshot) {
-                final count =
-                    snapshot.data?.docs.length ?? widget.sphere.memberCount;
-                return Text(
-                  '$count members',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                );
-              },
-            ),
-          ],
+    try {
+      await _membersRef.doc(userId).set({
+        'username': username,
+        'joinedAt': FieldValue.serverTimestamp(),
+        'lastReadAt': FieldValue.serverTimestamp(),
+        'lastActiveAt': FieldValue.serverTimestamp(),
+        'warningCount': 0,
+        'role': (!widget.sphere.isPremade && widget.sphere.creatorId == userId)
+            ? 'owner'
+            : 'member',
+        'miniMe': miniMeData,
+        'miniMeName': username,
+      });
+
+      await _sphereRef.set({
+        'memberCount': FieldValue.increment(1),
+        'lastActivityText': '$username has joined the sphere',
+        'lastActivityAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await _postsRef.add({
+        'type': 'system_join',
+        'text': '$username has joined the sphere',
+        'userId': userId,
+        'username': username,
+        'miniMe': miniMeData,
+        'miniMeName': username,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'latestActivityAt': FieldValue.serverTimestamp(),
+        'replyCount': 0,
+        'reactionCounts': <String, int>{},
+        'isPinned': false,
+      });
+
+      if (!mounted) return;
+      setState(() => _userNickname = username);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error joining sphere: $e')));
+    }
+  }
+
+  Future<bool> _promptToJoinSphere({bool force = false}) async {
+    if (_userNickname != null) return true;
+    if (!_canJoinDirectly) {
+      await _promptForInviteRequest();
+      return false;
+    }
+    if (!force && _hasShownJoinPrompt) return false;
+    _hasShownJoinPrompt = true;
+
+    final shouldJoin = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Join ${widget.sphere.name}?'),
+        content: Text(
+          'Join this sphere to post messages, reply, react, and share progress with members.',
         ),
         actions: [
-          IconButton(
-            tooltip: 'Members',
-            onPressed: _showMembersSheet,
-            icon: const Icon(Icons.groups_rounded),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
           ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'change_nickname') {
-                _showChangeNicknameDialog();
-              } else if (value == 'leave_sphere') {
-                _showLeaveSphereDialog();
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'change_nickname',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit_outlined),
-                    SizedBox(width: 12),
-                    Text('Change Nickname'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'leave_sphere',
-                child: Row(
-                  children: [
-                    Icon(Icons.exit_to_app_outlined),
-                    SizedBox(width: 12),
-                    Text('Leave Sphere'),
-                  ],
-                ),
-              ),
-            ],
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.group_add_outlined),
+            label: const Text('Join Sphere'),
           ),
         ],
       ),
+    );
+
+    if (!mounted || shouldJoin != true) return false;
+    await _joinSphere();
+    return _userNickname != null;
+  }
+
+  Future<void> _promptForInviteRequest() async {
+    final shouldRequestInvite = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Invite only'),
+        content: const Text(
+          'You need an invite before you can join this sphere.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.mark_email_unread_outlined),
+            label: const Text('Request Invite'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || shouldRequestInvite != true) return;
+    await _requestSphereInvite();
+  }
+
+  Future<void> _requestSphereInvite() async {
+    final userId = _userId;
+    if (userId == null) return;
+    final avatarStore = context.read<AvatarStore>();
+    final profile = await SocialFeatures.getCurrentUserProfile();
+    String username = profile?.username.trim() ?? '';
+    if (username.isEmpty) {
+      final display = profile?.displayName.trim() ?? '';
+      username = display.replaceAll(' ', '_').toLowerCase();
+    }
+    if (username.isEmpty) username = 'member';
+
+    try {
+      await _sphereRef.collection('join_requests').doc(userId).set({
+        'userId': userId,
+        'username': username,
+        'displayName': profile?.displayName ?? username,
+        'status': 'pending',
+        'sphereId': widget.sphere.id,
+        'sphereName': widget.sphere.name,
+        'miniMe': avatarStore.toCommunityAvatarMap(),
+        'miniMeName': username,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Invite request sent.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not request invite: $e')));
+    }
+  }
+
+  Future<void> _inviteFriendsToSphere() async {
+    // Fetch current member IDs so already-joined friends are hidden.
+    Set<String> memberIds = const <String>{};
+    try {
+      final snap = await _membersRef.get();
+      memberIds = snap.docs.map((d) => d.id).toSet();
+    } catch (_) {
+      // If the fetch fails, show all friends — don't block the invite flow.
+    }
+
+    if (!mounted) return;
+    final selected = await SocialFeatures.showFriendPicker(
+      context,
+      title: 'Invite friends to ${widget.sphere.name}',
+      actionLabel: 'Send invite',
+      excludeUserIds: memberIds,
+    );
+    if (!mounted || selected == null || selected.isEmpty) return;
+
+    try {
+      final sent = await SocialFeatures.sendSphereInvites(
+        sphereId: widget.sphere.id,
+        sphereName: widget.sphere.name,
+        friendUserIds: selected,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sent $sent invite${sent == 1 ? '' : 's'}.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not send invites: $e')));
+    }
+  }
+
+  void _showJoinRequestsSheet() {
+    if (!_isSphereOwner) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.62,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Invite requests',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Review people asking to join ${widget.sphere.name}.',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: _sphereRef
+                          .collection('join_requests')
+                          .where('status', isEqualTo: 'pending')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        final requests = snapshot.data!.docs;
+                        if (requests.isEmpty) {
+                          return Center(
+                            child: Text(
+                              'No pending requests.',
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          );
+                        }
+
+                        return ListView.separated(
+                          itemCount: requests.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            color: cs.outlineVariant.withValues(alpha: 0.5),
+                          ),
+                          itemBuilder: (context, index) {
+                            final requestDoc = requests[index];
+                            final data = requestDoc.data();
+                            final username = (data['username'] ?? 'member')
+                                .toString();
+                            final displayName = (data['displayName'] ?? '')
+                                .toString()
+                                .trim();
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: CircleAvatar(
+                                backgroundColor: cs.primaryContainer,
+                                foregroundColor: cs.onPrimaryContainer,
+                                child: const Icon(Icons.person_rounded),
+                              ),
+                              title: Text('@$username'),
+                              subtitle: displayName.isEmpty
+                                  ? null
+                                  : Text(displayName),
+                              trailing: Wrap(
+                                spacing: 6,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => _respondToJoinRequest(
+                                      requestDoc,
+                                      accept: false,
+                                    ),
+                                    child: const Text('Deny'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => _respondToJoinRequest(
+                                      requestDoc,
+                                      accept: true,
+                                    ),
+                                    child: const Text('Accept'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _respondToJoinRequest(
+    QueryDocumentSnapshot<Map<String, dynamic>> requestDoc, {
+    required bool accept,
+  }) async {
+    if (!_isSphereOwner) return;
+    final data = requestDoc.data();
+    final requesterId = (data['userId'] ?? requestDoc.id).toString();
+    final username = (data['username'] ?? 'member').toString().trim();
+    if (requesterId.isEmpty) return;
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final sphereDoc = await transaction.get(_sphereRef);
+        final memberRef = _membersRef.doc(requesterId);
+        final memberDoc = await transaction.get(memberRef);
+        transaction.update(requestDoc.reference, {
+          'status': accept ? 'accepted' : 'denied',
+          'updatedAt': FieldValue.serverTimestamp(),
+          'reviewedBy': _userId,
+        });
+
+        if (!accept || memberDoc.exists) return;
+        final currentCount = (sphereDoc.data()?['memberCount'] as int?) ?? 0;
+        final miniMe = data['miniMe'];
+        transaction.set(memberRef, {
+          'username': username.isEmpty ? 'member' : username,
+          'joinedAt': FieldValue.serverTimestamp(),
+          'lastReadAt': FieldValue.serverTimestamp(),
+          'lastActiveAt': FieldValue.serverTimestamp(),
+          'warningCount': 0,
+          'role': 'member',
+          if (miniMe is Map) 'miniMe': miniMe,
+          'miniMeName': (data['miniMeName'] ?? username).toString(),
+        });
+        transaction.update(_sphereRef, {
+          'memberCount': currentCount + 1,
+          'lastActivityText':
+              '${username.isEmpty ? 'member' : username} has joined the sphere',
+          'lastActivityAt': FieldValue.serverTimestamp(),
+        });
+        transaction.set(_postsRef.doc(), {
+          'type': 'system_join',
+          'text':
+              '${username.isEmpty ? 'member' : username} has joined the sphere',
+          'userId': requesterId,
+          'username': username.isEmpty ? 'member' : username,
+          if (miniMe is Map) 'miniMe': miniMe,
+          'miniMeName': (data['miniMeName'] ?? username).toString(),
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'latestActivityAt': FieldValue.serverTimestamp(),
+          'replyCount': 0,
+          'reactionCounts': <String, int>{},
+          'isPinned': false,
+        });
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            accept ? 'Invite request accepted.' : 'Invite request denied.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not update request: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const sphereHeaderBannerHeight = 128.0;
+    final bannerTemplate = widget.sphere.bannerTemplate?.trim() ?? '';
+    final hasTemplateBanner =
+        bannerTemplate.isNotEmpty &&
+        _chatBannerPaletteForTemplateKey(bannerTemplate) != null;
+
+    return Scaffold(
       body: _isBootstrapping
           ? const Center(child: CircularProgressIndicator())
           : MediaQuery.removePadding(
@@ -1075,31 +1608,240 @@ class _SphereChatScreenState extends State<SphereChatScreen>
               removeRight: true,
               child: Column(
                 children: [
-                  if (_bannerUrl != null || _defaultChatBannerPaletteForSphere(widget.sphere.name) != null)
-                    SizedBox(
-                      height: 170,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final screenWidth = MediaQuery.of(context).size.width;
-                          return OverflowBox(
-                            minWidth: screenWidth,
-                            maxWidth: screenWidth,
-                            alignment: Alignment.center,
-                            child: SizedBox(
-                              width: screenWidth,
-                              height: 170,
-                              child: _bannerUrl != null
-                                  ? _SphereChatBannerImage(
-                                      imageSource: _bannerUrl!,
-                                    )
-                                  : _DefaultSphereChatBanner(
+                  // ── Unified header banner ───────────────────────────────
+                  SizedBox(
+                    width: double.infinity,
+                    height:
+                        sphereHeaderBannerHeight +
+                        MediaQuery.of(context).padding.top,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Banner background
+                        _bannerUrl != null
+                            ? _SphereChatBannerImage(imageSource: _bannerUrl!)
+                            : (hasTemplateBanner ||
+                                      _defaultChatBannerPaletteForSphere(
+                                            widget.sphere.name,
+                                          ) !=
+                                          null
+                                  ? _DefaultSphereChatBanner(
                                       sphereName: widget.sphere.name,
-                                    ),
+                                      templateKey: hasTemplateBanner
+                                          ? bannerTemplate
+                                          : null,
+                                    )
+                                  : ColoredBox(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.surfaceContainerHighest,
+                                    )),
+                        // Top scrim so controls are readable over any banner
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: MediaQuery.of(context).padding.top + 52,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.38),
+                                  Colors.transparent,
+                                ],
+                              ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                        // Back button + title + actions
+                        Positioned(
+                          top: MediaQuery.of(context).padding.top,
+                          left: 0,
+                          right: 0,
+                          height: 52,
+                          child: Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back_ios_new_rounded,
+                                  color: Colors.white,
+                                ),
+                                onPressed: () => Navigator.of(context).pop(),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      widget.sphere.name,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    StreamBuilder<
+                                      QuerySnapshot<Map<String, dynamic>>
+                                    >(
+                                      stream: _membersStream,
+                                      builder: (context, snapshot) {
+                                        final count =
+                                            snapshot.data?.docs.length ??
+                                            widget.sphere.memberCount;
+                                        return Text(
+                                          '$count members',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Members',
+                                onPressed: _showMembersSheet,
+                                icon: const Icon(
+                                  Icons.groups_rounded,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert_rounded,
+                                  color: Colors.white,
+                                ),
+                                onSelected: (value) {
+                                  if (value == 'invite_friends') {
+                                    _inviteFriendsToSphere();
+                                  } else if (value == 'join_requests') {
+                                    _showJoinRequestsSheet();
+                                  } else if (value == 'leave_sphere') {
+                                    _showLeaveSphereDialog();
+                                  } else if (value == 'join_sphere_menu') {
+                                    _promptToJoinSphere(force: true);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  if (_userNickname != null) ...[
+                                    const PopupMenuItem(
+                                      value: 'invite_friends',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.person_add_alt_rounded),
+                                          SizedBox(width: 12),
+                                          Text('Invite Friends'),
+                                        ],
+                                      ),
+                                    ),
+                                    if (_isSphereOwner)
+                                      PopupMenuItem(
+                                        value: 'join_requests',
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.mark_email_unread_outlined,
+                                            ),
+                                            SizedBox(width: 12),
+                                            Text('Invite Requests'),
+                                          ],
+                                        ),
+                                      ),
+                                    const PopupMenuItem(
+                                      value: 'leave_sphere',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.exit_to_app_outlined),
+                                          SizedBox(width: 12),
+                                          Text('Leave Sphere'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  if (_userNickname == null)
+                                    const PopupMenuItem(
+                                      value: 'join_sphere_menu',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.group_add_outlined),
+                                          SizedBox(width: 12),
+                                          Text('Join Sphere'),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Bottom join bar — only shown when not a member
+                        if (!_isBootstrapping && _userNickname == null)
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.info_outline_rounded,
+                                    color: Colors.white70,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text(
+                                      'You are not a member of this sphere',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        _promptToJoinSphere(force: true),
+                                    style: FilledButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      _canJoinDirectly
+                                          ? 'Join Sphere'
+                                          : 'Request Invite',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        if (!_isBootstrapping && _userNickname != null)
+                          const Positioned(
+                            bottom: 0,
+                            right: 12,
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: 6),
+                              child: _MemberBadge(),
+                            ),
+                          ),
+                      ],
                     ),
+                  ),
                   Expanded(
                     child: GestureDetector(
                       behavior: HitTestBehavior.translucent,
@@ -1109,114 +1851,153 @@ class _SphereChatScreenState extends State<SphereChatScreen>
                       child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                         stream: _postsStream,
                         builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Center(child: Text('Error: ${snapshot.error}'));
-                      }
+                          if (snapshot.hasError) {
+                            return Center(
+                              child: Text('Error: ${snapshot.error}'),
+                            );
+                          }
 
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                          if (!snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
 
-                      final seededPosts = snapshot.data!.docs.where((doc) {
-                        final data = doc.data();
-                        final seedVersion =
-                            (data['seedVersion'] as num?)?.toInt() ?? -1;
-                        if (_activeChatSeedVersion > 0 &&
-                            seedVersion != _activeChatSeedVersion) {
-                          return false;
-                        }
-                        return true;
-                      }).toList(growable: false);
-                        final posts = seededPosts;
-                      if (posts.isEmpty) {
-                        return Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
-                          child: _EmptyCommunityState(
-                            sphereName: widget.sphere.name,
-                            onCreatePost: _focusInlineComposer,
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        controller: _scrollController,
-                        reverse: true,
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
-                        itemCount: posts.length,
-                        itemBuilder: (context, index) {
-                          final postDoc = posts[index];
-                          final postData = postDoc.data();
-                          final postType =
-                              (postData['type'] ?? 'check_in').toString();
-
-                          if (postType == 'system_join') {
+                          final seededPosts = snapshot.data!.docs
+                              .where((doc) {
+                                final data = doc.data();
+                                final seedVersion =
+                                    (data['seedVersion'] as num?)?.toInt() ??
+                                    -1;
+                                if (_activeChatSeedVersion > 0 &&
+                                    seedVersion != _activeChatSeedVersion) {
+                                  return false;
+                                }
+                                return true;
+                              })
+                              .toList(growable: false);
+                          final posts = seededPosts
+                              .where(
+                                (doc) =>
+                                    !_pendingDeletePostIds.contains(doc.id),
+                              )
+                              .toList(growable: false);
+                          if (posts.isEmpty) {
                             return Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _SystemEventNotice(
-                                text: (postData['text'] ?? '').toString(),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                12,
+                                16,
+                                104,
+                              ),
+                              child: _EmptyCommunityState(
+                                sphereName: widget.sphere.name,
+                                onCreatePost: _focusInlineComposer,
                               ),
                             );
                           }
 
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _ChatMessageTile(
-                              postDoc: postDoc,
-                              currentUserId: _userId,
-                              timeRevealOffset: _timeRevealOffset,
-                              onReply: () {
-                                final postData = postDoc.data();
-                                final replyTargetName =
-                                    (postData['nickname'] ??
-                                            postData['miniMeName'] ??
-                                            'friend')
-                                        .toString();
-                                final replyTarget = _ReplyTarget(
-                                  postId: postDoc.id,
-                                  userId:
-                                      (postData['userId'] ?? '').toString(),
-                                  userName: replyTargetName,
-                                  text: (postData['text'] ?? '').toString(),
+                          return ListView.builder(
+                            controller: _scrollController,
+                            reverse: true,
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
+                            itemCount: posts.length,
+                            itemBuilder: (context, index) {
+                              final postDoc = posts[index];
+                              final postData = postDoc.data();
+                              final postType = (postData['type'] ?? 'check_in')
+                                  .toString();
+
+                              if (postType == 'system_join') {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _SystemEventNotice(
+                                    text: _systemJoinNoticeText(postData),
+                                  ),
                                 );
-                                setState(
-                                  () => _composerReplyTarget = replyTarget,
-                                );
-                                _focusInlineComposer();
-                              },
-                              onReport: () => _showReportDialog(
-                                postId: postDoc.id,
-                                text: postDoc.data()['text'] ?? '',
-                              ),
-                              onDelete: () => _deletePost(postDoc.id),
-                            ),
+                              }
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: _ChatMessageTile(
+                                  postDoc: postDoc,
+                                  currentUserId: _userId,
+                                  timeRevealOffset: _timeRevealOffset,
+                                  onReply: () {
+                                    final postData = postDoc.data();
+                                    final replyTargetName =
+                                        (postData['username'] ??
+                                                postData['nickname'] ??
+                                                postData['miniMeName'] ??
+                                                'friend')
+                                            .toString();
+                                    final replyTarget = _ReplyTarget(
+                                      postId: postDoc.id,
+                                      userId: (postData['userId'] ?? '')
+                                          .toString(),
+                                      userName: replyTargetName,
+                                      text: (postData['text'] ?? '').toString(),
+                                    );
+                                    setState(
+                                      () => _composerReplyTarget = replyTarget,
+                                    );
+                                    _focusInlineComposer();
+                                  },
+                                  onReport: () => _showReportDialog(
+                                    postId: postDoc.id,
+                                    reportedUserId:
+                                        (postDoc.data()['userId'] ?? '')
+                                            .toString(),
+                                    text: postDoc.data()['text'] ?? '',
+                                  ),
+                                  onDelete: () => _deletePost(postDoc.id),
+                                ),
+                              );
+                            },
                           );
                         },
-                      );
+                      ),
+                    ),
+                  ),
+                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                    stream: _typingStream,
+                    builder: (context, typingSnapshot) {
+                      final currentUid = _userId;
+                      final typers = (typingSnapshot.data?.docs ?? [])
+                          .where((doc) => doc.id != currentUid)
+                          .map(
+                            (doc) =>
+                                (doc.data()['username'] as String?) ??
+                                (doc.data()['nickname'] as String?) ??
+                                'Someone',
+                          )
+                          .toList();
+                      return _TypingIndicatorBanner(typers: typers);
                     },
                   ),
+                  _ComposerDock(
+                    userUsername: _userNickname,
+                    controller: _composerController,
+                    focusNode: _composerFocusNode,
+                    replyTarget: _composerReplyTarget,
+                    isSending: _isSendingPost,
+                    onChanged: _onComposerChanged,
+                    onOpenQuickShare: _showQuickShareOptions,
+                    onSend: _submitInlinePost,
+                    onCancelReply: () {
+                      setState(() => _composerReplyTarget = null);
+                    },
                   ),
-                ),
-                _ComposerDock(
-                  userNickname: _userNickname,
-                  controller: _composerController,
-                  focusNode: _composerFocusNode,
-                  replyTarget: _composerReplyTarget,
-                  isSending: _isSendingPost,
-                  onChanged: (_) => setState(() {}),
-                  onOpenQuickShare: _showQuickShareOptions,
-                  onSend: _submitInlinePost,
-                  onCancelReply: () {
-                    setState(() => _composerReplyTarget = null);
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
     );
   }
 
   @override
   void dispose() {
+    _clearTyping();
+    _typingTimer?.cancel();
     _timeRevealController.dispose();
     _scrollController.dispose();
     _composerController.dispose();
@@ -1274,9 +2055,111 @@ class _EmptyCommunityState extends StatelessWidget {
   }
 }
 
+class _TypingIndicatorBanner extends StatefulWidget {
+  const _TypingIndicatorBanner({required this.typers});
+
+  final List<String> typers;
+
+  @override
+  State<_TypingIndicatorBanner> createState() => _TypingIndicatorBannerState();
+}
+
+class _TypingIndicatorBannerState extends State<_TypingIndicatorBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _dotController;
+
+  @override
+  void initState() {
+    super.initState();
+    _dotController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _dotController.dispose();
+    super.dispose();
+  }
+
+  String _label() {
+    if (widget.typers.isEmpty) return '';
+    if (widget.typers.length == 1) return '${widget.typers[0]} is typing';
+    if (widget.typers.length == 2) {
+      return '${widget.typers[0]} and ${widget.typers[1]} are typing';
+    }
+    return '${widget.typers[0]} and ${widget.typers.length - 1} others are typing';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = widget.typers.isNotEmpty;
+    final cs = Theme.of(context).colorScheme;
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeInOut,
+      child: visible
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Row(
+                children: [
+                  // Bouncing dots
+                  SizedBox(
+                    width: 28,
+                    height: 18,
+                    child: AnimatedBuilder(
+                      animation: _dotController,
+                      builder: (context, _) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: List.generate(3, (i) {
+                            final phase = (i / 3.0);
+                            final t = (_dotController.value - phase) % 1.0;
+                            final bounce = (t < 0.5 ? t * 2 : 2 - t * 2).clamp(
+                              0.0,
+                              1.0,
+                            );
+                            final offset = -4.0 * bounce;
+                            return Transform.translate(
+                              offset: Offset(0, offset),
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: cs.primary.withValues(
+                                    alpha: 0.5 + 0.5 * bounce,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            );
+                          }),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _label(),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
 class _ComposerDock extends StatelessWidget {
   const _ComposerDock({
-    required this.userNickname,
+    required this.userUsername,
     required this.controller,
     required this.focusNode,
     required this.replyTarget,
@@ -1287,7 +2170,7 @@ class _ComposerDock extends StatelessWidget {
     required this.onCancelReply,
   });
 
-  final String? userNickname;
+  final String? userUsername;
   final TextEditingController controller;
   final FocusNode focusNode;
   final _ReplyTarget? replyTarget;
@@ -1300,7 +2183,7 @@ class _ComposerDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final canType = userNickname != null;
+    final canType = userUsername != null;
     final hasText = controller.text.trim().isNotEmpty;
 
     return Container(
@@ -1380,7 +2263,7 @@ class _ComposerDock extends StatelessWidget {
                           decoration: InputDecoration(
                             hintText: canType
                                 ? 'Write a message...'
-                                : 'Join with a nickname to post',
+                                : 'Join with a username to post',
                             border: InputBorder.none,
                             isDense: true,
                             hintStyle: TextStyle(color: cs.onSurfaceVariant),
@@ -1392,16 +2275,15 @@ class _ComposerDock extends StatelessWidget {
                         duration: const Duration(milliseconds: 170),
                         switchInCurve: Curves.easeOut,
                         switchOutCurve: Curves.easeIn,
-                        transitionBuilder: (child, animation) => ScaleTransition(
-                          scale: animation,
-                          child: child,
-                        ),
+                        transitionBuilder: (child, animation) =>
+                            ScaleTransition(scale: animation, child: child),
                         child: hasText
                             ? IconButton.filled(
                                 key: const ValueKey('send_button'),
                                 visualDensity: VisualDensity.compact,
-                                onPressed:
-                                    (isSending || !canType) ? null : onSend,
+                                onPressed: (isSending || !canType)
+                                    ? null
+                                    : onSend,
                                 icon: isSending
                                     ? const SizedBox(
                                         width: 16,
@@ -1518,15 +2400,13 @@ class _ChatMessageTile extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.delete_outline_rounded),
                   title: const Text('Delete'),
-                  onTap: () =>
-                      Navigator.of(context).pop(_MessageAction.delete),
+                  onTap: () => Navigator.of(context).pop(_MessageAction.delete),
                 ),
               if (!isMine)
                 ListTile(
                   leading: const Icon(Icons.flag_outlined),
                   title: const Text('Report'),
-                  onTap: () =>
-                      Navigator.of(context).pop(_MessageAction.report),
+                  onTap: () => Navigator.of(context).pop(_MessageAction.report),
                 ),
             ],
           ),
@@ -1541,11 +2421,6 @@ class _ChatMessageTile extends StatelessWidget {
         onReply();
       case _MessageAction.copy:
         await Clipboard.setData(ClipboardData(text: text));
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Message copied')),
-          );
-        }
       case _MessageAction.delete:
         onDelete();
       case _MessageAction.report:
@@ -1609,33 +2484,36 @@ class _ChatMessageTile extends StatelessWidget {
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: _quickReactionEmojis.map((emoji) {
-                          final selected = emoji == activeEmoji;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () => Navigator.of(context).pop(emoji),
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
+                        children: _quickReactionEmojis
+                            .map((emoji) {
+                              final selected = emoji == activeEmoji;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: InkWell(
                                   borderRadius: BorderRadius.circular(12),
-                                  color: selected
-                                      ? cs.primaryContainer.withValues(alpha: 0.7)
-                                      : cs.surfaceContainerHighest.withValues(
-                                          alpha: 0.55,
-                                        ),
+                                  onTap: () => Navigator.of(context).pop(emoji),
+                                  child: Container(
+                                    width: 44,
+                                    height: 44,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      color: selected
+                                          ? cs.primaryContainer.withValues(
+                                              alpha: 0.7,
+                                            )
+                                          : cs.surfaceContainerHighest
+                                                .withValues(alpha: 0.55),
+                                    ),
+                                    child: Text(
+                                      emoji,
+                                      style: const TextStyle(fontSize: 22),
+                                    ),
+                                  ),
                                 ),
-                                child: Text(
-                                  emoji,
-                                  style: const TextStyle(fontSize: 22),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(growable: false),
+                              );
+                            })
+                            .toList(growable: false),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -1708,8 +2586,8 @@ class _ChatMessageTile extends StatelessWidget {
           (key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0),
         );
 
-        final previousEmoji =
-            (reactionSnapshot.data()?['emoji'] as String?)?.trim();
+        final previousEmoji = (reactionSnapshot.data()?['emoji'] as String?)
+            ?.trim();
 
         if (previousEmoji == emoji) {
           tx.delete(reactionRef);
@@ -1762,8 +2640,12 @@ class _ChatMessageTile extends StatelessWidget {
     final isMine = data['userId'] == currentUserId;
     final miniMe = Map<String, dynamic>.from(data['miniMe'] as Map? ?? {});
     final postType = (data['type'] ?? 'check_in').toString();
-    final rawDisplayName = (data['nickname'] ?? data['miniMeName'] ?? 'Anonymous')
-        .toString();
+    final rawDisplayName =
+        (data['username'] ??
+                data['nickname'] ??
+                data['miniMeName'] ??
+                'Anonymous')
+            .toString();
     final displayName = isMine ? 'You' : rawDisplayName;
     final createdAt = (data['createdAt'] as Timestamp?)?.toDate();
     final text = (data['text'] ?? '').toString();
@@ -1786,11 +2668,8 @@ class _ChatMessageTile extends StatelessWidget {
           bottomLeft: Radius.circular(isMine ? 20 : 8),
           bottomRight: Radius.circular(isMine ? 8 : 20),
         ),
-        onLongPress: () => _showMessageActions(
-          context,
-          isMine: isMine,
-          text: text,
-        ),
+        onLongPress: () =>
+            _showMessageActions(context, isMine: isMine, text: text),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
@@ -1829,7 +2708,11 @@ class _ChatMessageTile extends StatelessWidget {
                   postType == 'sleep_help_request')
                 _SleepLogPostContent(data: data, isMine: isMine)
               else if (postType == 'exercise_log')
-                _ExerciseLogPostContent(data: data, isMine: isMine, fallbackText: text)
+                _ExerciseLogPostContent(
+                  data: data,
+                  isMine: isMine,
+                  fallbackText: text,
+                )
               else if (postType == 'milestone_card')
                 _MilestoneAchievementCard(data: data, isMine: isMine)
               else
@@ -1861,7 +2744,9 @@ class _ChatMessageTile extends StatelessWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                        color: cs.surfaceContainerHighest.withValues(
+                          alpha: 0.5,
+                        ),
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
                           color: cs.outlineVariant.withValues(alpha: 0.35),
@@ -1882,8 +2767,8 @@ class _ChatMessageTile extends StatelessWidget {
                 .doc(currentUserId)
                 .snapshots(),
       builder: (context, snapshot) {
-        final selectedEmoji =
-            (snapshot.data?.data()?['emoji'] as String?)?.trim();
+        final selectedEmoji = (snapshot.data?.data()?['emoji'] as String?)
+            ?.trim();
         final hasActiveReaction =
             selectedEmoji != null && selectedEmoji.isNotEmpty;
 
@@ -1902,10 +2787,8 @@ class _ChatMessageTile extends StatelessWidget {
                 size: 18,
                 color: hasActiveReaction ? cs.primary : cs.onSurfaceVariant,
               ),
-              onPressed: () => _showReactionPicker(
-                context,
-                activeEmoji: selectedEmoji,
-              ),
+              onPressed: () =>
+                  _showReactionPicker(context, activeEmoji: selectedEmoji),
             ),
           ],
         );
@@ -1949,8 +2832,8 @@ class _ChatMessageTile extends StatelessWidget {
                     bodyModel: miniMe['bodyModel'] as String?,
                     hairModel: miniMe['hairModel'] as String?,
                     shirtModel: miniMe['shirtModel'] as String?,
-                    bodyWidthScale:
-                        (miniMe['bodyWidthScale'] as num?)?.toDouble(),
+                    bodyWidthScale: (miniMe['bodyWidthScale'] as num?)
+                        ?.toDouble(),
                     companionId: miniMe['companionId'] as String?,
                     isHatched: miniMe['isHatched'] as bool? ?? true,
                     degradationLevel:
@@ -2030,14 +2913,18 @@ class _SleepLogPostContent extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    final duration =
-      (data['restDuration'] ?? data['sleepDuration'] ?? '').toString().trim();
-    final quality =
-      (data['restQuality'] ?? data['sleepQuality'] ?? '').toString().trim();
-    final bed =
-      (data['restBedTime'] ?? data['sleepBedTime'] ?? '').toString().trim();
-    final wake =
-      (data['restWakeTime'] ?? data['sleepWakeTime'] ?? '').toString().trim();
+    final duration = (data['restDuration'] ?? data['sleepDuration'] ?? '')
+        .toString()
+        .trim();
+    final quality = (data['restQuality'] ?? data['sleepQuality'] ?? '')
+        .toString()
+        .trim();
+    final bed = (data['restBedTime'] ?? data['sleepBedTime'] ?? '')
+        .toString()
+        .trim();
+    final wake = (data['restWakeTime'] ?? data['sleepWakeTime'] ?? '')
+        .toString()
+        .trim();
     final energy = (data['restEnergy'] ?? '').toString().trim();
     final blocker = (data['restBlocker'] ?? '').toString().trim();
     final helped = (data['restHelped'] ?? '').toString().trim();
@@ -2046,8 +2933,9 @@ class _SleepLogPostContent extends StatelessWidget {
     final ask = (data['restAsk'] ?? '').toString().trim();
     final hoursRaw = data['restHours'];
     final restHours = hoursRaw is num ? hoursRaw.toDouble() : null;
-    final note =
-      (data['restNote'] ?? data['sleepNote'] ?? '').toString().trim();
+    final note = (data['restNote'] ?? data['sleepNote'] ?? '')
+        .toString()
+        .trim();
     final kind = (data['sleepCardKind'] ?? 'checkin').toString().trim();
     final title = switch (kind) {
       'help' => 'Sleep help request',
@@ -2057,8 +2945,8 @@ class _SleepLogPostContent extends StatelessWidget {
 
     final primaryTextColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
     final secondaryTextColor = isMine
-      ? cs.onPrimaryContainer.withValues(alpha: 0.86)
-      : cs.onSurfaceVariant;
+        ? cs.onPrimaryContainer.withValues(alpha: 0.86)
+        : cs.onSurfaceVariant;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2100,8 +2988,9 @@ class _SleepLogPostContent extends StatelessWidget {
           if (bed.isNotEmpty || wake.isNotEmpty)
             _SleepMetricLine(
               label: 'Time',
-              value:
-                  bed.isEmpty || wake.isEmpty ? '$bed$wake' : '$bed to $wake',
+              value: bed.isEmpty || wake.isEmpty
+                  ? '$bed$wake'
+                  : '$bed to $wake',
               isMine: isMine,
             ),
           if (energy.isNotEmpty)
@@ -2186,10 +3075,7 @@ class _SleepHelpRequestChart extends StatelessWidget {
             border: Border.all(color: borderColor),
           ),
           child: Table(
-            columnWidths: const {
-              0: FlexColumnWidth(),
-              1: FlexColumnWidth(),
-            },
+            columnWidths: const {0: FlexColumnWidth(), 1: FlexColumnWidth()},
             border: TableBorder(
               horizontalInside: BorderSide(color: borderColor),
               verticalInside: BorderSide(color: borderColor),
@@ -2211,7 +3097,11 @@ class _SleepHelpRequestChart extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        _SleepMetricLine(label: 'Ask community', value: safeAsk, isMine: isMine),
+        _SleepMetricLine(
+          label: 'Ask community',
+          value: safeAsk,
+          isMine: isMine,
+        ),
         if (note.isNotEmpty)
           _SleepMetricLine(label: 'Context', value: note, isMine: isMine),
       ],
@@ -2240,8 +3130,8 @@ class _MilestoneAchievementCard extends StatelessWidget {
         : cs.tertiary.withValues(alpha: 0.3);
     final headerColor = isMine ? cs.onPrimaryContainer : cs.onSurface;
     final captionColor = isMine
-      ? cs.onPrimaryContainer.withValues(alpha: 0.76)
-      : cs.onSurfaceVariant;
+        ? cs.onPrimaryContainer.withValues(alpha: 0.76)
+        : cs.onSurfaceVariant;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2368,10 +3258,7 @@ class _ExerciseLogPostContent extends StatelessWidget {
               runSpacing: 12,
               children: items
                   .map(
-                    (item) => _ExerciseWorkoutChip(
-                      item: item,
-                      isMine: isMine,
-                    ),
+                    (item) => _ExerciseWorkoutChip(item: item, isMine: isMine),
                   )
                   .toList(growable: false),
             ),
@@ -2445,6 +3332,7 @@ class _ExerciseWorkoutChip extends StatelessWidget {
     );
   }
 }
+
 class _MilestoneInputField extends StatelessWidget {
   const _MilestoneInputField({
     required this.label,
@@ -2462,7 +3350,9 @@ class _MilestoneInputField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       maxLines: maxLines,
-      textInputAction: maxLines == 1 ? TextInputAction.next : TextInputAction.newline,
+      textInputAction: maxLines == 1
+          ? TextInputAction.next
+          : TextInputAction.newline,
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
@@ -2605,17 +3495,10 @@ class _SleepAmountChart extends StatelessWidget {
   }
 }
 
-enum _QuickShareAction {
-  milestone,
-  sleepHelp,
-  exercise,
-}
+enum _QuickShareAction { milestone, sleepHelp, exercise }
 
 class _MilestoneCardDraft {
-  const _MilestoneCardDraft({
-    required this.title,
-    required this.description,
-  });
+  const _MilestoneCardDraft({required this.title, required this.description});
 
   final String title;
   final String description;
@@ -2682,13 +3565,16 @@ List<_ExerciseWorkoutShareItem> _exerciseItemsFromPostData(
       .map(
         (item) => _ExerciseWorkoutShareItem(
           name: (item['name'] ?? '').toString().trim(),
-          sets: (item['sets'] as num?)?.toInt() ??
+          sets:
+              (item['sets'] as num?)?.toInt() ??
               int.tryParse((item['sets'] ?? '').toString()) ??
               0,
-          reps: (item['reps'] as num?)?.toInt() ??
+          reps:
+              (item['reps'] as num?)?.toInt() ??
               int.tryParse((item['reps'] ?? '').toString()) ??
               0,
-          durationMinutes: (item['durationMinutes'] as num?)?.toInt() ??
+          durationMinutes:
+              (item['durationMinutes'] as num?)?.toInt() ??
               int.tryParse((item['durationMinutes'] ?? '').toString()) ??
               0,
         ),
@@ -2748,16 +3634,111 @@ _ChatBannerPalette? _defaultChatBannerPaletteForSphere(String sphereName) {
   }
 }
 
+_ChatBannerPalette? _chatBannerPaletteForTemplateKey(String key) {
+  switch (key.trim().toLowerCase()) {
+    case 'sunrise':
+      return const _ChatBannerPalette(
+        title: 'Sunrise',
+        subtitle: 'Warm & uplifting',
+        icon: Icons.wb_sunny_rounded,
+        startColor: Color(0xFFFFCF8D),
+        endColor: Color(0xFFFF8A80),
+        accentColor: Color(0xFFFFF3E0),
+      );
+    case 'night':
+      return const _ChatBannerPalette(
+        title: 'Night',
+        subtitle: 'Calm & restful',
+        icon: Icons.bedtime_rounded,
+        startColor: Color(0xFF4B5D9B),
+        endColor: Color(0xFF9A8FE0),
+        accentColor: Color(0xFFE8EAFD),
+      );
+    case 'energy':
+      return const _ChatBannerPalette(
+        title: 'Energy',
+        subtitle: 'Bold & active',
+        icon: Icons.bolt_rounded,
+        startColor: Color(0xFFFF9A62),
+        endColor: Color(0xFFFF5A6A),
+        accentColor: Color(0xFFFFE9D6),
+      );
+    case 'ocean':
+      return const _ChatBannerPalette(
+        title: 'Ocean',
+        subtitle: 'Fresh & flowing',
+        icon: Icons.waves_rounded,
+        startColor: Color(0xFF2196F3),
+        endColor: Color(0xFF4ECDC4),
+        accentColor: Color(0xFFE3F2FD),
+      );
+    case 'forest':
+      return const _ChatBannerPalette(
+        title: 'Forest',
+        subtitle: 'Natural & grounded',
+        icon: Icons.forest_rounded,
+        startColor: Color(0xFF56AB2F),
+        endColor: Color(0xFF43C6AC),
+        accentColor: Color(0xFFE8F5E9),
+      );
+    case 'cosmic':
+      return const _ChatBannerPalette(
+        title: 'Cosmic',
+        subtitle: 'Bold & creative',
+        icon: Icons.auto_awesome_rounded,
+        startColor: Color(0xFF6B48FF),
+        endColor: Color(0xFFE040FB),
+        accentColor: Color(0xFFEDE7F6),
+      );
+    case 'rose':
+      return const _ChatBannerPalette(
+        title: 'Rose',
+        subtitle: 'Warm & caring',
+        icon: Icons.favorite_rounded,
+        startColor: Color(0xFFFF6B9D),
+        endColor: Color(0xFFFFB347),
+        accentColor: Color(0xFFFCE4EC),
+      );
+    case 'sky':
+      return const _ChatBannerPalette(
+        title: 'Sky',
+        subtitle: 'Light & airy',
+        icon: Icons.cloud_rounded,
+        startColor: Color(0xFF7BDFF2),
+        endColor: Color(0xFFB2F7EF),
+        accentColor: Color(0xFFE0F7FA),
+      );
+    case 'midnight':
+      return const _ChatBannerPalette(
+        title: 'Midnight',
+        subtitle: 'Dark & focused',
+        icon: Icons.nightlight_rounded,
+        startColor: Color(0xFF1A1A2E),
+        endColor: Color(0xFF16213E),
+        accentColor: Color(0xFF533483),
+      );
+    default:
+      return null;
+  }
+}
+
 class _DefaultSphereChatBanner extends StatelessWidget {
-  const _DefaultSphereChatBanner({required this.sphereName});
+  const _DefaultSphereChatBanner({required this.sphereName, this.templateKey});
 
   final String sphereName;
+  final String? templateKey;
 
   @override
   Widget build(BuildContext context) {
-    final palette = _defaultChatBannerPaletteForSphere(sphereName);
+    final palette =
+        (templateKey == null
+            ? null
+            : _chatBannerPaletteForTemplateKey(templateKey!)) ??
+        _defaultChatBannerPaletteForSphere(sphereName);
     if (palette == null) {
-      return ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+      return ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      );
     }
 
     return Container(
@@ -2795,46 +3776,29 @@ class _DefaultSphereChatBanner extends StatelessWidget {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(palette.icon, color: Colors.white, size: 22),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        palette.title,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        palette.subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.95),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberBadge extends StatelessWidget {
+  const _MemberBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_rounded, color: Colors.white70, size: 13),
+          SizedBox(width: 4),
+          Text('Member', style: TextStyle(color: Colors.white70, fontSize: 11)),
         ],
       ),
     );

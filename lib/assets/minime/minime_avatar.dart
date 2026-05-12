@@ -17,6 +17,7 @@ class MiniMeVisualState {
     this.recoveryLevel = 0,
     this.muscleToneLevel = 0,
     this.symptomLevel = 0,
+    this.illnessLevel = 0,
     this.sleepDebtLevel = 0,
     this.distressLevel = 0,
     this.streakLevel = 0,
@@ -34,6 +35,7 @@ class MiniMeVisualState {
   final double recoveryLevel;
   final double muscleToneLevel;
   final double symptomLevel;
+  final double illnessLevel;
   final double sleepDebtLevel;
   final double distressLevel;
   final double streakLevel;
@@ -54,6 +56,7 @@ class MiniMeVisualState {
             other.recoveryLevel == recoveryLevel &&
             other.muscleToneLevel == muscleToneLevel &&
             other.symptomLevel == symptomLevel &&
+            other.illnessLevel == illnessLevel &&
             other.sleepDebtLevel == sleepDebtLevel &&
             other.distressLevel == distressLevel &&
             other.streakLevel == streakLevel &&
@@ -73,6 +76,7 @@ class MiniMeVisualState {
     recoveryLevel,
     muscleToneLevel,
     symptomLevel,
+    illnessLevel,
     sleepDebtLevel,
     distressLevel,
     streakLevel,
@@ -108,9 +112,11 @@ class MiniMeAvatar extends StatefulWidget {
     this.visualState = const MiniMeVisualState(),
     this.onHatchComplete,
     this.autoWaveToken = 0,
+    this.happyJumpToken = 0,
     this.lockScreenPosition = false,
     this.headTiltBias = 0,
     this.celebrateOnOpen = false,
+    this.danceOnOpen = false,
   });
 
   final String bodyModel;
@@ -132,9 +138,11 @@ class MiniMeAvatar extends StatefulWidget {
   final MiniMeVisualState visualState;
   final VoidCallback? onHatchComplete;
   final int autoWaveToken;
+  final int happyJumpToken;
   final bool lockScreenPosition;
   final double headTiltBias;
   final bool celebrateOnOpen;
+  final bool danceOnOpen;
 
   @override
   State<MiniMeAvatar> createState() => _MiniMeAvatarState();
@@ -257,12 +265,16 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
   _MiniMeReaction _reaction = _MiniMeReaction.none;
   bool _didNotifyHatchComplete = false;
   bool _didAutoWave = false;
+  bool _coughLoopScheduled = false;
+  bool _cryLoopScheduled = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduleAutoGreetingIfNeeded();
+      _scheduleIllnessCoughIfNeeded(delay: const Duration(milliseconds: 900));
+      _scheduleSadCryIfNeeded(delay: const Duration(milliseconds: 760));
     });
   }
 
@@ -326,15 +338,73 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
       _didAutoWave = false;
       _scheduleAutoGreetingIfNeeded(delay: const Duration(milliseconds: 220));
     }
+    if (widget.happyJumpToken != oldWidget.happyJumpToken &&
+        widget.happyJumpToken > 0) {
+      _scheduleHappyJump(delay: const Duration(milliseconds: 220));
+    }
     if (widget.isHatched && !oldWidget.isHatched) {
       _hatchController.value = 1;
       _didNotifyHatchComplete = true;
       _scheduleAutoGreetingIfNeeded(delay: const Duration(milliseconds: 260));
+      _scheduleIllnessCoughIfNeeded(delay: const Duration(milliseconds: 900));
     } else if (!widget.isHatched && oldWidget.isHatched) {
       _hatchController.value = 0;
       _didNotifyHatchComplete = false;
       _didAutoWave = false;
+      _coughLoopScheduled = false;
+      _cryLoopScheduled = false;
+    } else if (widget.visualState.illnessLevel > 0.36 &&
+        oldWidget.visualState.illnessLevel <= 0.36) {
+      _scheduleIllnessCoughIfNeeded(delay: const Duration(milliseconds: 420));
     }
+    if (_isSadMood(widget.moodLabel, widget.animationState) &&
+        !_isSadMood(oldWidget.moodLabel, oldWidget.animationState)) {
+      _scheduleSadCryIfNeeded(delay: const Duration(milliseconds: 420));
+    }
+  }
+
+  void _scheduleIllnessCoughIfNeeded({
+    Duration delay = const Duration(seconds: 7),
+  }) {
+    if (_coughLoopScheduled || !mounted || !widget.isHatched) {
+      return;
+    }
+    if (widget.visualState.illnessLevel <= 0.36) {
+      return;
+    }
+
+    _coughLoopScheduled = true;
+    Future<void>.delayed(delay, () {
+      _coughLoopScheduled = false;
+      if (!mounted || !widget.isHatched) return;
+      if (widget.visualState.illnessLevel <= 0.36) return;
+
+      if (_reaction == _MiniMeReaction.none) {
+        _triggerReaction(_MiniMeReaction.cough);
+      }
+      _scheduleIllnessCoughIfNeeded();
+    });
+  }
+
+  void _scheduleSadCryIfNeeded({Duration delay = const Duration(seconds: 8)}) {
+    if (_cryLoopScheduled || !mounted || !widget.isHatched) {
+      return;
+    }
+    if (!_isSadMood(widget.moodLabel, widget.animationState)) {
+      return;
+    }
+
+    _cryLoopScheduled = true;
+    Future<void>.delayed(delay, () {
+      _cryLoopScheduled = false;
+      if (!mounted || !widget.isHatched) return;
+      if (!_isSadMood(widget.moodLabel, widget.animationState)) return;
+
+      if (_reaction == _MiniMeReaction.none) {
+        _triggerReaction(_MiniMeReaction.cry);
+      }
+      _scheduleSadCryIfNeeded();
+    });
   }
 
   void _scheduleAutoGreetingIfNeeded({
@@ -348,11 +418,29 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
     Future<void>.delayed(delay, () {
       if (!mounted) return;
       if (_reaction != _MiniMeReaction.none) return;
-      _triggerReaction(
-        widget.celebrateOnOpen
-            ? _MiniMeReaction.celebrate
-            : _MiniMeReaction.wave,
-      );
+      if (_isSadMood(widget.moodLabel, widget.animationState)) {
+        _triggerReaction(_MiniMeReaction.cry);
+        _scheduleSadCryIfNeeded();
+        return;
+      }
+      if (widget.danceOnOpen) {
+        _triggerReaction(_MiniMeReaction.dance);
+        return;
+      }
+      if (widget.celebrateOnOpen) {
+        _triggerReaction(_MiniMeReaction.celebrate);
+        return;
+      }
+      _triggerReaction(_MiniMeReaction.wave);
+    });
+  }
+
+  void _scheduleHappyJump({Duration delay = Duration.zero}) {
+    if (!mounted || !widget.isHatched) return;
+    Future<void>.delayed(delay, () {
+      if (!mounted || !widget.isHatched) return;
+      if (_reaction != _MiniMeReaction.none) return;
+      _triggerReaction(_MiniMeReaction.bounce);
     });
   }
 
@@ -362,6 +450,10 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
       _MiniMeReaction.wave => const Duration(milliseconds: 2050),
       _MiniMeReaction.celebrate => const Duration(milliseconds: 1600),
       _MiniMeReaction.shimmy => const Duration(milliseconds: 1150),
+      _MiniMeReaction.bounce => const Duration(milliseconds: 1400),
+      _MiniMeReaction.cough => const Duration(milliseconds: 1350),
+      _MiniMeReaction.cry => const Duration(milliseconds: 2850),
+      _MiniMeReaction.dance => const Duration(milliseconds: 3200),
       _ => const Duration(milliseconds: 420),
     };
     setState(() => _reaction = reaction);
@@ -575,6 +667,9 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                                     armLiftLeft: reactionMotion.leftArmLift,
                                     armLiftRight: reactionMotion.rightArmLift,
                                     flexPoseLevel: reactionMotion.flexPoseLevel,
+                                    coughMouthOpen:
+                                        reactionMotion.coughMouthOpen,
+                                    cryingLevel: reactionMotion.cryingLevel,
                                     headDip:
                                         headDip -
                                         (1 - mascotOpacity) * 10 -
@@ -612,6 +707,18 @@ class _MiniMeAvatarState extends State<MiniMeAvatar>
                       ),
                     ),
                   ),
+                  if (reactionMotion.coughPuff > 0)
+                    Positioned(
+                      top: clampedSize * 0.22,
+                      left: clampedSize * 0.54,
+                      child: IgnorePointer(
+                        child: _CoughPuffFx(
+                          size: clampedSize,
+                          progress: reactionMotion.coughPuff,
+                          color: widget.glow ?? palette.accessory,
+                        ),
+                      ),
+                    ),
                 ],
               );
             },
@@ -647,6 +754,8 @@ class _MascotBody extends StatelessWidget {
     required this.armLiftLeft,
     required this.armLiftRight,
     required this.flexPoseLevel,
+    required this.coughMouthOpen,
+    required this.cryingLevel,
     required this.headDip,
     required this.headTilt,
     required this.degradationLevel,
@@ -664,6 +773,8 @@ class _MascotBody extends StatelessWidget {
   final double armLiftLeft;
   final double armLiftRight;
   final double flexPoseLevel;
+  final double coughMouthOpen;
+  final double cryingLevel;
   final double headDip;
   final double headTilt;
   final double degradationLevel;
@@ -677,12 +788,17 @@ class _MascotBody extends StatelessWidget {
     final flexPose = flexPoseLevel.clamp(0.0, 1.0);
     final flexMuscleBoost = flexPose * 0.42;
     final displayedMuscleTone = (muscleTone + flexMuscleBoost).clamp(0.0, 1.0);
+    final illnessLevel = visualState.illnessLevel.clamp(0.0, 1.0);
     final bodyWidth =
         size *
         0.44 *
-        (bodyWidthScale.clamp(0.78, 1.28) + displayedMuscleTone * 0.08);
-    final bodyHeight = size * (0.46 + displayedMuscleTone * 0.03);
-    final slumpOffset = visualState.postureSlump * size * 0.035;
+        (bodyWidthScale.clamp(0.78, 1.28) +
+            displayedMuscleTone * 0.08 -
+            illnessLevel * 0.05);
+    final bodyHeight =
+        size * (0.46 + displayedMuscleTone * 0.03 - illnessLevel * 0.012);
+    final slumpOffset =
+        (visualState.postureSlump * 0.76 + illnessLevel * 0.24) * size * 0.04;
     final confidenceLift = displayedMuscleTone * size * 0.022;
     final headTop = size * 0.13 + headDip * 0.2 + slumpOffset - confidenceLift;
     final headOffsetX = headTilt * headSize * 0.12;
@@ -693,9 +809,12 @@ class _MascotBody extends StatelessWidget {
         displayedMuscleTone * 0.018;
     final shoulderDrop =
         visualState.postureSlump * size * 0.02 -
+        illnessLevel * size * 0.012 -
         displayedMuscleTone * size * 0.01;
-    final armWidth = size * (0.16 + displayedMuscleTone * 0.035);
-    final armHeight = size * (0.25 + displayedMuscleTone * 0.015);
+    final armWidth =
+        size * (0.16 + displayedMuscleTone * 0.035 - illnessLevel * 0.008);
+    final armHeight =
+        size * (0.25 + displayedMuscleTone * 0.015 - illnessLevel * 0.006);
     final shoulderSpread =
         size * (displayedMuscleTone * 0.035 + flexPose * 0.012);
     final flexLift = displayedMuscleTone * 0.16 + flexPose * 0.14;
@@ -811,8 +930,8 @@ class _MascotBody extends StatelessWidget {
                 ..rotateY(torsoTurn * 0.65)
                 ..rotateZ(headTilt)
                 ..scaleByDouble(
-                  1 - displayedMuscleTone * 0.02,
-                  1 - displayedMuscleTone * 0.02,
+                  1 - displayedMuscleTone * 0.02 - illnessLevel * 0.14,
+                  1 - displayedMuscleTone * 0.02 + illnessLevel * 0.035,
                   1,
                   1,
                 ),
@@ -834,15 +953,23 @@ class _MascotBody extends StatelessWidget {
             left: size / 2 - headSize * 0.36 + headOffsetX,
             child: Transform.rotate(
               angle: headTilt,
-              child: CartoonFace(
-                expression: expression,
-                palette: palette,
-                size: headSize * 0.72,
-                blink: blink,
-                degradationLevel: degradationLevel,
-                headDip: headDip,
-                wateryEyes: visualState.wateryEyes,
-                puffiness: visualState.sleepDebtLevel,
+              child: Transform.scale(
+                scaleX: 1 - illnessLevel * 0.12,
+                scaleY: 1 + illnessLevel * 0.03,
+                child: CartoonFace(
+                  expression: expression,
+                  palette: palette,
+                  size: headSize * 0.72,
+                  blink: blink,
+                  degradationLevel: degradationLevel,
+                  headDip: headDip,
+                  wateryEyes: visualState.wateryEyes,
+                  puffiness: (visualState.sleepDebtLevel + illnessLevel * 0.68)
+                      .clamp(0.0, 1.0),
+                  sickLevel: illnessLevel,
+                  coughOpen: coughMouthOpen,
+                  cryingLevel: cryingLevel,
+                ),
               ),
             ),
           ),
@@ -1252,6 +1379,35 @@ class _HeadShellPainter extends CustomPainter {
           height: size.height * 0.18,
         ),
         sagPaint,
+      );
+    }
+
+    if (visualState.illnessLevel > 0.05) {
+      final sickTint = Paint()
+        ..color = const Color(
+          0xFFB7D7C4,
+        ).withValues(alpha: visualState.illnessLevel * 0.18)
+        ..style = PaintingStyle.fill;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          headRect.deflate(size.width * 0.015),
+          Radius.circular(size.width * 0.32),
+        ),
+        sickTint,
+      );
+
+      final hollowPaint = Paint()
+        ..color = const Color(
+          0xFF53617F,
+        ).withValues(alpha: visualState.illnessLevel * 0.11)
+        ..style = PaintingStyle.fill;
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(size.width * 0.5, size.height * 0.7),
+          width: size.width * (0.34 + visualState.illnessLevel * 0.08),
+          height: size.height * 0.2,
+        ),
+        hollowPaint,
       );
     }
   }
@@ -2149,25 +2305,32 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
         shadowDelta: -0.06 * enter,
       );
     case _MiniMeReaction.wave:
-      final pose = _timedPoseValue(t, enterEnd: 0.16, holdEnd: 0.84);
-      final waveWindow = ((t - 0.14) / 0.60).clamp(0.0, 1.0);
+      // Phase 1 (0–0.18): arm shoots up quickly
+      final raise = Curves.easeOutBack.transform((t / 0.18).clamp(0.0, 1.0));
+      // Phase 2 (0.14–0.78): waving window — 4 full back-and-forth swings
+      final waveWindow = ((t - 0.14) / 0.64).clamp(0.0, 1.0);
       final waveEnvelope = math.sin(waveWindow * math.pi).clamp(0.0, 1.0);
-      final waveCycle = math.sin(waveWindow * math.pi * 6.5) * waveEnvelope;
-      final settle = Curves.easeOutCubic.transform(
-        ((t - 0.76) / 0.24).clamp(0.0, 1.0),
+      // 4 swings = 4 * π * 2 half-cycles; abs() gives snappy back-and-forth
+      final swingRaw = math.sin(waveWindow * math.pi * 8.0);
+      final swing = swingRaw * waveEnvelope; // −1 → +1, enveloped
+      // Phase 3 (0.78–1.0): lower arm back down
+      final lower = Curves.easeInCubic.transform(
+        ((t - 0.78) / 0.22).clamp(0.0, 1.0),
       );
-      final raisedRightArm =
-          0.08 +
-          pose * 0.22 +
-          waveEnvelope * 0.03 +
-          math.max(0, waveCycle) * 0.12;
+      // Arm stays raised high (0.72 at peak) + swings add ±0.20 excursion
+      final armBase = raise * 0.72 * (1.0 - lower);
+      final armSwing = swing * 0.20 * (1.0 - lower);
+      // Slight body lean in the direction of the wave
+      final bodySway = swing * 0.022 * waveEnvelope;
+      // Head tilts toward the raised arm, nods slightly with each swing
+      final headNod = swing * 0.055 * waveEnvelope;
       return _ReactionMotion(
-        bob: -pose * 0.45 + math.max(0, waveCycle) * 0.12,
-        sway: waveCycle * 0.007,
-        headDip: -pose * 0.35 + math.max(0, waveCycle) * 0.08,
+        bob: -raise * 1.8 * (1.0 - lower) + waveEnvelope * 0.6,
+        sway: bodySway,
+        headDip: -raise * 0.5 * (1.0 - lower) + headNod,
         leftArmLift: 0.0,
-        rightArmLift: raisedRightArm - settle * 0.08,
-        shadowDelta: -0.01 * pose,
+        rightArmLift: armBase + armSwing,
+        shadowDelta: -0.015 * raise * (1.0 - lower),
       );
     case _MiniMeReaction.shimmy:
       final shimmyWindow = math.sin(t * math.pi).clamp(0.0, 1.0);
@@ -2201,14 +2364,92 @@ _ReactionMotion _reactionMotion(_MiniMeReaction reaction, double t) {
         shadowDelta: -0.1 * jumpArc + landingBounce * 0.03,
       );
     case _MiniMeReaction.bounce:
-      final eased = Curves.easeOut.transform(t);
+      // Three distinct jumps: t maps 0→1 across 1400ms
+      final jumpCount = 3;
+      final segment = (t * jumpCount).clamp(0.0, jumpCount.toDouble());
+      final jumpT = segment - segment.floor();
+      // Each jump: quick rise (ease-in) and fast fall (elastic-like landing)
+      final arc = math.sin(jumpT * math.pi);
+      // Amplitude shrinks slightly for each successive jump
+      final jumpIndex = segment.floor();
+      final amp = 1.0 - jumpIndex * 0.15;
+      final bobHeight = arc * 32 * amp; // tall, noticeable
+      final landingSquash =
+          (1.0 - arc) * (jumpT > 0.5 ? (jumpT - 0.5) * 2 : 0.0);
       return _ReactionMotion(
-        bob: -math.sin(eased * math.pi) * 7,
-        sway: 0,
-        headDip: -math.sin(eased * math.pi) * 2,
-        leftArmLift: 0.1,
-        rightArmLift: 0.1,
-        shadowDelta: -0.07,
+        bob: -bobHeight + landingSquash * 4,
+        sway: math.sin(t * math.pi * jumpCount * 2) * 0.008,
+        headDip: -arc * 3.5 * amp + landingSquash * 1.5,
+        leftArmLift: arc * 0.18 * amp,
+        rightArmLift: arc * 0.18 * amp,
+        shadowDelta: -0.14 * arc * amp,
+      );
+    case _MiniMeReaction.cough:
+      final pulseA = math.sin((t / 0.42).clamp(0.0, 1.0) * math.pi);
+      final pulseB = math.sin(((t - 0.34) / 0.42).clamp(0.0, 1.0) * math.pi);
+      final coughPulse = math.max(pulseA, pulseB).clamp(0.0, 1.0);
+      final settle = Curves.easeOutCubic.transform(
+        ((t - 0.66) / 0.34).clamp(0.0, 1.0),
+      );
+      final hunch = (coughPulse * (1 - settle * 0.35)).clamp(0.0, 1.0);
+      final shake = math.sin(t * math.pi * 18) * coughPulse;
+      final puffWindow = ((t - 0.08) / 0.76).clamp(0.0, 1.0);
+      return _ReactionMotion(
+        bob: hunch * 3.2,
+        sway: -hunch * 0.08 + shake * 0.012,
+        headDip: hunch * 13.5 + shake * 1.2,
+        leftArmLift: 0.1 + hunch * 0.32,
+        rightArmLift: 0.1 + hunch * 0.28,
+        shadowDelta: 0.06 * hunch,
+        coughPuff: math.sin(puffWindow * math.pi).clamp(0.0, 1.0),
+        coughMouthOpen: coughPulse,
+      );
+    case _MiniMeReaction.cry:
+      final enter = Curves.easeOutCubic.transform((t / 0.18).clamp(0.0, 1.0));
+      final exit =
+          1 - Curves.easeInCubic.transform(((t - 0.86) / 0.14).clamp(0.0, 1.0));
+      final envelope = (enter * exit).clamp(0.0, 1.0);
+      final sobA = math.max(0.0, math.sin(t * math.pi * 4.4));
+      final sobB = math.max(0.0, math.sin((t * math.pi * 4.4) - 0.72));
+      final sobPulse = math.max(sobA, sobB) * envelope;
+      final tremble = math.sin(t * math.pi * 18.0) * envelope;
+      return _ReactionMotion(
+        bob: sobPulse * 2.8 + envelope * 1.1,
+        sway: -envelope * 0.018 + tremble * 0.004,
+        headDip: envelope * 5.8 + sobPulse * 1.8 + tremble * 0.32,
+        leftArmLift: 0.08 + envelope * 0.18 + sobPulse * 0.04,
+        rightArmLift: 0.08 + envelope * 0.2 + sobPulse * 0.04,
+        shadowDelta: 0.032 * envelope,
+        cryingLevel: (0.34 + sobPulse * 0.4) * envelope,
+      );
+    case _MiniMeReaction.dance:
+      // 3200ms of full-body groove: 4-beat bar (800ms each) × 4 bars
+      // beat: t subdivided into 16 beats (0.0625 each)
+      final beat = (t * 16).floor();
+      final beatT = (t * 16) - beat; // 0→1 within each beat
+      // Hip sway: alternate left/right every beat — sin over whole duration
+      final hipSway = math.sin(t * math.pi * 8) * 0.038;
+      // Bob: bounce up on every beat (sharp up, ease down = gravity feel)
+      final bobRaw = math.pow(1.0 - beatT, 2.0).toDouble();
+      final bobHeight = bobRaw * 7.0;
+      // Arms pump alternately: left up on even beats, right up on odd beats
+      final isEvenBeat = beat % 2 == 0;
+      final armPump =
+          Curves.easeOutCubic.transform(
+            math.sin(beatT * math.pi).clamp(0.0, 1.0),
+          ) *
+          0.28;
+      // Head nod: tilts slightly toward the raised arm on each beat
+      final headNod = math.sin(t * math.pi * 8) * 0.06;
+      // Fade out the last 10% of the animation so it lands cleanly
+      final fadeOut = (1.0 - ((t - 0.9) / 0.1).clamp(0.0, 1.0));
+      return _ReactionMotion(
+        bob: bobHeight * fadeOut,
+        sway: hipSway * fadeOut,
+        headDip: headNod * fadeOut,
+        leftArmLift: (isEvenBeat ? armPump : armPump * 0.12) * fadeOut,
+        rightArmLift: (isEvenBeat ? armPump * 0.12 : armPump) * fadeOut,
+        shadowDelta: -0.04 * bobRaw * fadeOut,
       );
     case _MiniMeReaction.none:
       return const _ReactionMotion();
@@ -2244,6 +2485,9 @@ class _ReactionMotion {
     this.rightArmLift = 0,
     this.flexPoseLevel = 0,
     this.shadowDelta = 0,
+    this.coughPuff = 0,
+    this.coughMouthOpen = 0,
+    this.cryingLevel = 0,
   });
 
   final double bob;
@@ -2253,6 +2497,9 @@ class _ReactionMotion {
   final double rightArmLift;
   final double flexPoseLevel;
   final double shadowDelta;
+  final double coughPuff;
+  final double coughMouthOpen;
+  final double cryingLevel;
 }
 
 enum _MiniMeReaction {
@@ -2263,6 +2510,89 @@ enum _MiniMeReaction {
   shimmy,
   celebrate,
   bounce,
+  cough,
+  cry,
+  dance,
+}
+
+class _CoughPuffFx extends StatelessWidget {
+  const _CoughPuffFx({
+    required this.size,
+    required this.progress,
+    required this.color,
+  });
+
+  final double size;
+  final double progress;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size * 0.28,
+      height: size * 0.18,
+      child: CustomPaint(
+        painter: _CoughPuffPainter(
+          progress: progress.clamp(0.0, 1.0),
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _CoughPuffPainter extends CustomPainter {
+  const _CoughPuffPainter({required this.progress, required this.color});
+
+  final double progress;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final eased = Curves.easeOutCubic.transform(progress);
+    final alpha = (1 - progress).clamp(0.0, 1.0);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.028
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.34 * alpha);
+    final fillPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = color.withValues(alpha: 0.08 * alpha);
+
+    final centers = [
+      Offset(size.width * (0.16 + eased * 0.18), size.height * 0.56),
+      Offset(size.width * (0.34 + eased * 0.25), size.height * 0.38),
+      Offset(size.width * (0.54 + eased * 0.28), size.height * 0.62),
+    ];
+    final radii = [0.12, 0.1, 0.085];
+    for (var i = 0; i < centers.length; i++) {
+      final radius = size.width * (radii[i] + eased * 0.055);
+      canvas.drawCircle(centers[i], radius, fillPaint);
+      canvas.drawCircle(centers[i], radius, paint);
+    }
+
+    final burstPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.018
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.24 * alpha);
+    canvas.drawLine(
+      Offset(size.width * 0.08, size.height * 0.76),
+      Offset(size.width * (0.2 + eased * 0.16), size.height * 0.86),
+      burstPaint,
+    );
+    canvas.drawLine(
+      Offset(size.width * 0.08, size.height * 0.36),
+      Offset(size.width * (0.24 + eased * 0.18), size.height * 0.22),
+      burstPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CoughPuffPainter oldDelegate) {
+    return oldDelegate.progress != progress || oldDelegate.color != color;
+  }
 }
 
 double _timedPoseValue(
@@ -2349,6 +2679,10 @@ String _resolveExpression(String? moodLabel, String? animationState) {
   }
 }
 
+bool _isSadMood(String? moodLabel, String? animationState) {
+  return _resolveExpression(moodLabel, animationState) == 'sad';
+}
+
 double _resolveVisualWearLevel(String? moodLabel, double degradationLevel) {
   return degradationLevel.clamp(0.0, 1.0).toDouble();
 }
@@ -2380,13 +2714,13 @@ enum _MiniMeAccessory { none, band, tie }
 enum _MiniMeCrest { none, fluff, sprout }
 
 const MiniMeFacePalette _classicPalette = MiniMeFacePalette(
-  primary: Color(0xFFF8F6F2),
-  secondary: Color(0xFF75A0E3),
-  belly: Color(0xFFF2F0EC),
-  beak: Color(0xFFE3D9CF),
+  primary: Color(0xFFE8EDF7),
+  secondary: Color(0xFF5F8FD7),
+  belly: Color(0xFFF5F7FB),
+  beak: Color(0xFFD8DEEA),
   cheek: Color(0xFFF0B7C5),
   eye: Color(0xFF17345C),
-  accessory: Color(0xFF90A7F4),
+  accessory: Color(0xFF6F83E8),
 );
 
 const MiniMeFacePalette _sunsetPalette = MiniMeFacePalette(

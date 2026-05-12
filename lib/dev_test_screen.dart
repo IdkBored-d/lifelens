@@ -216,21 +216,19 @@ class _DevTestScreenState extends State<DevTestScreen> {
   // ignore: unused_element
   Future<String> _testSymptomAutoDetection() async {
     // Test auto-detection from text
-    final testText = 'I have a bad headache and feeling quite fatigued today. Also experiencing some nausea.';
-    final detected = SymptomAutoDetectorService.detectSymptomsFromText(testText);
-    
-    // Test registration
-    final registered = await SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
+    final testText =
+        'I have a bad headache and feeling quite fatigued today. Also experiencing some nausea.';
+    final detected = SymptomAutoDetectorService.detectSymptomsFromText(
       testText,
-      'test',
     );
-    
+
     // Get all frequencies
-    final frequencies = await SymptomAutoDetectorService.getSymptomFrequencies();
-    
+    final frequencies =
+        await SymptomAutoDetectorService.getSymptomFrequencies();
+
     return '✓ Symptom auto-detection test\n'
         'Detected from text: ${detected.join(", ")}\n'
-        'Registered: $registered\n'
+        'Auto-registration: disabled\n'
         'Total symptoms in DB: ${frequencies.length}\n'
         'Top symptoms: ${frequencies.take(3).map((f) => "${f.symptom} (${f.count})").join(", ")}';
   }
@@ -612,13 +610,15 @@ history=${history.length} msgs (~$historyCharCount chars) | trends=$trendsStatus
   }
 
   Future<String> _testReminderPermissionStatus() async {
-    final status = await TrackingReminderService.instance.debugPermissionStatus();
+    final status = await TrackingReminderService.instance
+        .debugPermissionStatus();
     return '✓ Reminder permission status\n$status';
   }
 
   Future<String> _testReminderRequestPermissions() async {
     await TrackingReminderService.instance.requestPermissionsIfEnabled();
-    final status = await TrackingReminderService.instance.debugPermissionStatus();
+    final status = await TrackingReminderService.instance
+        .debugPermissionStatus();
     return '✓ Reminder permission request finished\n$status';
   }
 
@@ -703,11 +703,20 @@ history=${history.length} msgs (~$historyCharCount chars) | trends=$trendsStatus
                   _testBtn('EOD Pipeline (offline)', _testEodPipeline),
 
                   _sectionHeader('REMINDERS'),
-                  _testBtn('Reminder Permission Status', _testReminderPermissionStatus),
-                  _testBtn('Request Reminder Permissions', _testReminderRequestPermissions),
+                  _testBtn(
+                    'Reminder Permission Status',
+                    _testReminderPermissionStatus,
+                  ),
+                  _testBtn(
+                    'Request Reminder Permissions',
+                    _testReminderRequestPermissions,
+                  ),
                   _testBtn('Reminder Status', _testReminderStatus),
                   _testBtn('Reminder Check Now', _testReminderCheckNow),
-                  _testBtn('Force Large Gap Notification', _testReminderForceLargeGap),
+                  _testBtn(
+                    'Force Large Gap Notification',
+                    _testReminderForceLargeGap,
+                  ),
                   _testBtn(
                     'Force Inconsistency Notification',
                     _testReminderForceInconsistency,

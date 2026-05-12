@@ -131,7 +131,7 @@ class _SleepTrackingWidgetState extends State<SleepTrackingWidget> {
               ),
               child: LogButtonContent(
                 state: _buttonState,
-                idleLabel: 'Save Sleep Entry',
+                idleLabel: 'Log sleep entry',
                 loadingLabel: 'Saving sleep',
                 successLabel: 'Saved',
               ),

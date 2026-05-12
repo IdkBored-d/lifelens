@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import 'restart.dart';
 import 'package:provider/provider.dart';
 import 'theme_controller.dart';
-import 'dev_test_screen.dart';
 import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 
@@ -18,6 +18,37 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _notificationsEnabled = true;
   String? _notificationPreferenceUserId;
+  String? _profileStreamUserId;
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _profileStream;
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _userProfileStream(
+    String userId,
+  ) {
+    if (_profileStreamUserId != userId || _profileStream == null) {
+      _profileStreamUserId = userId;
+      _profileStream = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .snapshots();
+    }
+    return _profileStream!;
+  }
+
+  String _normalizeUsername(String input) {
+    var value = input.trim();
+    if (value.startsWith('@')) {
+      value = value.substring(1);
+    }
+    return value;
+  }
+
+  String _usernameLookupKey(String input) {
+    return _normalizeUsername(input).toLowerCase();
+  }
+
+  bool _isValidUsername(String input) {
+    return RegExp(r'^[A-Za-z0-9_.]{3,24}$').hasMatch(_normalizeUsername(input));
+  }
 
   @override
   void initState() {
@@ -113,10 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       )
                     else
                       StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                        stream: FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(userId)
-                            .snapshots(),
+                        stream: _userProfileStream(userId),
                         builder: (context, snapshot) {
                           final profileData = snapshot.data?.data();
                           final headerName = _headerDisplayNameFor(
@@ -138,6 +166,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _ProfileSection(
                 title: 'Account',
                 children: [
+                  if (userId != null)
+                    StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      stream: _userProfileStream(userId),
+                      builder: (context, snapshot) {
+                        final data = snapshot.data?.data();
+                        final username = (data?['username'] ?? '')
+                            .toString()
+                            .trim();
+                        final usernameValue = username.isEmpty
+                            ? 'Set username'
+                            : '@$username';
+
+                        return _ProfileTile(
+                          icon: Icons.badge_outlined,
+                          label: 'Username',
+                          value: usernameValue,
+                          onTap: () => _showChangeUsernameDialog(
+                            context,
+                            currentUsername: username,
+                          ),
+                        );
+                      },
+                    ),
+
                   _ProfileTile(
                     icon: Icons.email_outlined,
                     label: 'Email',
@@ -183,64 +235,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
 
-              _ProfileSection(
-                title: 'Developer',
-                children: [
-                  _ProfileTile(
-                    icon: Icons.science_outlined,
-                    label: 'Pipeline Tests',
-                    value: 'Open',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const DevTestScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-
               const SizedBox(height: 24),
 
-              _ProfileSection(
-                title: 'Actions',
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Log out'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: theme.colorScheme.error,
-                      foregroundColor: theme.colorScheme.onError,
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-
-                    onPressed: () async {
-                      await FirebaseAuth.instance.signOut();
-                      if (!context.mounted) return;
-                      RestartWidget.restartApp(context);
-                    },
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Reset preferences'),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-
-                    onPressed: () async => _resetPreferences(context),
-                  ),
-                ],
+              _LogoutButton(
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  if (!context.mounted) return;
+                  RestartWidget.restartApp(context);
+                },
               ),
             ],
           ),
@@ -255,10 +257,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     final firstName = (profileData?['firstName'] ?? '').toString().trim();
     final lastName = (profileData?['lastName'] ?? '').toString().trim();
-    final fullName = [firstName, lastName]
-        .where((value) => value.isNotEmpty)
-        .join(' ')
-        .trim();
+    final fullName = [
+      firstName,
+      lastName,
+    ].where((value) => value.isNotEmpty).join(' ').trim();
 
     if (fullName.isNotEmpty) {
       return fullName;
@@ -377,6 +379,232 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  void _showChangeUsernameDialog(
+    BuildContext context, {
+    required String currentUsername,
+  }) {
+    final usernameController = TextEditingController(text: currentUsername);
+    var saving = false;
+    String? inlineError;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Username'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: usernameController,
+                    enabled: !saving,
+                    decoration: InputDecoration(
+                      labelText: 'Username',
+                      prefixText: '@',
+                      errorText: inlineError,
+                      errorMaxLines: 3,
+                      helperText: '3-24 chars: letters, numbers, . and _',
+                      helperMaxLines: 2,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final entered = usernameController.text.trim();
+                          final newUsernameDisplay = _normalizeUsername(
+                            entered,
+                          );
+                          final normalizedCurrent = _normalizeUsername(
+                            currentUsername,
+                          );
+
+                          if (!_isValidUsername(entered)) {
+                            setDialogState(() {
+                              inlineError =
+                                  'Use 3-24 letters/numbers and . or _';
+                            });
+                            return;
+                          }
+
+                          if (newUsernameDisplay == normalizedCurrent) {
+                            setDialogState(() {
+                              inlineError =
+                                  'That is already your current username.';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            inlineError = null;
+                            saving = true;
+                          });
+                          var dialogClosed = false;
+
+                          try {
+                            await _changeUsername(
+                              newUsernameDisplay,
+                            ).timeout(const Duration(seconds: 15));
+                            if (!mounted) return;
+                            if (Navigator.of(dialogContext).canPop()) {
+                              Navigator.of(
+                                dialogContext,
+                                rootNavigator: true,
+                              ).pop();
+                              dialogClosed = true;
+                            }
+                          } on TimeoutException {
+                            setDialogState(() {
+                              saving = false;
+                              inlineError =
+                                  'Update is taking too long. Please try again.';
+                            });
+                          } on FirebaseException catch (e) {
+                            String message = 'Unable to update username.';
+                            if (e.code == 'username-taken') {
+                              message = 'That username is already taken.';
+                            } else if (e.code == 'username-same') {
+                              message =
+                                  'That is already your current username.';
+                            } else if (e.code == 'permission-denied') {
+                              message =
+                                  'Permission denied. Deploy latest Firestore rules.';
+                            }
+                            setDialogState(() {
+                              saving = false;
+                              inlineError = message;
+                            });
+                          } catch (_) {
+                            setDialogState(() {
+                              saving = false;
+                              inlineError = 'Unable to update username.';
+                            });
+                          } finally {
+                            if (mounted && !dialogClosed && saving) {
+                              setDialogState(() {
+                                saving = false;
+                              });
+                            }
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _changeUsername(String newUsernameDisplay) async {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid;
+    if (uid == null) {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'unauthenticated',
+        message: 'You must be signed in.',
+      );
+    }
+
+    final firestore = FirebaseFirestore.instance;
+    final userRef = firestore.collection('users').doc(uid);
+    final newUsernameLower = _usernameLookupKey(newUsernameDisplay);
+
+    await firestore.runTransaction((tx) async {
+      final userSnap = await tx.get(userRef);
+      if (!userSnap.exists) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'not-found',
+          message: 'User profile not found.',
+        );
+      }
+
+      final userData = userSnap.data() ?? <String, dynamic>{};
+      final oldUsernameDisplay = (userData['username'] ?? '').toString().trim();
+      final oldUsernameLower =
+          (userData['usernameLower'] ?? userData['username'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+
+      if (oldUsernameDisplay == newUsernameDisplay) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'username-same',
+          message: 'That is already your current username.',
+        );
+      }
+
+      final newUsernameRef = firestore
+          .collection('usernames')
+          .doc(newUsernameLower);
+      final newUsernameSnap = await tx.get(newUsernameRef);
+      if (newUsernameSnap.exists) {
+        final ownerId = (newUsernameSnap.data()?['uid'] ?? '').toString();
+        if (ownerId != uid) {
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'username-taken',
+            message: 'That username is already taken.',
+          );
+        }
+      }
+
+      DocumentSnapshot<Map<String, dynamic>>? oldUsernameSnap;
+      DocumentReference<Map<String, dynamic>>? oldUsernameRef;
+      if (oldUsernameLower.isNotEmpty && oldUsernameLower != newUsernameLower) {
+        oldUsernameRef = firestore
+            .collection('usernames')
+            .doc(oldUsernameLower);
+        oldUsernameSnap = await tx.get(oldUsernameRef);
+      }
+
+      tx.set(newUsernameRef, {
+        'uid': uid,
+        'username': newUsernameDisplay,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (oldUsernameRef != null &&
+          oldUsernameSnap != null &&
+          oldUsernameSnap.exists) {
+        final ownerId = (oldUsernameSnap.data()?['uid'] ?? '').toString();
+        if (ownerId == uid) {
+          tx.delete(oldUsernameRef);
+        }
+      }
+
+      tx.update(userRef, {
+        'username': newUsernameDisplay,
+        'usernameLower': newUsernameLower,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    });
   }
 
   Future<void> _changePassword(
@@ -646,33 +874,86 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     }
   }
+}
 
-  Future<void> _resetPreferences(BuildContext context) async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
+class _LogoutButton extends StatelessWidget {
+  const _LogoutButton({required this.onPressed});
 
-    try {
-      context.read<ThemeController>().setDarkMode(true);
-      await TrackingReminderService.instance.setNotificationsEnabled(true);
-      if (mounted && !_notificationsEnabled) {
-        setState(() => _notificationsEnabled = true);
-      }
-      await FirebaseFirestore.instance.collection('users').doc(userId).set({
-        'notificationsEnabled': true,
-      }, SetOptions(merge: true));
+  final VoidCallback onPressed;
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Preferences reset to defaults')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not reset preferences: $e')),
-        );
-      }
-    }
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    final background = isLight
+        ? Color.alphaBlend(cs.primary.withValues(alpha: 0.055), cs.surface)
+        : cs.surfaceContainerHighest.withValues(alpha: 0.48);
+    final iconBackground = isLight
+        ? cs.primary.withValues(alpha: 0.11)
+        : cs.primaryContainer.withValues(alpha: 0.58);
+    final borderColor = isLight
+        ? cs.primary.withValues(alpha: 0.16)
+        : cs.outlineVariant.withValues(alpha: 0.70);
+    final foreground = isLight ? cs.primary : cs.onSurface;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        splashColor: cs.primary.withValues(alpha: 0.08),
+        highlightColor: cs.primary.withValues(alpha: 0.04),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: borderColor),
+            boxShadow: isLight
+                ? [
+                    BoxShadow(
+                      color: cs.primary.withValues(alpha: 0.06),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: iconBackground,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.logout_rounded, size: 21, color: foreground),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Text(
+                  'Log out',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 15,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.72),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

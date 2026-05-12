@@ -50,6 +50,9 @@ class CartoonFace extends StatelessWidget {
     this.headDip = 0,
     this.wateryEyes = false,
     this.puffiness = 0,
+    this.sickLevel = 0,
+    this.coughOpen = 0,
+    this.cryingLevel = 0,
   });
 
   final String expression;
@@ -60,6 +63,9 @@ class CartoonFace extends StatelessWidget {
   final double headDip;
   final bool wateryEyes;
   final double puffiness;
+  final double sickLevel;
+  final double coughOpen;
+  final double cryingLevel;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +81,9 @@ class CartoonFace extends StatelessWidget {
           headDip: headDip,
           wateryEyes: wateryEyes,
           puffiness: puffiness.clamp(0.0, 1.0),
+          sickLevel: sickLevel.clamp(0.0, 1.0),
+          coughOpen: coughOpen.clamp(0.0, 1.0),
+          cryingLevel: cryingLevel.clamp(0.0, 1.0),
         ),
       ),
     );
@@ -90,6 +99,9 @@ class _CartoonFacePainter extends CustomPainter {
     required this.headDip,
     required this.wateryEyes,
     required this.puffiness,
+    required this.sickLevel,
+    required this.coughOpen,
+    required this.cryingLevel,
   });
 
   final String expression;
@@ -99,11 +111,16 @@ class _CartoonFacePainter extends CustomPainter {
   final double headDip;
   final bool wateryEyes;
   final double puffiness;
+  final double sickLevel;
+  final double coughOpen;
+  final double cryingLevel;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final isAngry = expression == 'angry';
+    final isCoughing = coughOpen > 0.08;
+    final isCrying = cryingLevel > 0.05 && !isCoughing;
+    final isAngry = expression == 'angry' && !isCoughing;
     final blinkScale = 1 - (blink * 0.92);
     final eyeSpread = size.width * 0.19;
     final eyeY =
@@ -111,11 +128,19 @@ class _CartoonFacePainter extends CustomPainter {
     final eyeWidth = size.width * 0.12;
     final eyeHeight = math.max(
       size.height * 0.018,
-      size.height * (isAngry ? 0.105 : 0.15) * blinkScale,
+      size.height *
+          (isAngry
+              ? 0.105
+              : isCoughing
+              ? 0.105
+              : isCrying
+              ? 0.115
+              : 0.15) *
+          blinkScale,
     );
     final underEyeStrengthRaw = math.min(
       1.0,
-      degradationLevel * 1.08 + puffiness * 0.18,
+      degradationLevel * 1.08 + puffiness * 0.18 + sickLevel * 0.34,
     );
     final underEyeStrength = isAngry ? 0.0 : underEyeStrengthRaw;
 
@@ -143,6 +168,24 @@ class _CartoonFacePainter extends CustomPainter {
       size.width * 0.12,
       cheekPaint,
     );
+
+    if (sickLevel > 0.04) {
+      final sickWashPaint = Paint()
+        ..shader =
+            RadialGradient(
+              colors: [
+                const Color(0xFF9CCDB0).withValues(alpha: sickLevel * 0.22),
+                const Color(0xFF9CCDB0).withValues(alpha: 0),
+              ],
+            ).createShader(
+              Rect.fromCircle(center: center, radius: size.width * 0.48),
+            );
+      canvas.drawCircle(
+        center.translate(0, size.height * 0.03),
+        size.width * 0.46,
+        sickWashPaint,
+      );
+    }
 
     final underEyePaint = Paint()
       ..color = const Color(
@@ -228,7 +271,7 @@ class _CartoonFacePainter extends CustomPainter {
     canvas.drawRRect(leftEyeRect, eyeOutlinePaint);
     canvas.drawRRect(rightEyeRect, eyeOutlinePaint);
 
-    if (blink < 0.5 && !isAngry) {
+    if (blink < 0.5 && !isAngry && !isCoughing && !isCrying) {
       canvas.drawCircle(
         Offset(
           center.dx - eyeSpread - size.width * 0.014,
@@ -285,6 +328,10 @@ class _CartoonFacePainter extends CustomPainter {
       canvas.drawPath(rightTear, tearPaint);
     }
 
+    if (isCrying && blink < 0.86) {
+      _drawCryingStreams(canvas, size, center, eyeSpread, eyeY, cryingLevel);
+    }
+
     final muzzleRect = RRect.fromRectAndRadius(
       Rect.fromCenter(
         center: Offset(
@@ -335,6 +382,95 @@ class _CartoonFacePainter extends CustomPainter {
       center.dx,
       size.height * (0.69 + degradationLevel * 0.02),
     );
+    if (isCoughing) {
+      final coughT = Curves.easeOutCubic.transform(coughOpen);
+      final coughMouthPaint = Paint()
+        ..color = palette.eye.withValues(alpha: 0.94)
+        ..style = PaintingStyle.fill;
+      final coughMouthStroke = Paint()
+        ..color = palette.eye.withValues(alpha: 0.88)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.018
+        ..strokeCap = StrokeCap.round;
+      final mouthRect = Rect.fromCenter(
+        center: mouthCenter.translate(size.width * 0.012, size.height * 0.018),
+        width: size.width * (0.12 + coughT * 0.12),
+        height: size.height * (0.08 + coughT * 0.12),
+      );
+      canvas.drawOval(mouthRect, coughMouthPaint);
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: mouthRect.center.translate(0, -mouthRect.height * 0.14),
+          width: mouthRect.width * 0.72,
+          height: mouthRect.height * 0.36,
+        ),
+        math.pi * 0.08,
+        math.pi * 0.84,
+        false,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.28)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * 0.01
+          ..strokeCap = StrokeCap.round,
+      );
+      canvas.drawLine(
+        Offset(
+          center.dx - size.width * 0.12,
+          mouthCenter.dy - size.height * 0.08,
+        ),
+        Offset(
+          center.dx - size.width * 0.03,
+          mouthCenter.dy - size.height * 0.04,
+        ),
+        coughMouthStroke,
+      );
+      canvas.drawLine(
+        Offset(
+          center.dx + size.width * 0.12,
+          mouthCenter.dy - size.height * 0.07,
+        ),
+        Offset(
+          center.dx + size.width * 0.03,
+          mouthCenter.dy - size.height * 0.035,
+        ),
+        coughMouthStroke,
+      );
+      _drawScaredBrows(canvas, size, center.translate(0, size.height * 0.01));
+      return;
+    }
+    if (isCrying) {
+      final cryT = cryingLevel.clamp(0.0, 1.0);
+      final sobPaint = Paint()
+        ..color = palette.eye.withValues(alpha: 0.78)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = size.width * 0.02
+        ..strokeCap = StrokeCap.round;
+      final softMouthPaint = Paint()
+        ..color = palette.eye.withValues(alpha: 0.66)
+        ..style = PaintingStyle.fill;
+      final mouthRect = RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: mouthCenter.translate(0, size.height * (0.024 + cryT * 0.01)),
+          width: size.width * (0.11 + cryT * 0.035),
+          height: size.height * (0.034 + cryT * 0.026),
+        ),
+        Radius.circular(size.width * 0.04),
+      );
+      canvas.drawRRect(mouthRect, softMouthPaint);
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: mouthCenter.translate(0, size.height * 0.04),
+          width: size.width * (0.2 + cryT * 0.025),
+          height: size.height * 0.1,
+        ),
+        math.pi + 0.26,
+        math.pi - 0.52,
+        false,
+        sobPaint,
+      );
+      _drawSadBrows(canvas, size, center);
+      return;
+    }
     switch (expression) {
       case 'happy':
         canvas.drawArc(
@@ -606,6 +742,123 @@ class _CartoonFacePainter extends CustomPainter {
     );
   }
 
+  void _drawCryingStreams(
+    Canvas canvas,
+    Size size,
+    Offset center,
+    double eyeSpread,
+    double eyeY,
+    double progress,
+  ) {
+    final cryT = progress.clamp(0.0, 1.0);
+    final streamPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * (0.018 + cryT * 0.008)
+      ..color = const Color(0xFF6AB7E8).withValues(alpha: 0.24 + cryT * 0.28);
+    final highlightPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.006
+      ..color = Colors.white.withValues(alpha: 0.2 + cryT * 0.18);
+    final dropPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFF7CC4EC).withValues(alpha: 0.3 + cryT * 0.24);
+    final shinePaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = Colors.white.withValues(alpha: 0.38);
+
+    void stream({required double side, required double phase}) {
+      final x = center.dx + side * eyeSpread;
+      final wobble =
+          math.sin((cryT + phase) * math.pi * 2) * size.width * 0.006;
+      final path = Path()
+        ..moveTo(x + side * size.width * 0.006, eyeY + size.height * 0.045)
+        ..cubicTo(
+          x + side * size.width * 0.032 + wobble,
+          eyeY + size.height * 0.13,
+          x + side * size.width * 0.024 - wobble,
+          eyeY + size.height * 0.22,
+          x + side * size.width * 0.032,
+          eyeY + size.height * (0.3 + cryT * 0.04),
+        );
+      canvas.drawPath(path, streamPaint);
+      canvas.drawPath(path, highlightPaint);
+
+      for (var i = 0; i < 2; i++) {
+        final fall = ((cryT * 1.05 + phase + i * 0.43) % 1.0);
+        final dropY = eyeY + size.height * (0.09 + fall * 0.34);
+        final dropX =
+            x +
+            side * size.width * (0.026 + math.sin(fall * math.pi * 2) * 0.008);
+        final radius = size.width * (0.012 + (1 - fall) * 0.005);
+        final tear = Path()
+          ..moveTo(dropX, dropY - radius * 1.35)
+          ..quadraticBezierTo(
+            dropX + side * radius * 1.05,
+            dropY - radius * 0.2,
+            dropX,
+            dropY + radius * 1.2,
+          )
+          ..quadraticBezierTo(
+            dropX - side * radius * 1.05,
+            dropY - radius * 0.2,
+            dropX,
+            dropY - radius * 1.35,
+          )
+          ..close();
+        canvas.drawPath(tear, dropPaint);
+        canvas.drawCircle(
+          Offset(dropX - side * radius * 0.28, dropY - radius * 0.28),
+          radius * 0.22,
+          shinePaint,
+        );
+      }
+    }
+
+    stream(side: -1, phase: 0.08);
+    stream(side: 1, phase: 0.42);
+
+    final splashPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFF7CC4EC).withValues(alpha: cryT * 0.12);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx - size.width * 0.18, size.height * 0.78),
+        width: size.width * (0.08 + cryT * 0.028),
+        height: size.height * 0.018,
+      ),
+      splashPaint,
+    );
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(center.dx + size.width * 0.18, size.height * 0.78),
+        width: size.width * (0.08 + cryT * 0.028),
+        height: size.height * 0.018,
+      ),
+      splashPaint,
+    );
+  }
+
+  void _drawSadBrows(Canvas canvas, Size size, Offset center) {
+    final browPaint = Paint()
+      ..color = palette.eye.withValues(alpha: 0.74)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = size.width * 0.018;
+
+    canvas.drawLine(
+      Offset(center.dx - size.width * 0.27, size.height * 0.265),
+      Offset(center.dx - size.width * 0.13, size.height * 0.292),
+      browPaint,
+    );
+    canvas.drawLine(
+      Offset(center.dx + size.width * 0.27, size.height * 0.265),
+      Offset(center.dx + size.width * 0.13, size.height * 0.292),
+      browPaint,
+    );
+  }
+
   void _drawScaredBrows(Canvas canvas, Size size, Offset center) {
     final browPaint = Paint()
       ..color = palette.eye.withValues(alpha: 0.96)
@@ -798,6 +1051,9 @@ class _CartoonFacePainter extends CustomPainter {
         oldDelegate.degradationLevel != degradationLevel ||
         oldDelegate.headDip != headDip ||
         oldDelegate.wateryEyes != wateryEyes ||
-        oldDelegate.puffiness != puffiness;
+        oldDelegate.puffiness != puffiness ||
+        oldDelegate.sickLevel != sickLevel ||
+        oldDelegate.coughOpen != coughOpen ||
+        oldDelegate.cryingLevel != cryingLevel;
   }
 }

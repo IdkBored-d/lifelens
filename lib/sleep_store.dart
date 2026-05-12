@@ -11,8 +11,8 @@ class SleepStore extends ChangeNotifier {
   SleepStore({FirebaseFirestore? firestore, FirebaseAuth? auth})
     : _firestore = firestore ?? FirebaseFirestore.instance,
       _auth = auth ?? FirebaseAuth.instance {
-    _authSub = _auth.authStateChanges().listen((_) {
-      _loadFromCloud();
+    _authSub = _auth.authStateChanges().listen((user) {
+      _handleAuthChanged(user);
     });
     _loadFromCloud();
   }
@@ -24,10 +24,24 @@ class SleepStore extends ChangeNotifier {
   final List<Sleep> _items = [];
   bool _isLoading = false;
   String? _errorMessage;
+  String _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  int _loadRequestId = 0;
 
   List<Sleep> get items => List.unmodifiable(_items);
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  void _handleAuthChanged(User? user) {
+    final nextScopeKey = user?.uid ?? 'guest';
+    if (_loadedScopeKey != nextScopeKey) {
+      _loadedScopeKey = nextScopeKey;
+      _items.clear();
+      _isLoading = user != null;
+      _errorMessage = null;
+      notifyListeners();
+    }
+    _loadFromCloud();
+  }
 
   Future<String?> add(Sleep sleep) async {
     _items.insert(0, sleep);
@@ -60,7 +74,13 @@ class SleepStore extends ChangeNotifier {
   Future<void> refresh() => _loadFromCloud();
 
   Future<void> _loadFromCloud() async {
+    final requestId = ++_loadRequestId;
     final uid = _auth.currentUser?.uid;
+    final scopeKey = uid ?? 'guest';
+    if (_loadedScopeKey != scopeKey) {
+      _loadedScopeKey = scopeKey;
+      _items.clear();
+    }
     if (uid == null) {
       _items.clear();
       _isLoading = false;
@@ -81,15 +101,20 @@ class SleepStore extends ChangeNotifier {
           .limit(120)
           .get();
 
+      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
+
       _items
         ..clear()
         ..addAll(snapshot.docs.map(_fromFirestore));
       _errorMessage = null;
     } on FirebaseException {
+      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
       _errorMessage = 'Could not sync sleep logs from cloud.';
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (requestId == _loadRequestId && _loadedScopeKey == scopeKey) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 

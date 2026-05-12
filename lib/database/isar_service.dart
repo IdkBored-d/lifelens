@@ -139,7 +139,18 @@ class IsarService {
   /// NOTE: logic may be incorrect -- this is replacing our old version.
   Future<List<String>> getRecentRawLogs({int days = 3}) async {
     final entries = await getRecentMoodEntries(days: days);
-    return entries.map((e) => e.rawLog).toList();
+    return entries.map((e) => _stripInternalContextMetadata(e.rawLog)).toList();
+  }
+
+  String _stripInternalContextMetadata(String value) {
+    return value
+        .replaceAllMapped(
+          RegExp(r'\[context:\s*([^\]]+)\]', caseSensitive: false),
+          (match) => match.group(1) ?? '',
+        )
+        .replaceAll(RegExp(r'\bcontext\s*:\s*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   // ─────────────────────────────────────────────
@@ -158,15 +169,22 @@ class IsarService {
     return _db.symptomEntrys.where().sortByDateDesc().findAll();
   }
 
+  bool _isUserLoggedSymptomEntry(SymptomEntry entry) {
+    final predicted = entry.predictedAilment.trim().toLowerCase();
+    final resolver = entry.resolvedBy.trim().toLowerCase();
+    return predicted != 'auto-detected' && resolver != 'auto_detector';
+  }
+
   /// Active and monitoring symptom entries only.
   Future<List<SymptomEntry>> getActiveSymptomEntries() async {
-    return _db.symptomEntrys
+    final entries = await _db.symptomEntrys
         .filter()
         .statusEqualTo('active')
         .or()
         .statusEqualTo('monitoring')
         .sortByDateDesc()
         .findAll();
+    return entries.where(_isUserLoggedSymptomEntry).toList(growable: false);
   }
 
   /// ISO date string of the most recent symptom entry.
@@ -197,11 +215,12 @@ class IsarService {
   /// Symptom entries for the last [days] days, ordered newest first.
   Future<List<SymptomEntry>> getRecentSymptomEntries({int days = 14}) async {
     final cutoff = DateTime.now().subtract(Duration(days: days));
-    return _db.symptomEntrys
+    final entries = await _db.symptomEntrys
         .filter()
         .timestampGreaterThan(cutoff)
         .sortByTimestampDesc()
         .findAll();
+    return entries.where(_isUserLoggedSymptomEntry).toList(growable: false);
   }
 
   /// Live stream of the most recent [limit] symptom entries, newest first.
@@ -211,7 +230,11 @@ class IsarService {
         .where()
         .sortByTimestampDesc()
         .limit(limit)
-        .watch(fireImmediately: true);
+        .watch(fireImmediately: true)
+        .map(
+          (entries) =>
+              entries.where(_isUserLoggedSymptomEntry).toList(growable: false),
+        );
   }
 
   /// Update the status of a symptom entry.
@@ -450,6 +473,14 @@ class IsarService {
         .createdAtGreaterThan(cutoff)
         .sortByCreatedAtDesc()
         .findAll();
+  }
+
+  /// Clear only Mini-Me chat history. This leaves health/mood/symptom data intact.
+  Future<void> clearChatHistory() async {
+    await _db.writeTxn(() async {
+      await _db.chatMessages.clear();
+      await _db.chatSessions.clear();
+    });
   }
 
   // ─────────────────────────────────────────────

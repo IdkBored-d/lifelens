@@ -201,6 +201,7 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				0ADB6D7CF06D25A22DC43675 /* [CP] Copy Pods Resources */,
+				C0DA5EED27F04A1C91A10001 /* Sign Flutter Native Assets */,
 			);
 			buildRules = (
 			);
@@ -343,6 +344,22 @@
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
 		};
+		C0DA5EED27F04A1C91A10001 /* Sign Flutter Native Assets */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/llamadart.framework",
+			);
+			name = "Sign Flutter Native Assets";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n\nif [ \"${PLATFORM_NAME}\" != \"iphoneos\" ]; then\n  exit 0\nfi\n\nFRAMEWORK=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/llamadart.framework\"\nif [ ! -d \"$FRAMEWORK\" ]; then\n  exit 0\nfi\n\nSIGN_IDENTITY=\"${EXPANDED_CODE_SIGN_IDENTITY}\"\nif [ -z \"$SIGN_IDENTITY\" ]; then\n  SIGN_IDENTITY=$(/usr/bin/security find-identity -v -p codesigning | /usr/bin/grep \"Apple Development\" | /usr/bin/head -1 | /usr/bin/awk '{print $2}')\nfi\n\nif [ -z \"$SIGN_IDENTITY\" ]; then\n  echo \"warning: No Apple Development signing identity available for llamadart.framework\"\n  exit 0\nfi\n\n/usr/bin/codesign --force --sign \"$SIGN_IDENTITY\" ${OTHER_CODE_SIGN_FLAGS:-} --preserve-metadata=identifier,entitlements \"$FRAMEWORK\"\n";
+		};
 		AADEB4E16896F9C62D5692F6 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -458,7 +475,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = iphoneos;
@@ -589,7 +606,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -640,7 +657,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = iphoneos;

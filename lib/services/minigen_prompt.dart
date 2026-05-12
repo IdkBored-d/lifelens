@@ -8,8 +8,10 @@ library;
 
 /// Strips emoji characters from input. Unseen emoji in the BPE vocabulary
 /// cause hallucinations in MiniGen.
-String sanitizeInput(String input) =>
-    input.replaceAll(RegExp(r'\p{Emoji}', unicode: true), '');
+String sanitizeInput(String input) => input.replaceAll(
+  RegExp(r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]', unicode: true),
+  '',
+);
 
 /// Sliding-window pruner — operates on the [history] list BEFORE string
 /// assembly so no bracket is ever sliced mid-token.
@@ -50,7 +52,7 @@ String pruneHistory({
 String buildContextBlock(Map<String, String?> contextEntries) {
   return contextEntries.entries
       .where((e) => e.value != null && e.value!.isNotEmpty)
-      .map((e) => '[${e.key}: ${e.value}]')
+      .map((e) => '[${e.key}: ${sanitizeInput(e.value!.trim())}]')
       .join(''); // flush — zero whitespace between brackets
 }
 

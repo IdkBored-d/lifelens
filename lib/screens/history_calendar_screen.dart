@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/eod_entry.dart';
@@ -15,10 +17,12 @@ class HistoryCalendarScreen extends StatefulWidget {
     super.key,
     this.initialDate,
     this.showCalendar = true,
+    this.refreshOnInitialLoad = true,
   });
 
   final DateTime? initialDate;
   final bool showCalendar;
+  final bool refreshOnInitialLoad;
 
   @override
   State<HistoryCalendarScreen> createState() => _HistoryCalendarScreenState();
@@ -33,6 +37,7 @@ class HistoryCalendarView extends StatefulWidget {
     this.showCalendar = true,
     this.initialDate,
     this.onDateSelected,
+    this.refreshOnInitialLoad = true,
   });
 
   final bool showIntro;
@@ -41,6 +46,7 @@ class HistoryCalendarView extends StatefulWidget {
   final bool showCalendar;
   final DateTime? initialDate;
   final ValueChanged<DateTime>? onDateSelected;
+  final bool refreshOnInitialLoad;
 
   @override
   State<HistoryCalendarView> createState() => _HistoryCalendarViewState();
@@ -60,6 +66,7 @@ class _HistoryCalendarScreenState extends State<HistoryCalendarScreen> {
         child: HistoryCalendarView(
           initialDate: widget.initialDate,
           showCalendar: widget.showCalendar,
+          refreshOnInitialLoad: widget.refreshOnInitialLoad,
         ),
       ),
     );
@@ -72,12 +79,17 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
   late DateTime _visibleMonth;
   _HistoryDayData? _dayData;
   bool _isLoading = true;
+  int _loadRequestId = 0;
 
   @override
   void initState() {
     super.initState();
     _selectedDate = _startOfDay(widget.initialDate ?? DateTime.now());
     _visibleMonth = _monthStart(_selectedDate);
+    if (!widget.showDetails) {
+      _isLoading = false;
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeAndLoad();
     });
@@ -86,30 +98,42 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
   Future<void> _initializeAndLoad() async {
     await AppServices.isar.init();
     await _exerciseStore.ensureReady();
-    await _loadDayData(refreshStores: true);
+    await _loadDayData(refreshStores: widget.refreshOnInitialLoad);
   }
 
   Future<void> _loadDayData({bool refreshStores = false}) async {
+    final requestId = ++_loadRequestId;
+    final selectedDate = _selectedDate;
     final moodStore = context.read<MoodLogStore>();
     final sleepStore = context.read<SleepStore>();
 
-    setState(() => _isLoading = true);
-
-    if (refreshStores) {
-      await moodStore.refreshFromPersistence();
-      await sleepStore.refresh();
-      await _exerciseStore.refreshFromCloud();
+    if (mounted) {
+      setState(() => _isLoading = true);
     }
 
-    final dateKey = _dateKey(_selectedDate);
+    if (refreshStores) {
+      await Future.wait<void>([
+        moodStore.refreshFromPersistence(),
+        sleepStore.refresh(),
+        _exerciseStore.refreshFromCloud(),
+      ]);
+    }
 
-    final moods = await AppServices.isar.getMoodEntriesForDate(dateKey);
-    final symptoms = await AppServices.isar.getSymptomEntriesForDate(dateKey);
-    final eod = await AppServices.isar.getEodEntry(dateKey);
+    final dateKey = _dateKey(selectedDate);
+
+    final results = await Future.wait<Object?>([
+      AppServices.isar.getMoodEntriesForDate(dateKey),
+      AppServices.isar.getSymptomEntriesForDate(dateKey),
+      AppServices.isar.getEodEntry(dateKey),
+    ]);
+
+    final moods = results[0] as List<MoodEntry>;
+    final symptoms = results[1] as List<SymptomEntry>;
+    final eod = results[2] as EodEntry?;
 
     final sleeps =
         sleepStore.items
-            .where((item) => _matchesSleepDate(item, _selectedDate))
+            .where((item) => _matchesSleepDate(item, selectedDate))
             .toList(growable: false)
           ..sort((a, b) => b.wakeTime.compareTo(a.wakeTime));
 
@@ -117,14 +141,14 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         .getRecentExerciseHistory(limit: 365)
         .where((item) {
           final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
-          return timestamp != null && _isSameDay(timestamp, _selectedDate);
+          return timestamp != null && _isSameDay(timestamp, selectedDate);
         })
         .toList(growable: false);
 
-    if (!mounted) return;
+    if (!mounted || requestId != _loadRequestId) return;
     setState(() {
       _dayData = _HistoryDayData(
-        date: _selectedDate,
+        date: selectedDate,
         moods: moods,
         sleeps: sleeps,
         symptoms: symptoms,
@@ -143,7 +167,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
       _visibleMonth = _monthStart(normalized);
     });
     if (widget.showDetails) {
-      _loadDayData();
+      unawaited(_loadDayData());
     }
   }
 
@@ -157,15 +181,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final content = <Widget>[
-      if (widget.showIntro) ...[
-        Text(
-          'Look back at previous days',
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 14),
-      ],
       if (widget.showCalendar) ...[
         _CalendarCard(
           visibleMonth: _visibleMonth,
@@ -226,12 +241,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
           emptyLabel: 'No exercise logs for this day.',
           children: _buildExerciseTiles(_dayData!.exercises),
         ),
-        const SizedBox(height: 16),
-        _DetailSection(
-          title: 'Day Summary',
-          emptyLabel: 'No end-of-day summary for this day.',
-          children: _buildEodTiles(_dayData!.eod),
-        ),
       ],
     ];
 
@@ -259,8 +268,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
         .map(
           (entry) => _InfoTile(
             title: _titleCase(entry.resolvedMood),
-            subtitle:
-                '${_timeLabel(entry.timestamp)}${entry.condensedLog.trim().isEmpty ? '' : '  •  ${entry.condensedLog.trim()}'}',
+            subtitle: _timeLabel(entry.timestamp),
             body: entry.rawLog.trim().isEmpty ? null : entry.rawLog.trim(),
           ),
         )
@@ -287,8 +295,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
             title: entry.symptomList.isEmpty
                 ? 'Symptom entry'
                 : entry.symptomList.map(_titleCase).join(', '),
-            subtitle:
-                '${_timeLabel(entry.timestamp)}  •  ${_titleCase(entry.status)}',
+            subtitle: _timeLabel(entry.timestamp),
             body: entry.rawSymptoms.trim().isEmpty
                 ? null
                 : entry.rawSymptoms.trim(),
@@ -321,18 +328,6 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
           );
         })
         .toList(growable: false);
-  }
-
-  List<Widget> _buildEodTiles(EodEntry? eod) {
-    if (eod == null) return const <Widget>[];
-    return [
-      _InfoTile(
-        title: eod.flagged ? 'Flagged day summary' : 'Daily summary',
-        subtitle:
-            '${eod.moodEntryCount} mood entr${eod.moodEntryCount == 1 ? 'y' : 'ies'}',
-        body: eod.summaryText.trim(),
-      ),
-    ];
   }
 }
 
@@ -543,9 +538,9 @@ class _DetailSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cs.surface,
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -588,8 +583,9 @@ class _InfoTile extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.28),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.38),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.28)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

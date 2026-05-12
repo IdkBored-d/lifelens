@@ -11,15 +11,17 @@ import 'package:lifelens/services/mood_log_draft_storage_service.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/moodlog_store.dart';
-import 'package:lifelens/shared_widgets/log_button_content.dart';
-import 'package:lifelens/app_services.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
-import 'package:lifelens/services/symptom_auto_detector_service.dart';
+import 'package:lifelens/sleep_store.dart';
+import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
-import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
+
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
 
 class MoodLogScreen extends StatefulWidget {
   const MoodLogScreen({super.key, this.source = LogSource.quickAction});
@@ -59,14 +61,12 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     "Health",
     "Partner",
     "Finances",
-    "Hobby"
+    "Hobby",
   ];
 
   @override
   void initState() {
     super.initState();
-    // Ensure MobileBERT doesn't unload while the user is logging their mood
-    ModelLifecycleService.instance.cancelUnload(ModelType.mobileBert);
     notesCtrl.addListener(_persistDraft);
     _restoreDraft();
   }
@@ -75,8 +75,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
   void dispose() {
     notesCtrl.removeListener(_persistDraft);
     notesCtrl.dispose();
-    // Schedule MobileBERT unload 15 seconds after leaving the mood log
-    ModelLifecycleService.instance.scheduleUnload(ModelType.mobileBert);
     super.dispose();
   }
 
@@ -136,6 +134,11 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
         actions: [
           IconButton(
             tooltip: 'Clear draft',
+            iconSize: 30,
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(52),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             onPressed: () async {
               setState(() {
                 selectedMood = -1;
@@ -447,6 +450,12 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                         borderRadius: BorderRadius.circular(14),
                         child: Row(
                           children: [
+                            Icon(
+                              Icons.mood_rounded,
+                              size: 20,
+                              color: cs.primary,
+                            ),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 _showPreviousLogs
@@ -492,12 +501,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             final m = moods[selectedMood];
                             final notes = notesCtrl.text.trim();
 
-                            // Compose log text: notes are primary, tags appended for context.
-                            final tagPart = tags.isNotEmpty
-                                ? ' [context: ${tags.join(', ')}]'
-                                : '';
-                            final userLog =
-                                '${notes.isNotEmpty ? notes : m.label}$tagPart';
+                            final userLog = notes.isNotEmpty ? notes : m.label;
 
                             try {
                               final now = DateTime.now();
@@ -521,7 +525,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 moodEntry,
                               );
                               if (context.mounted) {
-                                context.read<MoodLogStore>().add(
+                                final moodStore = context.read<MoodLogStore>();
+                                moodStore.add(
                                   MoodCheckIn(
                                     moodLabel: m.label,
                                     emoji: m.emoji,
@@ -530,6 +535,15 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                     notes: notes,
                                     createdAt: now,
                                   ),
+                                );
+                                unawaited(
+                                  context
+                                      .read<MiniMeSuggestionsInbox>()
+                                      .refresh(
+                                        moodStore: moodStore,
+                                        sleepStore: context.read<SleepStore>(),
+                                        fromLog: true,
+                                      ),
                                 );
                               }
                               await TrackingReminderService.instance
@@ -542,32 +556,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               } catch (_) {
                                 syncWarning =
                                     'Saved on this device. Cloud sync failed for this mood log.';
-                              }
-
-                              // Auto-detect and register symptoms from user notes
-                              unawaited(
-                                SymptomAutoDetectorService.autoRegisterDetectedSymptoms(
-                                  userLog,
-                                  'mood_log',
-                                ),
-                              );
-
-                              // Generate MiniMe mood reply in background.
-                              // Capture inbox before the async gap — context may be gone by then.
-                              if (context.mounted && AppServices.isMiniGenLoaded) {
-                                final inbox = context.read<MiniMeSuggestionsInbox>();
-                                final userName =
-                                    FirebaseAuth.instance.currentUser?.displayName ??
-                                    FirebaseAuth.instance.currentUser?.email?.split('@').first ??
-                                    'User';
-                                unawaited(_triggerMoodLogReply(
-                                  mood: m.label,
-                                  intensity: intensity,
-                                  tags: Set.from(tags),
-                                  note: notes.isEmpty ? null : notes,
-                                  userName: userName,
-                                  inbox: inbox,
-                                ));
                               }
                             } catch (e) {
                               if (!context.mounted) return;
@@ -617,7 +605,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                     child: LogButtonContent(
                       state: _buttonState,
                       idleLabel: widget.source == LogSource.tab
-                          ? "Save and log another time"
+                          ? "Log mood entry"
                           : "Save check-in",
                       loadingLabel: 'Saving check-in',
                       successLabel: 'Saved',
@@ -659,28 +647,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
           'tags': selectedTags,
           'createdAt': Timestamp.fromDate(entry.timestamp),
         });
-  }
-
-  static Future<void> _triggerMoodLogReply({
-    required String mood,
-    required int intensity,
-    required Set<String> tags,
-    required String? note,
-    required String userName,
-    required MiniMeSuggestionsInbox inbox,
-  }) async {
-    try {
-      final reply = await AppServices.miniGenChat.generateMoodLogReply(
-        mood: mood,
-        intensity: intensity,
-        tags: tags,
-        note: note,
-        userName: userName,
-      );
-      await inbox.injectPipelineMessage(reply);
-    } catch (e) {
-      // Non-fatal — MiniMe just won't have a proactive reply this session.
-    }
   }
 }
 
@@ -777,6 +743,9 @@ class _PreviousMoodLogsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final avatarSelection = context.select<AvatarStore, _MoodAvatarSelection>(
+      (avatarStore) => _MoodAvatarSelection.fromStore(avatarStore),
+    );
     final historySelection = context
         .select<MoodLogStore, _MoodHistorySelection>(
           (moodStore) => _MoodHistorySelection.fromStore(moodStore),
@@ -798,7 +767,10 @@ class _PreviousMoodLogsSection extends StatelessWidget {
           .map(
             (item) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _PreviousMoodLogCard(item: item),
+              child: _PreviousMoodLogCard(
+                item: item,
+                avatarSelection: avatarSelection,
+              ),
             ),
           )
           .toList(growable: false),
@@ -807,9 +779,13 @@ class _PreviousMoodLogsSection extends StatelessWidget {
 }
 
 class _PreviousMoodLogCard extends StatelessWidget {
-  const _PreviousMoodLogCard({required this.item});
+  const _PreviousMoodLogCard({
+    required this.item,
+    required this.avatarSelection,
+  });
 
   final MoodCheckIn item;
+  final _MoodAvatarSelection avatarSelection;
 
   @override
   Widget build(BuildContext context) {
@@ -818,10 +794,10 @@ class _PreviousMoodLogCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
       ),
       child: Column(
@@ -829,12 +805,25 @@ class _PreviousMoodLogCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(item.emoji, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 10),
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: MiniMePortraitAvatar(
+                  bodyModel: avatarSelection.bodyModel,
+                  hairModel: avatarSelection.hairModel,
+                  shirtModel: avatarSelection.shirtModel,
+                  bodyWidthScale: avatarSelection.bodyWidthScale,
+                  companionId: avatarSelection.companionId,
+                  moodLabel: item.moodLabel,
+                  degradationLevel: avatarSelection.degradationLevel,
+                  size: 44,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  '${item.moodLabel} • ${item.intensity}/5',
-                  style: theme.textTheme.bodyMedium?.copyWith(
+                  item.moodLabel,
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -914,7 +903,11 @@ class _MoodHistorySelection {
   });
 
   factory _MoodHistorySelection.fromStore(MoodLogStore moodStore) {
-    final items = moodStore.items.take(10).toList(growable: false);
+    final today = DateTime.now();
+    final items = moodStore.items
+        .where((item) => _isSameDay(item.createdAt, today))
+        .take(10)
+        .toList(growable: false);
     final signature = items
         .map(
           (item) =>
