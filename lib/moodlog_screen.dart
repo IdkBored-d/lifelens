@@ -117,6 +117,9 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     await MoodLogDraftStorageService.instance.clear();
   }
 
+  static const _intensityLabels = ['very low', 'low', 'moderate', 'high', 'very high'];
+  String _intensityLabel(int intensity) => _intensityLabels[intensity.clamp(1, 5) - 1];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -540,7 +543,7 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                 ..mobileBertTopProb = bertTopProb
                                 ..responseText = notes.isNotEmpty
                                     ? notes
-                                    : 'I am feeling $intensity/5 ${m.label}'
+                                    : 'I am feeling ${_intensityLabel(intensity)} ${m.label}'
                                 ..fitnessScoreSnapshot = fitnessScore
                                 ..timestamp = now;
                               await AppServices.isar.writeMoodEntry(moodEntry);

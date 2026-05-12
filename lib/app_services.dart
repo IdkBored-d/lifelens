@@ -18,6 +18,7 @@ import 'services/gemini_service.dart';
 import 'services/fitness_pipeline_service.dart';
 import 'services/eod_pipeline_service.dart';
 import 'services/chat_session_service.dart';
+import 'services/context_builder_service.dart';
 import 'services/model_lifecycle_service.dart';
 
 /// Central service locator for LifeLens.
@@ -49,6 +50,7 @@ class AppServices {
   static late final GeminiService gemini;
   static late final FitnessPipelineService fitnessPipeline;
   static late final EodPipelineService eodPipeline;
+  static late final ContextBuilderService contextBuilder;
 
   // Two tokenizer instances — same vocab, different maxLength
   static late final WordPieceTokenizer _mbTokenizer; // maxLen=128 for MobileBERT
@@ -164,6 +166,8 @@ class AppServices {
       disEmbed: disEmbed,
       tokenize: _disEmbedTokenize,
     );
+
+    contextBuilder = ContextBuilderService(isar);
 
     debugPrint('[AppServices] init: completed in ${sw.elapsedMilliseconds}ms');
   }

@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 import 'package:provider/provider.dart';
@@ -73,18 +76,57 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       HapticFeedback.mediumImpact();
 
       final isOnline = await AppServices.isOnline();
-      const List<String> miniMeTop3 = [];
+
+      // Run DisEmbed → Weaviate pipeline when online to populate triage fields.
+      // Any failure falls through with empty defaults so the save always succeeds.
+      var predictedAilment = '';
+      double? disEmbedScore;
+      var diagnosesJson = '[]';
+      var ragUsed = false;
+      final miniMeTop3 = <String>[];
+
+      if (isOnline) {
+        try {
+          await ModelLifecycleService.instance
+              .ensureLoaded([ModelType.disEmbed]);
+          final queryText = symptomsForPipeline.join(', ');
+          final embedding = await AppServices.disEmbed.embed(
+            queryText,
+            AppServices.disEmbedTokenize,
+          );
+          final results =
+              await AppServices.weaviate.queryByVector(embedding, topK: 5);
+          if (results.isNotEmpty) {
+            predictedAilment = results.first.disease;
+            disEmbedScore = results.first.certainty;
+            ragUsed = true;
+            diagnosesJson = jsonEncode(results
+                .map((r) => {
+                      'disease': r.disease,
+                      'reasoning': r.description,
+                      'next_steps': '',
+                      'is_urgent': false,
+                    })
+                .toList());
+            miniMeTop3
+                .addAll(results.take(3).map((r) => r.disease));
+          }
+        } catch (e) {
+          debugPrint('[SymptomsScreen] Symptom pipeline failed (non-fatal): $e');
+        }
+      }
+
       final now = DateTime.now();
       await AppServices.isar.writeSymptomEntry(
         SymptomEntry()
           ..date = now.toIso8601String().substring(0, 10)
           ..rawSymptoms = symptomsForPipeline.join(', ')
           ..symptomList = symptomsForPipeline
-          ..predictedAilment = ''
-          ..disEmbedScore = null
-          ..diagnosesJson = '[]'
-          ..resolvedBy = 'none'
-          ..ragUsed = false
+          ..predictedAilment = predictedAilment
+          ..disEmbedScore = disEmbedScore
+          ..diagnosesJson = diagnosesJson
+          ..resolvedBy = ragUsed ? 'base' : 'none'
+          ..ragUsed = ragUsed
           ..wasOffline = !isOnline
           ..status = 'monitoring'
           ..timestamp = now

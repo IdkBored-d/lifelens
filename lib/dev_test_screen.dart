@@ -8,6 +8,7 @@ import 'package:lifelens/models/escalation_level.dart'; // ← ADD
 import 'package:lifelens/models/mood_result.dart'; // ← ADD (kMobileBertLabels)
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
+import 'package:lifelens/services/context_builder_service.dart';
 import 'package:lifelens/services/minigen_prompt.dart' as prompt;
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
@@ -416,9 +417,13 @@ class _DevTestScreenState extends State<DevTestScreen> {
       return '✗ MiniGen model is not loaded';
     }
 
+    final ctx = await AppServices.contextBuilder.build(
+      userName: 'test',
+      latestAction: 'Chat',
+    );
     final reply = await AppServices.miniGenChat.generateMiniMeReply(
       userMessage: 'I feel overwhelmed and tired today.',
-      moodLabel: 'Anxious',
+      context: ctx,
     );
     return '✓ MiniGen inference succeeded\nReply: $reply';
   }

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'context_builder_service.dart';
+
 const Set<String> _canonicalMoodLabels = {
   'sadness',
   'joy',
@@ -592,45 +594,19 @@ class MiniMeBackendService {
   }
 
   Future<MiniMeBackendReply> chat({
+    required LifeLensContext context,
     required String userMessage,
-    required String moodLabel,
-    required int moodIntensity,
-    required String moodNotes,
-    required List<String> recentMoods,
-    required List<String> activeSymptoms,
     required List<MiniMeChatTurn> history,
-    String? summaryContext,
     MiniMeIntelligenceReply? intelligence,
   }) async {
-    final canonicalRecentMoods = _sanitizeRecentMoods(recentMoods);
-    final canonicalMoodLabel = _resolveLatestCanonicalMood(
-      moodLabel,
-      canonicalRecentMoods,
-    );
     final sanitizedHistory = _truncateHistory(history);
-    final sanitizedSymptoms = _truncateListItems(
-      activeSymptoms,
-      maxItems: 20,
-      maxItemLength: 120,
-    );
-    final sanitizedMoodNotes = _truncateText(moodNotes, 1000);
-    final sanitizedSummaryContext = summaryContext == null
-        ? null
-        : _truncateText(summaryContext, 8000);
     final sanitizedUserMessage = _truncateText(userMessage, 2000);
 
     final payload = <String, dynamic>{
+      ...toBackendJson(context),
       'user_message': sanitizedUserMessage,
-      'latest_mood_label': canonicalMoodLabel,
-      'latest_mood_intensity': moodIntensity,
-      'latest_mood_notes': sanitizedMoodNotes,
-      'recent_moods': canonicalRecentMoods,
-      'active_symptoms': sanitizedSymptoms,
       'chat_history': sanitizedHistory.map((e) => e.toJson()).toList(),
     };
-    if (sanitizedSummaryContext != null && sanitizedSummaryContext.isNotEmpty) {
-      payload['summary_context'] = sanitizedSummaryContext;
-    }
     if (intelligence != null) {
       payload['intelligence_tier'] = intelligence.interventionTier;
       payload['intelligence_phase'] = intelligence.userPhase;

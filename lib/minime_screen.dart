@@ -13,6 +13,7 @@ import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/crisis_regex_net.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:lifelens/services/context_builder_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/chat_session_service.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
@@ -1061,10 +1062,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       return;
     }
 
-    final moodStore = context.read<MoodLogStore>();
-    final moodContext = _buildMoodContext(moodStore);
-    final moodLabel = moodContext.label;
-
     setState(() {
       _isCoachExpanded = true;
       _appendMessage(_MiniMeChatMessage(role: _ChatRole.user, text: text));
@@ -1083,12 +1080,19 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       );
     }
 
+    final llmContext = await AppServices.contextBuilder.build(
+      userName: widget.userName,
+      latestAction: 'Chat',
+      intelligenceSummary: _buildIntelligenceSummary(),
+    );
+    final moodLabel = llmContext.latestMood?.label ?? 'Neutral';
+
     String reply;
 
     try {
       reply = await _miniGenReplyOrFallback(
         userText: text,
-        moodContext: moodContext,
+        llmContext: llmContext,
       );
     } catch (_) {
       reply = _buildOfflineReply(userText: text, moodLabel: moodLabel);
@@ -1458,20 +1462,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   // ── MiniGen chat helpers ──────────────────────────────────────────────────────
 
-  /// Fetches symptom and trend context from Isar for MiniGen prompt assembly.
-  Future<Map<String, String?>> _buildMiniMeIsarContext() async {
-    final isar = AppServices.isar;
-    final activeSymptoms = await isar.getActiveSymptomEntries();
-    final symptomsStr = activeSymptoms.isNotEmpty
-        ? activeSymptoms.map((e) => e.predictedAilment).join(', ')
-        : null;
-    return {
-      'symptoms': symptomsStr,
-      'conditions': null,
-      'trends': _buildIntelligenceSummary(),
-    };
-  }
-
   /// Maps chat history to MiniGen tagged format (oldest → newest).
   List<String> _buildTaggedHistory() => _messages
       .take(20)
@@ -1504,29 +1494,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
 
     return turns;
-  }
-
-  Future<List<String>> _loadActiveSymptomsForBackend() async {
-    final activeSymptoms = await AppServices.isar.getActiveSymptomEntries();
-    final values = <String>{};
-
-    for (final entry in activeSymptoms) {
-      for (final symptom in entry.symptomList) {
-        final trimmed = symptom.trim();
-        if (trimmed.isNotEmpty) {
-          values.add(trimmed);
-        }
-      }
-
-      final predicted = entry.predictedAilment.trim();
-      if (predicted.isNotEmpty &&
-          predicted.toLowerCase() != 'tracking-only' &&
-          predicted.toLowerCase() != 'tracking only') {
-        values.add(predicted);
-      }
-    }
-
-    return values.toList(growable: false);
   }
 
   /// Shows the crisis support dialog — dual-tier (988 mental health / 911 emergency).
@@ -1594,23 +1561,17 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   /// and only the model's partial output is discarded.
   Future<String> _miniGenReplyOrFallback({
     required String userText,
-    required _MiniMeMoodContext moodContext,
+    required LifeLensContext llmContext,
   }) async {
     // Tier 1: MiniGen on-device (stream collected to buffer)
     if (AppServices.isMiniGenLoaded) {
       try {
-        final ctx = await _buildMiniMeIsarContext();
         final history = _buildTaggedHistory();
         final buffer = StringBuffer();
         await for (final token
             in AppServices.miniGenChat.generateMiniMeReplyStream(
               userMessage: userText,
-              moodLabel: moodContext.label,
-              user: widget.userName,
-              moodLog: moodContext.recentMoodSummary.take(3).join(', '),
-              symptoms: ctx['symptoms'],
-              conditions: ctx['conditions'],
-              trends: ctx['trends'],
+              context: llmContext,
               chatHistory: history,
             )) {
           buffer.write(token);
@@ -1618,11 +1579,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         final result = buffer.toString().trim();
         if (result.isNotEmpty) return result;
       } on CrisisInterventionException catch (e) {
-        // Do NOT append — discard the incomplete turn entirely
         _showCrisisOverlay(e.type);
         return _buildOfflineReply(
           userText: userText,
-          moodLabel: moodContext.label,
+          moodLabel: llmContext.latestMood?.label ?? 'Neutral',
         );
       } catch (_) {
         // fall through to backend fallback
@@ -1633,14 +1593,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (await _isOnline()) {
       try {
         final backendReply = await MiniMeBackendService.instance.chat(
+          context: llmContext,
           userMessage: userText,
-          moodLabel: moodContext.label,
-          moodIntensity: moodContext.intensity.clamp(0, 5),
-          moodNotes: moodContext.notes,
-          recentMoods: moodContext.recentMoodSummary,
-          activeSymptoms: await _loadActiveSymptomsForBackend(),
           history: _buildBackendHistory(currentUserText: userText),
-          summaryContext: _buildIntelligenceSummary(),
           intelligence: _intelligence,
         );
 
@@ -1656,7 +1611,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
 
     // Tier 3: Offline template
-    return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
+    return _buildOfflineReply(
+      userText: userText,
+      moodLabel: llmContext.latestMood?.label ?? 'Neutral',
+    );
   }
 
   /// Builds a concise intelligence summary string for on-device LLM prompts.
@@ -1750,23 +1708,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   Future<void> _ensureChatSessionStarted() async {
     if (_sessionId != null || !mounted) return;
     final moodStore = context.read<MoodLogStore>();
-    final moodCtx = _buildMoodContext(moodStore);
-    _sessionId = await _chatSessionService.startSession(
-      moodLabel: moodCtx.label,
-      moodIntensity: moodCtx.intensity,
-      moodNotes: moodCtx.notes.isEmpty ? null : moodCtx.notes,
-    );
-  }
-
-  _MiniMeMoodContext _buildMoodContext(MoodLogStore moodStore) {
     final latest = moodStore.items.isEmpty ? null : moodStore.items.first;
-    final recent = moodStore.items.take(5).map((e) => e.moodLabel).toList();
-
-    return _MiniMeMoodContext(
-      label: latest?.moodLabel ?? 'Neutral',
-      intensity: latest?.intensity ?? 0,
-      notes: latest?.notes ?? '',
-      recentMoodSummary: recent,
+    _sessionId = await _chatSessionService.startSession(
+      moodLabel: latest?.moodLabel ?? 'Neutral',
+      moodIntensity: latest?.intensity ?? 0,
+      moodNotes: (latest?.notes ?? '').isEmpty ? null : latest?.notes,
     );
   }
 
@@ -4635,20 +4581,6 @@ class _MiniMeChatMessage {
     _messageSuggestionIntroCache[this] = intro ?? _nullSuggestionIntro;
     return intro;
   }
-}
-
-class _MiniMeMoodContext {
-  const _MiniMeMoodContext({
-    required this.label,
-    required this.intensity,
-    required this.notes,
-    required this.recentMoodSummary,
-  });
-
-  final String label;
-  final int intensity;
-  final String notes;
-  final List<String> recentMoodSummary;
 }
 
 /// Dialog that asks the user whether they are still experiencing a symptom.

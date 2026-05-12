@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../app_services.dart';
+import 'context_builder_service.dart';
 import 'crisis_regex_net.dart';
 import 'minigen_prompt.dart' as prompt;
 import 'minigen_service.dart';
@@ -31,24 +32,12 @@ class MiniGenChat {
   /// in the input prompt.
   Future<String> generateMiniMeReply({
     required String userMessage,
-    required String moodLabel,
-    String? user,
-    String? moodLog,
-    String? symptoms,
-    String? conditions,
-    String? trends,
-    String? intelligenceSummary,
+    required LifeLensContext context,
     List<String>? chatHistory,
   }) async {
     final fullPrompt = _buildMiniMePrompt(
       userMessage: userMessage,
-      moodLabel: moodLabel,
-      user: user,
-      moodLog: moodLog,
-      symptoms: symptoms,
-      conditions: conditions,
-      trends: trends,
-      intelligenceSummary: intelligenceSummary,
+      context: context,
       chatHistory: chatHistory,
     );
 
@@ -85,24 +74,12 @@ class MiniGenChat {
   /// ```
   Stream<String> generateMiniMeReplyStream({
     required String userMessage,
-    required String moodLabel,
-    String? user,
-    String? moodLog,
-    String? symptoms,
-    String? conditions,
-    String? trends,
-    String? intelligenceSummary,
+    required LifeLensContext context,
     List<String>? chatHistory,
   }) async* {
     final fullPrompt = _buildMiniMePrompt(
       userMessage: userMessage,
-      moodLabel: moodLabel,
-      user: user,
-      moodLog: moodLog,
-      symptoms: symptoms,
-      conditions: conditions,
-      trends: trends,
-      intelligenceSummary: intelligenceSummary,
+      context: context,
       chatHistory: chatHistory,
     );
 
@@ -145,24 +122,11 @@ class MiniGenChat {
 
   String _buildMiniMePrompt({
     required String userMessage,
-    required String moodLabel,
-    String? user,
-    String? moodLog,
-    String? symptoms,
-    String? conditions,
-    String? trends,
-    String? intelligenceSummary,
+    required LifeLensContext context,
     List<String>? chatHistory,
   }) {
     return prompt.buildPrompt(
-      contextEntries: {
-        'USER':          user,
-        'MOOD_LOG':      moodLog ?? moodLabel,
-        'SYMPTOMS':      symptoms,
-        'CONDITIONS':    conditions,
-        'TRENDS':        trends ?? intelligenceSummary,
-        'LATEST_ACTION': 'Chat',
-      },
+      contextEntries: toMiniGenEntries(context),
       chatHistory: chatHistory,
       userMessage: userMessage,
     );
