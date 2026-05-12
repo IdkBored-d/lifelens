@@ -352,23 +352,28 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _isCoachExpanded = true;
         _activeSymptomCount = (_activeSymptomCount - 1).clamp(0, 99);
-        _appendMessage(
-          _MiniMeChatMessage(
-            role: _ChatRole.assistant,
-            text:
-                'Glad to hear your symptoms went away. I marked them as resolved, and I will stay out of the way unless something new comes up.',
-          ),
-        );
       });
-      _scrollToBottom();
-      await _persistMessages();
+      unawaited(_showSymptomResolvedConfirmation());
       await _refreshIntelligence();
     }
 
     // Refresh notification banner state after any outcome.
     await _checkSymptomCheckupPending();
+  }
+
+  Future<void> _showSymptomResolvedConfirmation() async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _SymptomResolvedConfirmationSheet(),
+    );
   }
 
   Future<void> _runDaySummary() async {
@@ -4689,6 +4694,67 @@ class _SymptomCheckupDialog extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _SymptomResolvedConfirmationSheet extends StatelessWidget {
+  const _SymptomResolvedConfirmationSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.check_circle_rounded,
+              color: cs.onPrimaryContainer,
+              size: 32,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Symptoms marked resolved',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Mini-Me will stop checking in on this symptom unless something new comes up.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: cs.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.done_rounded),
+              label: const Text('Done'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

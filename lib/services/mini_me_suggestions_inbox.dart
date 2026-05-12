@@ -331,6 +331,38 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> enqueueSymptomLogSaved({required List<String> symptoms}) async {
+    await _ensureCurrentScopeLoaded();
+
+    final cleanedSymptoms = symptoms
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .take(3)
+        .toList(growable: false);
+    final symptomText = cleanedSymptoms.isEmpty
+        ? 'your symptom log'
+        : cleanedSymptoms.join(', ');
+
+    final suggestion = DailySuggestion(
+      title: 'Symptom log saved',
+      action:
+          'I saved your symptom log for $symptomText. I could not get condition matches yet, but I will keep watching for changes.',
+      reason: 'Mini-Me can still help you track whether symptoms improve.',
+      category: 'Symptoms',
+      priority: 4,
+      icon: Icons.health_and_safety_rounded,
+    );
+
+    final stored = _StoredSuggestion.fromDailySuggestion(suggestion);
+    final nextUnread = <_StoredSuggestion>[stored];
+
+    if (_sameDigests(_unread, nextUnread)) return;
+
+    _unread = nextUnread;
+    await _persistUnread();
+    notifyListeners();
+  }
+
   Future<_SuggestionCadenceDecision> _evaluateCadenceDecision({
     required MoodLogStore moodStore,
     required SleepStore sleepStore,

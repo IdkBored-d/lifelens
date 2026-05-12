@@ -130,12 +130,16 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
           ),
         );
       }
-      if (miniMeTop3.isNotEmpty && mounted) {
+      if (mounted) {
         final inbox = context.read<MiniMeSuggestionsInbox>();
-        await inbox.enqueueSymptomInsight(
-          topConditions: miniMeTop3,
-          symptoms: symptomsForPipeline,
-        );
+        if (miniMeTop3.isNotEmpty) {
+          await inbox.enqueueSymptomInsight(
+            topConditions: miniMeTop3,
+            symptoms: symptomsForPipeline,
+          );
+        } else {
+          await inbox.enqueueSymptomLogSaved(symptoms: symptomsForPipeline);
+        }
       }
       await Future<void>.delayed(const Duration(milliseconds: 900));
       if (!mounted) return;

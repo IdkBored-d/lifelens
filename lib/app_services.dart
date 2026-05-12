@@ -148,6 +148,16 @@ class AppServices {
       tokenize: _disEmbedTokenize,
     );
 
+    // Register lifecycle before model preloading so any pipeline invoked while
+    // startup is still settling can safely request an on-demand load.
+    ModelLifecycleService.instance.init(
+      mobileBert: mobileBert,
+      disEmbed: disEmbed,
+      fitnessMlp: fitnessMlp,
+      miniGen: miniGen,
+    );
+    WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
+
     var loadedCount = 0;
 
     Future<void> loadModel(String name, Future<void> Function() loader) async {
@@ -192,15 +202,7 @@ class AppServices {
       '[AppServices] init: blocking model preload ready $loadedCount/$expectedBlockingModels in ${sw.elapsedMilliseconds - modelsStart}ms',
     );
 
-    // ── 6. Lifecycle + startup repair ───────────────────────────────────────
-    ModelLifecycleService.instance.init(
-      mobileBert: mobileBert,
-      disEmbed: disEmbed,
-      fitnessMlp: fitnessMlp,
-      miniGen: miniGen,
-    );
-    WidgetsBinding.instance.addObserver(ModelLifecycleService.instance);
-
+    // ── 6. Startup repair ───────────────────────────────────────────────────
     final repairStart = sw.elapsedMilliseconds;
     try {
       final chatSessions = ChatSessionService();
