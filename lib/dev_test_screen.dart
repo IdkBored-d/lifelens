@@ -8,6 +8,8 @@ import 'package:lifelens/models/escalation_level.dart'; // ← ADD
 import 'package:lifelens/models/mood_result.dart'; // ← ADD (kMobileBertLabels)
 import 'package:lifelens/models/fitness_result.dart';
 import 'package:lifelens/services/confidence_manager.dart';
+import 'package:lifelens/services/minigen_prompt.dart' as prompt;
+import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/minigen_downloader.dart';
 import 'package:lifelens/services/model_lifecycle_service.dart';
@@ -422,6 +424,183 @@ class _DevTestScreenState extends State<DevTestScreen> {
     return '✓ MiniGen inference succeeded\nReply: $reply';
   }
 
+  Future<String> _testGenerateCurrentPrompts() async {
+    final isar = AppServices.isar;
+
+    // ── Shared live context ──────────────────────────────────────────────────
+    final activeSymptoms = await isar.getActiveSymptomEntries();
+    final symptomsStr = activeSymptoms.isNotEmpty
+        ? activeSymptoms.map((e) => e.predictedAilment).join(', ')
+        : null;
+
+    final lastMood  = await isar.getLastMoodEntry();
+    final moodLabel = lastMood?.resolvedMood ?? '<<unknown>>';
+    final recentMoods = await isar.getRecentMoodEntries(days: 7);
+
+    // Build intelligence / trends — mirror _refreshIntelligence in MiniMeScreen
+    String? trendsStr;
+    String trendsStatus = 'omitted (backend unavailable)';
+    try {
+      final moodInts = recentMoods.reversed
+          .map((e) => _moodLabelToIntensity(e.resolvedMood))
+          .toList();
+      final sleepInts = recentMoods.reversed
+          .map((e) => _moodLabelToSleepHours(e.resolvedMood))
+          .toList();
+      final symptomCounts = activeSymptoms
+          .take(7)
+          .map((e) => e.symptomList.length.clamp(0, 8))
+          .toList();
+      final payloadMood    = moodInts.isEmpty  ? const [3, 3, 3] : moodInts;
+      final payloadSleep   = sleepInts.isEmpty ? const [7, 7, 7] : sleepInts;
+      final payloadExercise = const [0, 0, 0]; // no ExerciseStore access outside MiniMeScreen
+      final intel = await MiniMeBackendService.instance.analyzeIntelligence(
+        sleep:        payloadSleep,
+        mood:         payloadMood,
+        exercise:     payloadExercise,
+        symptomCount: symptomCounts,
+        includeGeminiMessage: false,
+      ).timeout(const Duration(seconds: 8));
+      final parts = <String>[];
+      if (intel.lowSleep)  parts.add('low sleep');
+      if (intel.lowMood)   parts.add('low mood');
+      if (intel.inactive)  parts.add('inactive');
+      if (intel.insights.isNotEmpty) parts.add(intel.insights.first);
+      final actions = intel.selectedActions.map((a) => a.replaceAll('_', ' ')).join(', ');
+      if (actions.isNotEmpty) parts.add('focus: $actions');
+      if (parts.isNotEmpty) {
+        trendsStr   = 'User is ${intel.userPhase}. ${parts.join("; ")}.';
+        trendsStatus = 'ok';
+      }
+    } catch (_) {}
+
+    // Chat history — newest-first, capped at ~800 tokens (3200 chars)
+    var historyCharCount = 0;
+    List<String> history = const [];
+    try {
+      final sessions = await isar.getRecentChatSessions(limit: 1);
+      if (sessions.isNotEmpty) {
+        final msgs = await isar.getMessagesForSession(sessions.first.sessionId);
+        final tagged = msgs.reversed
+            .map((m) => m.role == 'user' ? '<|user|>${m.text}' : '<|companion|>${m.text}')
+            .toList();
+        final capped = <String>[];
+        for (final line in tagged) {
+          final cost = line.length + 1;
+          if (historyCharCount + cost > 3200) break;
+          historyCharCount += cost;
+          capped.add(line);
+        }
+        history = capped.reversed.toList(); // restore chronological order
+      }
+    } catch (_) {}
+
+    // ── 1. MiniMe chat prompt ────────────────────────────────────────────────
+    const sampleMsg = '<<sample user message>>';
+    final chatPrompt = prompt.buildPrompt(
+      contextEntries: {
+        'MOOD_LOG':      moodLabel,
+        'SYMPTOMS':      symptomsStr,
+        'CONDITIONS':    null,
+        'TRENDS':        trendsStr,
+        'LATEST_ACTION': 'Chat',
+      },
+      chatHistory: history,
+      userMessage: sampleMsg,
+    );
+
+    // ── 2. Mood-log reply prompt ─────────────────────────────────────────────
+    final moodLogPrompt = prompt.buildPrompt(
+      contextEntries: {
+        'MOOD_LOG':      'moderate $moodLabel. Note: <<sample note>>',
+        'CURRENT_TONE':  '<<derived at runtime by MobileBERT>>',
+        'SYMPTOMS':      symptomsStr,
+        'CONDITIONS':    null,
+        'TRENDS':        trendsStr,
+        'LATEST_ACTION': 'Mood Log',
+      },
+      userMessage: sampleMsg,
+    );
+
+    // ── 3. Symptom pipeline context (DisEmbed → Weaviate) ───────────────────
+    final rawSymptoms = activeSymptoms.isNotEmpty
+        ? activeSymptoms.first.rawSymptoms
+        : '<<sample symptom text>>';
+    final symptomBuf = StringBuffer();
+    symptomBuf.writeln('User symptoms: "$rawSymptoms"');
+
+    String embeddingSig = '<<not run>>';
+    List<double>? embedding;
+    try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.disEmbed]);
+      embedding = await AppServices.disEmbed.embed(rawSymptoms, AppServices.disEmbedTokenize);
+      final head = embedding.take(5).map((v) => v.toStringAsFixed(4)).join(', ');
+      embeddingSig = 'dim=${embedding.length}, head=[$head, …]';
+    } catch (e) {
+      embeddingSig = '<<DisEmbed failed: $e>>';
+    }
+    symptomBuf.writeln('DisEmbed embedding: $embeddingSig');
+
+    String ragStatus = 'omitted (offline or embedding unavailable)';
+    if (embedding != null && await AppServices.isOnline()) {
+      try {
+        final hits = await AppServices.weaviate.queryByVector(embedding, topK: 5);
+        if (hits.isEmpty) {
+          symptomBuf.writeln('Weaviate hits: (none above certainty threshold)');
+          ragStatus = 'ok (0 hits)';
+        } else {
+          symptomBuf.writeln('\n--- Possible conditions (RAG top-${hits.length}) ---');
+          for (final h in hits) {
+            symptomBuf.writeln('  ${h.disease} (certainty=${h.certainty.toStringAsFixed(3)})');
+            symptomBuf.writeln('  Symptoms: ${h.symptoms}');
+            symptomBuf.writeln('  ${h.description}');
+            symptomBuf.writeln();
+          }
+          symptomBuf.writeln(AppServices.weaviate.buildRagContext(hits));
+          ragStatus = 'ok (${hits.length} hits)';
+        }
+      } catch (e) {
+        symptomBuf.writeln('Weaviate RAG: <<failed: $e>>');
+        ragStatus = 'failed';
+      }
+    } else {
+      symptomBuf.writeln('Weaviate RAG: <<omitted: offline or embedding unavailable>>');
+    }
+
+    // ── Compose result ───────────────────────────────────────────────────────
+    return '''
+✓ Current prompts generated (no model inference)
+
+══ 1. MiniMe chat (MiniGen) ══════════════════════════════════════════
+$chatPrompt
+
+══ 2. Mood-log reply (MiniGen) ═══════════════════════════════════════
+$moodLogPrompt
+
+══ 3. Symptom pipeline context (DisEmbed → Weaviate) ════════════════
+${symptomBuf.toString().trim()}
+
+────────────────────────────────────────────────────────────────────
+history=${history.length} msgs (~$historyCharCount chars) | trends=$trendsStatus | rag=$ragStatus | symptoms=${symptomsStr ?? '(none)'}''';
+  }
+
+  // Maps a mood label to an intensity int (1–5) for intelligence payload assembly.
+  static int _moodLabelToIntensity(String label) {
+    switch (label.trim().toLowerCase()) {
+      case 'sadness': case 'anger': case 'fear': case 'anxious': return 2;
+      case 'joy':     case 'love':  return 4;
+      default: return 3;
+    }
+  }
+
+  // Estimates sleep hours from mood label — mirrors MiniMeScreen._estimatedSleepHoursFromMood.
+  static int _moodLabelToSleepHours(String label) {
+    final m = label.trim().toLowerCase();
+    if (m == 'tired' || m == 'sad' || m == 'anxious') return 5;
+    if (m == 'neutral') return 6;
+    return 7;
+  }
+
   Future<String> _testDeleteMiniGen() async {
     await MiniGenDownloader.deleteModel();
     return '✓ Cached MiniGen model deleted from disk';
@@ -538,6 +717,7 @@ class _DevTestScreenState extends State<DevTestScreen> {
                   _testBtn('MiniGen Status', _testMiniGenStatus),
                   _testBtn('Load MiniGen Now', _testMiniGenLoad),
                   _testBtn('MiniGen Inference', _testMiniGenInference),
+                  _testBtn('Generate Current Prompts', _testGenerateCurrentPrompts),
                   _testBtn(
                     'Delete MiniGen Model',
                     _testDeleteMiniGen,

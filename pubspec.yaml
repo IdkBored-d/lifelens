@@ -74,6 +74,7 @@ flutter:
     - assets/models/vocab.txt
   # ── MiniGen GGUF (bundled fallback — runtime copies to app support dir) ─────
     - assets/models/minigen-Q8_0.gguf
+    - assets/models/minigen-f16.gguf
   # ── Old MiniGen ONNX assets (deprecated — replaced by GGUF) ─────────────
   #  - assets/models/minigen_int8.onnx
   #  - assets/models/tokenizer.json

@@ -10,18 +10,6 @@ import 'gemini_service.dart';
 import '../database/isar_service.dart';
 import '../database/symptom_entry.dart';
 
-/// Orchestrates USE CASE 2: Symptom reporting pipeline.
-///
-/// ONLINE flow:
-///   1. DisEmbed fast on-device prediction
-///   2. Confidence check → escalate to MiniGen (on-device) if needed
-///   3. MiniGen queries Weaviate RAG → expands to 5 diagnoses + next steps
-///   NOTE: logic may be incorrect -- this is replacing our old version.
-///   4. WRITE to ISAR (source of truth)
-///   5. WRITE condensed entry to symptom quick-tracking file
-///
-/// OFFLINE flow:
-///   Same but Weaviate RAG is skipped, offline warning shown.
 class SymptomPipelineService {
   final DisEmbedService _disEmbed;
   final GeminiService _gemini;

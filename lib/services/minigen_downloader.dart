@@ -14,16 +14,16 @@ class MiniGenDownloader {
   MiniGenDownloader._();
 
   static const String _url =
-      'https://huggingface.co/testingtest111/minigen-f16/resolve/main/minigen-Q8_0.gguf?download=true';
-  static const String _filename = 'minigen-Q8_0.gguf';
-  static const String _bundledAsset = 'assets/models/minigen-Q8_0.gguf';
+      'https://huggingface.co/testingtest111/minigen-f16/resolve/main/minigen-f16.gguf?download=true';
+  static const String _filename = 'minigen-f16.gguf';
+  static const String _bundledAsset = 'assets/models/minigen-f16.gguf';
 
   // Injected at build time via --dart-define=HF_TOKEN=hf_...
   // If empty, the Authorization header is omitted (public repos work without it).
   static const String _hfToken = String.fromEnvironment('HF_TOKEN');
 
-  // Guard against partial downloads. Full model is ~51.3 MB; 45 MB is a safe floor.
-  static const int _minValidBytes = 45 * 1024 * 1024;
+  // Guard against partial downloads. Q8_0 model is ~51.3 MB; 45 MB is a safe floor. f16 is 98314
+  static const int _minValidBytes = 45 * 1024 * 1024 * 2; // *2 is for f16
 
   // At most one download in flight; concurrent callers await the same future.
   static Completer<String>? _inFlight;
