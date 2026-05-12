@@ -3,9 +3,7 @@ import 'package:isar/isar.dart';
 part 'symptom_entry.g.dart';
 
 /// ISAR collection for symptom/illness entries.
-/// Written by SymptomPipelineService BEFORE the quick-tracking file is updated.
-/// This collection is NEVER truncated — all historical ailment data is kept
-/// for future reference (as per system design).
+/// Never truncated — all historical ailment data is kept for future reference.
 @Collection()
 class SymptomEntry {
   Id id = Isar.autoIncrement;

@@ -2,9 +2,7 @@ import 'package:isar/isar.dart';
 
 part 'mood_entry.g.dart';
 
-/// ISAR collection for mood log entries.
-/// Written by MoodPipelineService BEFORE the quick-tracking file is updated.
-/// This is the source of truth for all mood data.
+/// ISAR collection for mood log entries. Source of truth for all mood data.
 @Collection()
 class MoodEntry {
   /// ISAR auto-incremented ID

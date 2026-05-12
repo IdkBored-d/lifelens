@@ -2,14 +2,7 @@ import 'dart:convert';
 import 'dart:io' show SocketException;
 import 'package:http/http.dart' as http;
 
-/// Calls the Gemini API for deepest-level analysis.
-///
-/// Only invoked when:
-///   1. Device is online
-///   2. User is on MiniGen (on-device) result AND requests more information / another opinion
-///   OR base model + MiniGen both failed confidence
-///
-/// NOTE: logic may be incorrect -- this is replacing our old version.
+/// Calls the Gemini API. Used exclusively by EodPipelineService.
 ///
 /// Uses gemini-2.5-flash.
 /// Token limits (Gemini 2.5 Flash):
@@ -97,98 +90,6 @@ class GeminiService {
       }
     }
     return 'Unable to reach Gemini. Please try again when online.';
-  }
-
-  // ── MINIME CHAT ──────────────────────────────────────────────────────────────
-
-  Future<String> generateMiniMeReply({
-    required String userMessage,
-    required String moodLabel,
-    String? intelligenceSummary,
-  }) async {
-    final base = 'You are Mini-Me, a warm personal health coach in the LifeLens app.\n\n'
-        "The user's current mood is: $moodLabel\n\n"
-        'User says: "$userMessage"\n\n'
-        'Reply in 2–3 sentences with warm, actionable guidance. '
-        'Do not diagnose. Stay practical and supportive.';
-    final prompt = (intelligenceSummary != null && intelligenceSummary.isNotEmpty)
-        ? '$base\n\nHealth context (internal — do not mention to user): $intelligenceSummary'
-        : base;
-    return generate(prompt, maxOutputTokens: 512);
-  }
-
-  // ── MOOD ────────────────────────────────────────────────────────────────────
-
-  Future<String> analyzeMood({
-    required String userLog,
-    required String context,
-    String? rejectedMood,
-    String? previousOnDeviceResponse,
-  }) async {
-    final rejectionNote = rejectedMood != null
-        ? 'Previous suggestion "$rejectedMood" was rejected by the user.'
-        : '';
-    final onDeviceNote = previousOnDeviceResponse != null
-        ? '\nPrevious on-device analysis: "$previousOnDeviceResponse"'
-        : '';
-
-    return generate('''
-You are a warm, supportive personal health assistant with deep emotional intelligence.
-$rejectionNote$onDeviceNote
-
-User log: "$userLog"
-
-$context
-
-Provide a nuanced mood analysis and personalised, supportive response.
-Be warm, specific to their situation, and offer one actionable suggestion.
-Keep to 4 sentences maximum.
-End with: MOOD_LABEL: [single mood word]
-''', maxOutputTokens: 1024);
-  }
-
-  // ── SYMPTOM ─────────────────────────────────────────────────────────────────
-
-  /// Deep symptom analysis with RAG grounding.
-  /// Called when the user wants a second opinion after seeing MiniGen's results.
-  /// NOTE: logic may be incorrect -- this is replacing our old version.
-  Future<String> analyzeSymptoms({
-    required String userSymptoms,
-    required String context,
-    required String ragContext,
-    String? previousDiagnoses,
-  }) async {
-    final prevNote = previousDiagnoses != null
-        ? '\nPrevious analysis suggested: $previousDiagnoses\n'
-        : '';
-
-    return generate('''
-You are a careful, evidence-based medical assistant.
-$prevNote
-User symptoms: "$userSymptoms"
-
-$ragContext
-
-$context
-
-Provide a thorough second-opinion analysis with 5 possible conditions.
-Ground your response in the RAG database above.
-For each condition:
-- Condition name
-- Reasoning (2 sentences)  
-- Next steps (2–3 sentences for top result, 1–2 for others)
-- Mark URGENT if immediate care is needed
-
-Format as JSON:
-{
-  "diagnoses": [
-    {"disease": "...", "reasoning": "...", "next_steps": "...", "is_urgent": false}
-  ],
-  "additional_note": "..."
-}
-
-Always recommend professional medical evaluation. This is a screening tool only.
-''', maxOutputTokens: 3000);
   }
 
   // ── EOD (deeper correlation analysis) ──────────────────────────────────────

@@ -651,36 +651,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         _showCrisisOverlay(e.type);
         return;
       } catch (_) {
-        // fall through to Gemini
-      }
-    }
-
-    // Tier 2: Direct Gemini greeting
-    if (await AppServices.isOnline()) {
-      try {
-        final greeting = await AppServices.gemini.generateMiniMeReply(
-          userMessage: greetingPrompt,
-          moodLabel: moodContext.label,
-          intelligenceSummary: _buildIntelligenceSummary(),
-        );
-        if (greeting.trim().isNotEmpty &&
-            !greeting.startsWith('Unable to reach Gemini')) {
-          if (!mounted) return;
-          setState(() {
-            _appendMessage(
-              _MiniMeChatMessage(role: _ChatRole.assistant, text: greeting),
-            );
-          });
-          await _persistMessages();
-          await _refreshIntelligence();
-          return;
-        }
-      } catch (_) {
         // fall through to offline
       }
     }
 
-    // Tier 3: Static offline message
+    // Tier 2: Static offline message
     if (!mounted) return;
     setState(() {
       _appendMessage(
@@ -1276,7 +1251,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
   }
 
-  /// MiniGen → Gemini → offline reply chain for all user-initiated turns.
+  /// MiniGen → backend → offline reply chain for all user-initiated turns.
   ///
   /// Crisis-triggered turns are NOT appended to history — the incomplete
   /// turn is discarded entirely.
@@ -1309,22 +1284,28 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         _showCrisisOverlay(e.type);
         return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
       } catch (_) {
-        // fall through to Gemini
+        // fall through to backend fallback
       }
     }
 
-    // Tier 2: Direct Gemini
+    // Tier 2: Backend Mini-Me chat
     if (await _isOnline()) {
       try {
-        final directReply = await AppServices.gemini.generateMiniMeReply(
+        final backendReply = await MiniMeBackendService.instance.chat(
           userMessage: userText,
           moodLabel: moodContext.label,
-          intelligenceSummary: _buildIntelligenceSummary(),
+          moodIntensity: moodContext.intensity.clamp(0, 5),
+          moodNotes: moodContext.notes,
+          recentMoods: moodContext.recentMoodSummary,
+          activeSymptoms: await _loadActiveSymptomsForBackend(),
+          history: _buildBackendHistory(currentUserText: userText),
+          summaryContext: _buildIntelligenceSummary(),
+          intelligence: _intelligence,
         );
-        if (directReply.trim().isNotEmpty &&
-            !directReply.startsWith('Unable to reach Gemini')) {
-          return directReply;
-        }
+        final text = backendReply.reply.trim().isNotEmpty
+            ? backendReply.reply.trim()
+            : backendReply.openingSuggestion.trim();
+        if (text.isNotEmpty) return text;
       } catch (_) {
         // fall through to offline
       }
@@ -1332,6 +1313,49 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     // Tier 3: Offline template
     return _buildOfflineReply(userText: userText, moodLabel: moodContext.label);
+  }
+
+  List<MiniMeChatTurn> _buildBackendHistory({String? currentUserText}) {
+    final turns = _messages
+        .take(20)
+        .map(
+          (m) => MiniMeChatTurn(
+            role: m.role == _ChatRole.user ? 'user' : 'assistant',
+            text: m.text,
+          ),
+        )
+        .toList(growable: true);
+
+    final trimmedCurrent = currentUserText?.trim() ?? '';
+    if (trimmedCurrent.isNotEmpty && turns.isNotEmpty) {
+      final last = turns.last;
+      if (last.role == 'user' && last.text.trim() == trimmedCurrent) {
+        turns.removeLast();
+      }
+    }
+
+    return turns;
+  }
+
+  Future<List<String>> _loadActiveSymptomsForBackend() async {
+    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
+    final values = <String>{};
+
+    for (final entry in activeSymptoms) {
+      for (final symptom in entry.symptomList) {
+        final trimmed = symptom.trim();
+        if (trimmed.isNotEmpty) values.add(trimmed);
+      }
+
+      final predicted = entry.predictedAilment.trim();
+      if (predicted.isNotEmpty &&
+          predicted.toLowerCase() != 'tracking-only' &&
+          predicted.toLowerCase() != 'tracking only') {
+        values.add(predicted);
+      }
+    }
+
+    return values.toList(growable: false);
   }
 
   /// Builds a concise intelligence summary string for on-device LLM prompts.

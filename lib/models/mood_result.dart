@@ -59,34 +59,3 @@ class MobileBertResult {
   double get ambiguityMargin => topProb - secondPlace.value;
 }
 
-/// Full result returned from the mood pipeline to the UI layer.
-class MoodPipelineResult {
-  /// Final resolved mood label (may differ from MobileBERT's raw output
-  /// if MiniGen or Gemini resolved the prediction).
-  /// NOTE: logic may be incorrect -- this is replacing our old version.
-  final String resolvedMood;
-
-  /// MiniGen / Gemini response text shown to the user.
-  final String responseText;
-
-  /// Which model ultimately resolved the mood.
-  final EscalationLevel resolvedBy;
-
-  /// Raw MobileBERT output, null if MobileBERT was skipped.
-  final MobileBertResult? mobileBertResult;
-
-  /// Whether the user confirmed the mood prediction.
-  /// Null = user skipped the confirmation step.
-  final bool? userConfirmed;
-
-  final DateTime timestamp;
-
-  const MoodPipelineResult({
-    required this.resolvedMood,
-    required this.responseText,
-    required this.resolvedBy,
-    required this.timestamp,
-    this.mobileBertResult,
-    this.userConfirmed,
-  });
-}

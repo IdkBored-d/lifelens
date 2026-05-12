@@ -15,8 +15,6 @@ import 'services/minigen_service.dart';
 import 'services/minigen_chat.dart';
 import 'services/minigen_downloader.dart';
 import 'services/gemini_service.dart';
-import 'services/mood_pipeline_service.dart';
-import 'services/symptom_pipeline_service.dart';
 import 'services/fitness_pipeline_service.dart';
 import 'services/eod_pipeline_service.dart';
 import 'services/chat_session_service.dart';
@@ -27,7 +25,6 @@ import 'services/model_lifecycle_service.dart';
 ///
 /// Usage:
 ///   await AppServices.init();
-///   AppServices.moodPipeline.analyze(...)
 ///
 /// TOKENIZER NOTE:
 ///   MobileBERT and DisEmbed share the same BERT WordPiece vocab
@@ -50,8 +47,6 @@ class AppServices {
   static late final MiniGenService miniGen;
   static late final MiniGenChat miniGenChat;
   static late final GeminiService gemini;
-  static late final MoodPipelineService moodPipeline;
-  static late final SymptomPipelineService symptomPipeline;
   static late final FitnessPipelineService fitnessPipeline;
   static late final EodPipelineService eodPipeline;
 
@@ -156,21 +151,6 @@ class AppServices {
     }
 
     // ── 7. Pipeline services ─────────────────────────────────────────────────
-    moodPipeline = MoodPipelineService(
-      mobileBert: mobileBert,
-      gemini:     gemini,
-      confidence: confidence,
-      tokenize:   _mobileBertTokenize,
-    );
-
-    symptomPipeline = SymptomPipelineService(
-      disEmbed:   disEmbed,
-      gemini:     gemini,
-      weaviate:   weaviate,
-      confidence: confidence,
-      tokenize:   _disEmbedTokenize,
-    );
-
     fitnessPipeline = FitnessPipelineService(
       mlp:             fitnessMlp,
       confidence:      confidence,

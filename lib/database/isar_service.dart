@@ -91,8 +91,7 @@ class IsarService {
   // MOOD ENTRIES
   // ─────────────────────────────────────────────
 
-  /// Write a mood entry. Called by MoodPipelineService BEFORE
-  /// updating the quick-tracking file.
+  /// Write a mood entry.
   Future<void> writeMoodEntry(MoodEntry entry) async {
     await _db.writeTxn(() async {
       await _db.moodEntrys.put(entry);
@@ -147,8 +146,7 @@ class IsarService {
   // SYMPTOM ENTRIES
   // ─────────────────────────────────────────────
 
-  /// Write a symptom entry. Called by SymptomPipelineService BEFORE
-  /// updating the quick-tracking file.
+  /// Write a symptom entry.
   Future<void> writeSymptomEntry(SymptomEntry entry) async {
     await _db.writeTxn(() async {
       await _db.symptomEntrys.put(entry);
