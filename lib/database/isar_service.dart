@@ -10,6 +10,8 @@ import 'fitness_entry.dart';
 import 'eod_entry.dart';
 import 'chat_session.dart';
 import 'chat_message.dart';
+import 'sleep_entry.dart';
+import 'exercise_entry.dart';
 
 /// Singleton ISAR database service.
 ///
@@ -27,6 +29,8 @@ import 'chat_message.dart';
 ///   EodEntry      — end-of-day summaries
 ///   ChatSession   — MiniMe chat session metadata
 ///   ChatMessage   — individual MiniMe chat messages
+///   SleepEntry    — user-logged sleep records
+///   ExerciseEntry — user-logged exercise records
 class IsarService {
   IsarService._() {
     _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
@@ -64,6 +68,8 @@ class IsarService {
         EodEntrySchema,
         ChatSessionSchema,
         ChatMessageSchema,
+        SleepEntrySchema,
+        ExerciseEntrySchema,
       ],
       directory: dir.path,
       name: _databaseNameForScope(nextScopeKey),
@@ -266,9 +272,13 @@ class IsarService {
     });
   }
 
-  /// Most recent fitness entry.
+  /// Most recent fitness entry. Excludes onboarding placeholder entries.
   Future<FitnessEntry?> getLastFitnessEntry() async {
-    return _db.fitnessEntrys.where().sortByInferenceTimestampDesc().findFirst();
+    return _db.fitnessEntrys
+        .filter()
+        .isOnboardingSnapshotEqualTo(false)
+        .sortByInferenceTimestampDesc()
+        .findFirst();
   }
 
   /// Most recent fitness score (0–100). Returns 0 if no entries exist.
@@ -295,7 +305,7 @@ class IsarService {
     final entries = await _db.fitnessEntrys
         .filter()
         .inferenceTimestampGreaterThan(cutoff)
-        .sortByDateDesc()
+        .sortByInferenceTimestampDesc()
         .findAll();
 
     // Deduplicate: keep only the most recent entry per day.
@@ -342,15 +352,6 @@ class IsarService {
     return _db.eodEntrys
         .filter()
         .timestampGreaterThan(cutoff)
-        .sortByTimestampDesc()
-        .findAll();
-  }
-
-  /// All EOD entries that were flagged for attention.
-  Future<List<EodEntry>> getFlaggedEodEntries() async {
-    return _db.eodEntrys
-        .filter()
-        .flaggedEqualTo(true)
         .sortByTimestampDesc()
         .findAll();
   }
@@ -484,6 +485,60 @@ class IsarService {
   }
 
   // ─────────────────────────────────────────────
+  // SLEEP ENTRIES
+  // ─────────────────────────────────────────────
+
+  Future<void> writeSleepEntry(SleepEntry entry) async {
+    await _db.writeTxn(() async {
+      await _db.sleepEntrys.put(entry);
+    });
+  }
+
+  Future<List<SleepEntry>> getRecentSleepEntries({int days = 30}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    return _db.sleepEntrys
+        .filter()
+        .timestampGreaterThan(cutoff)
+        .sortByTimestampDesc()
+        .findAll();
+  }
+
+  Future<List<SleepEntry>> getSleepEntriesForDate(String date) async {
+    return _db.sleepEntrys
+        .filter()
+        .dateEqualTo(date)
+        .sortByTimestamp()
+        .findAll();
+  }
+
+  // ─────────────────────────────────────────────
+  // EXERCISE ENTRIES
+  // ─────────────────────────────────────────────
+
+  Future<void> writeExerciseEntry(ExerciseEntry entry) async {
+    await _db.writeTxn(() async {
+      await _db.exerciseEntrys.put(entry);
+    });
+  }
+
+  Future<List<ExerciseEntry>> getRecentExerciseEntries({int days = 30}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    return _db.exerciseEntrys
+        .filter()
+        .timestampGreaterThan(cutoff)
+        .sortByTimestampDesc()
+        .findAll();
+  }
+
+  Future<List<ExerciseEntry>> getExerciseEntriesForDate(String date) async {
+    return _db.exerciseEntrys
+        .filter()
+        .dateEqualTo(date)
+        .sortByTimestamp()
+        .findAll();
+  }
+
+  // ─────────────────────────────────────────────
   // DATABASE MANAGEMENT
   // ─────────────────────────────────────────────
 
@@ -501,6 +556,8 @@ class IsarService {
       await _db.eodEntrys.clear();
       await _db.chatSessions.clear();
       await _db.chatMessages.clear();
+      await _db.sleepEntrys.clear();
+      await _db.exerciseEntrys.clear();
     });
   }
 }

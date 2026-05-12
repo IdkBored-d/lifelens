@@ -47,7 +47,17 @@ class FitnessPipelineService {
 
   static const Duration _staleThreshold = Duration(hours: 6);
 
+  static const Duration _debounceThreshold = Duration(seconds: 30);
+
   Future<FitnessPipelineResult?> score({bool forceRun = false}) async {
+    if (!forceRun) {
+      final last = await IsarService.instance.getLastFitnessEntry();
+      if (last != null &&
+          DateTime.now().difference(last.inferenceTimestamp) <
+              _debounceThreshold) {
+        return null;
+      }
+    }
     final rawData = await _fetchHealthData();
     if (rawData == null) {
       return null;

@@ -12,6 +12,7 @@ import './assets/minime/minime_avatar.dart';
 import 'package:lifelens/utils/minime_helpers.dart';
 import 'package:lifelens/services/streak_service.dart';
 import 'package:lifelens/services/crisis_regex_net.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/chat_session_service.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
@@ -19,7 +20,6 @@ import 'package:lifelens/services/dev_negative_week_seed_service.dart';
 import 'package:lifelens/services/exercise_store.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/models/sleep.dart';
-import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/chat_message.dart';
 import 'package:lifelens/database/fitness_entry.dart';
 import 'package:lifelens/database/symptom_entry.dart';
@@ -254,7 +254,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   Future<void> _checkSymptomCheckupPending() async {
-    final recent = await IsarService.instance.getRecentSymptomEntries(days: 7);
+    final recent = await AppServices.isar.getRecentSymptomEntries(days: 7);
     final active = recent
         .where((e) => e.status == 'active' || e.status == 'monitoring')
         .toList(growable: false);
@@ -293,7 +293,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     }
 
     // Fetch the actual entry from the DB to get the id for status update.
-    final recent = await IsarService.instance.getRecentSymptomEntries(days: 7);
+    final recent = await AppServices.isar.getRecentSymptomEntries(days: 7);
     final active = recent
         .where((e) => e.status == 'active' || e.status == 'monitoring')
         .toList(growable: false);
@@ -317,7 +317,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     if (still) {
       // Still experiencing — ask the AI for a follow-up recommendation.
       final today = DateTime.now().toIso8601String().split('T').first;
-      await IsarService.instance.updateSymptomStatus(
+      await AppServices.isar.updateSymptomStatus(
         latest.id,
         'monitoring',
         today,
@@ -345,7 +345,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     } else {
       // No longer experiencing — mark the symptom as resolved.
       final today = DateTime.now().toIso8601String().split('T').first;
-      await IsarService.instance.updateSymptomStatus(
+      await AppServices.isar.updateSymptomStatus(
         latest.id,
         'resolved',
         today,
@@ -458,8 +458,8 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         })
         .toList(growable: false);
 
-    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
-    final recentFitness = await IsarService.instance.getRecentFitnessEntries(
+    final activeSymptoms = await AppServices.isar.getActiveSymptomEntries();
+    final recentFitness = await AppServices.isar.getRecentFitnessEntries(
       days: 2,
     );
     final latestFitness = recentFitness.isEmpty ? null : recentFitness.first;
@@ -805,11 +805,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           .reversed
           .toList(growable: false);
       final exerciseHistory = _exerciseStore.getRecentExerciseHistory(limit: 1);
-      final activeSymptoms = await IsarService.instance
+      final activeSymptoms = await AppServices.isar
           .getActiveSymptomEntries();
-      final recentSymptomEntries = await IsarService.instance
+      final recentSymptomEntries = await AppServices.isar
           .getRecentSymptomEntries(days: 7);
-      recentFitnessEntries = await IsarService.instance.getRecentFitnessEntries(
+      recentFitnessEntries = await AppServices.isar.getRecentFitnessEntries(
         days: 45,
       );
       final symptomCount = _dailySymptomCounts(recentSymptomEntries, days: 7);
@@ -1011,13 +1011,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   Future<void> _bootstrapMiniMe() async {
     // Load recent messages from ISAR to restore history across navigation and app restarts.
-    final recentSessions = await IsarService.instance.getRecentChatSessions(
+    final recentSessions = await AppServices.isar.getRecentChatSessions(
       limit: 20,
     );
     if (!mounted) return;
 
     for (final session in recentSessions) {
-      final List<ChatMessage> stored = await IsarService.instance
+      final List<ChatMessage> stored = await AppServices.isar
           .getMessagesForSession(session.sessionId);
       if (!mounted) return;
       if (stored.isNotEmpty) {
@@ -1051,6 +1051,13 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
     if (_isDebugSeedCommand(text)) {
       await _handleDebugSeedCommand(text);
+      return;
+    }
+
+    final crisisType = CrisisRegexNet.check(text);
+    if (crisisType != CrisisType.none) {
+      _chatController.clear();
+      _showCrisisOverlay(crisisType);
       return;
     }
 
@@ -1453,7 +1460,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   /// Fetches symptom and trend context from Isar for MiniGen prompt assembly.
   Future<Map<String, String?>> _buildMiniMeIsarContext() async {
-    final isar = IsarService.instance;
+    final isar = AppServices.isar;
     final activeSymptoms = await isar.getActiveSymptomEntries();
     final symptomsStr = activeSymptoms.isNotEmpty
         ? activeSymptoms.map((e) => e.predictedAilment).join(', ')
@@ -1500,7 +1507,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
   }
 
   Future<List<String>> _loadActiveSymptomsForBackend() async {
-    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
+    final activeSymptoms = await AppServices.isar.getActiveSymptomEntries();
     final values = <String>{};
 
     for (final entry in activeSymptoms) {
@@ -1533,14 +1540,41 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         title: Text(is911 ? 'Emergency Detected' : "You're not alone"),
-        content: Text(
-          is911
-              ? 'It sounds like you or someone nearby may need immediate medical help.\n\n'
-                    'Call 911 right away.\n\n'
-                    'If you\'re unsure, call anyway — they can help you decide.'
-              : 'If you\'re in crisis or need immediate support, please reach out:\n\n'
-                    '988 Suicide & Crisis Lifeline — call or text 988\n'
-                    'Crisis Text Line — text HOME to 741741',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              is911
+                  ? 'It sounds like you or someone nearby may need immediate medical help.'
+                  : "If you're in crisis or need immediate support, please reach out.",
+            ),
+            const SizedBox(height: 16),
+            if (is911) ...[
+              FilledButton.icon(
+                onPressed: () => launchUrl(Uri.parse('tel:911')),
+                icon: const Icon(Icons.phone),
+                label: const Text('Call 911'),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "If you're unsure, call anyway — they can help you decide.",
+                style: TextStyle(fontSize: 12),
+              ),
+            ] else ...[
+              FilledButton.icon(
+                onPressed: () => launchUrl(Uri.parse('tel:988')),
+                icon: const Icon(Icons.phone),
+                label: const Text('Call or Text 988'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => launchUrl(Uri.parse('sms:741741?body=HOME')),
+                icon: const Icon(Icons.message),
+                label: const Text('Text HOME to 741741'),
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -1554,8 +1588,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   /// MiniGen → backend Mini-Me → offline reply chain for all user-initiated turns.
   ///
-  /// Crisis-triggered turns are NOT appended to history — the incomplete
-  /// turn is discarded entirely.
+  /// Input-side crisis is intercepted in [_sendMessage] before this is called,
+  /// so [CrisisInterventionException] here means the rolling output scan fired
+  /// on an otherwise-clean input. In that case the user's turn stays in history
+  /// and only the model's partial output is discarded.
   Future<String> _miniGenReplyOrFallback({
     required String userText,
     required _MiniMeMoodContext moodContext,
@@ -2259,7 +2295,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       _chatSessionService.endSession(_sessionId!);
                     }
                     await inbox.clearUnreadSuggestions();
-                    await IsarService.instance.clearChatHistory();
+                    await AppServices.isar.clearChatHistory();
                     if (!context.mounted) return;
 
                     setState(() {

@@ -1,12 +1,13 @@
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/mood_entry.dart';
+import 'package:lifelens/database/sleep_entry.dart';
+import 'package:lifelens/database/exercise_entry.dart';
 import 'package:lifelens/database/symptom_entry.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class DevNegativeWeekSeedResult {
   const DevNegativeWeekSeedResult({
@@ -26,10 +27,7 @@ class DevNegativeWeekSeedResult {
   final List<String> warnings;
 
   String get summary {
-    final warningText = warnings.isEmpty
-        ? ''
-        : '\n\nCloud sync warnings: ${warnings.join('; ')}';
-    return 'Seeded this account with $moodDays mood logs, $sleepDays poor sleep logs, $exerciseDays no-exercise check-ins, and $symptomDays symptom days across the last week.$warningText';
+    return 'Seeded this account with $moodDays mood logs, $sleepDays poor sleep logs, $exerciseDays no-exercise check-ins, and $symptomDays symptom days across the last week.';
   }
 }
 
@@ -37,7 +35,6 @@ class DevNegativeWeekSeedService {
   DevNegativeWeekSeedService._();
 
   static const command = '/seed-negative-week';
-  static const _seedId = 'lifelens_negative_week_v1';
   static const _seedMarker = '[LifeLens negative-week seed]';
 
   static Future<DevNegativeWeekSeedResult> seedCurrentUser() async {
@@ -47,45 +44,20 @@ class DevNegativeWeekSeedService {
     }
 
     final now = DateTime.now();
-    final firestore = FirebaseFirestore.instance;
-    final isar = IsarService.instance;
-    final warnings = <String>[];
+    final isar = AppServices.isar;
     debugPrint('[DevSeed] negative week seed requested for ${user.uid}');
-    await isar.init();
 
     final plans = _buildPlans(now);
     for (final plan in plans) {
-      await _writeMoodIfNeeded(
-        isar: isar,
-        firestore: firestore,
-        uid: user.uid,
-        plan: plan,
-        warnings: warnings,
-      );
+      await _writeMoodIfNeeded(isar: isar, plan: plan);
 
       if (plan.symptoms.isNotEmpty) {
-        await _writeSymptomsIfNeeded(
-          isar: isar,
-          firestore: firestore,
-          uid: user.uid,
-          plan: plan,
-          warnings: warnings,
-        );
+        await _writeSymptomsIfNeeded(isar: isar, plan: plan);
       }
     }
 
-    await _writeSleepLogs(
-      firestore: firestore,
-      uid: user.uid,
-      plans: plans,
-      warnings: warnings,
-    );
-    await _writeExerciseLogs(
-      firestore: firestore,
-      uid: user.uid,
-      plans: plans,
-      warnings: warnings,
-    );
+    await _writeSleepLogs(isar: isar, plans: plans);
+    await _writeExerciseLogs(isar: isar, plans: plans);
 
     final result = DevNegativeWeekSeedResult(
       uid: user.uid,
@@ -93,7 +65,7 @@ class DevNegativeWeekSeedService {
       sleepDays: plans.length,
       exerciseDays: plans.length,
       symptomDays: plans.where((plan) => plan.symptoms.isNotEmpty).length,
-      warnings: warnings,
+      warnings: const [],
     );
     debugPrint('[DevSeed] negative week seed complete: ${result.summary}');
     return result;
@@ -129,39 +101,39 @@ class DevNegativeWeekSeedService {
         sleepNote: 'Restless night, woke up several times.',
       ),
       const _SeedDayPlanData(
-        moodLabel: 'fear',
+        moodLabel: 'anxiety',
         intensity: 2,
-        note: 'Anxious and tense, kept worrying about small things.',
+        note: 'Anxious about upcoming deadlines and felt overwhelmed.',
         sleepMinutes: 270,
-        sleepNote: 'Took a long time to fall asleep and woke up tired.',
+        sleepNote: 'Could not fall asleep, mind racing.',
       ),
       const _SeedDayPlanData(
         moodLabel: 'anger',
         intensity: 2,
-        note: 'Frustrated, irritable, and overwhelmed most of the afternoon.',
-        sleepMinutes: 340,
-        sleepNote: 'Light sleep with a lot of tossing and turning.',
+        note: 'Frustrated with everything today, short tempered.',
+        sleepMinutes: 315,
+        sleepNote: 'Woke up multiple times, groggy in morning.',
       ),
       const _SeedDayPlanData(
         moodLabel: 'sadness',
         intensity: 1,
-        note: 'Felt drained, isolated, and not motivated to do much.',
-        sleepMinutes: 250,
-        sleepNote: 'Very short sleep and felt unrefreshed.',
+        note: 'Really struggling today, everything feels heavy.',
+        sleepMinutes: 240,
+        sleepNote: 'Barely slept, kept waking up with anxiety.',
       ),
       const _SeedDayPlanData(
         moodLabel: 'fear',
         intensity: 2,
-        note: 'Stress stayed high and I felt physically worn down.',
-        sleepMinutes: 315,
-        sleepNote: 'Woke up with a headache and low energy.',
+        note: 'Headache all day, nausea, and felt completely off.',
+        sleepMinutes: 285,
+        sleepNote: 'Woke up feeling worse than when I went to bed.',
       ),
       const _SeedDayPlanData(
-        moodLabel: 'sadness',
-        intensity: 2,
-        note: 'Heavy mood, low appetite, and did not feel like socializing.',
-        sleepMinutes: 285,
-        sleepNote: 'Interrupted sleep and felt groggy in the morning.',
+        moodLabel: 'anxiety',
+        intensity: 1,
+        note: 'Sore throat and chills, feeling sick on top of everything.',
+        sleepMinutes: 295,
+        sleepNote: 'Fitful sleep, kept waking up cold then hot.',
       ),
       const _SeedDayPlanData(
         moodLabel: 'sadness',
@@ -190,10 +162,7 @@ class DevNegativeWeekSeedService {
 
   static Future<bool> _writeMoodIfNeeded({
     required IsarService isar,
-    required FirebaseFirestore firestore,
-    required String uid,
     required _SeedDayPlan plan,
-    required List<String> warnings,
   }) async {
     final existing = await isar.getMoodEntriesForDate(plan.dateKey);
     final alreadySeeded = existing.any(
@@ -208,143 +177,72 @@ class DevNegativeWeekSeedService {
         ..resolvedBy = 'user'
         ..mobileBertPrediction = null
         ..mobileBertTopProb = null
-        ..userConfirmed = true
         ..responseText = ''
         ..fitnessScoreSnapshot = 32.0
         ..timestamp = plan.moodTimestamp;
       await isar.writeMoodEntry(entry);
     }
 
-    try {
-      await firestore
-          .collection('users')
-          .doc(uid)
-          .collection('mood_logs')
-          .doc('${_seedId}_${plan.compactDateKey}')
-          .set({
-            'date': plan.dateKey,
-            'rawLog': '${plan.note} $_seedMarker',
-            'condensedLog':
-                '${plan.moodLabel} ${plan.intensity}/5 - ${plan.note}',
-            'resolvedMood': plan.moodLabel,
-            'resolvedBy': 'user',
-            'mobileBertPrediction': null,
-            'mobileBertTopProb': null,
-            'userConfirmed': true,
-            'responseText': '',
-            'fitnessScoreSnapshot': 32.0,
-            'tags': const ['low energy', 'stress', 'demo seed'],
-            'createdAt': Timestamp.fromDate(plan.moodTimestamp),
-            'seedId': _seedId,
-          }, SetOptions(merge: true));
-    } on FirebaseException catch (error) {
-      warnings.add('mood cloud sync failed for ${plan.dateKey}: ${error.code}');
-    }
-
     return !alreadySeeded;
   }
 
   static Future<void> _writeSleepLogs({
-    required FirebaseFirestore firestore,
-    required String uid,
+    required IsarService isar,
     required List<_SeedDayPlan> plans,
-    required List<String> warnings,
   }) async {
     for (final plan in plans) {
-      try {
-        await firestore
-            .collection('users')
-            .doc(uid)
-            .collection('sleep_logs')
-            .doc('${_seedId}_${plan.compactDateKey}')
-            .set({
-              'bedTime': Timestamp.fromDate(plan.bedTime),
-              'wakeTime': Timestamp.fromDate(plan.wakeTime),
-              'quality': 'poor',
-              'qualityValue': 1,
-              'date': Timestamp.fromDate(plan.date),
-              'notes': '${plan.sleepNote} $_seedMarker',
-              'durationMinutes': plan.sleepMinutes,
-              'seedId': _seedId,
-            }, SetOptions(merge: true));
-      } on FirebaseException catch (error) {
-        warnings.add(
-          'sleep cloud sync failed for ${plan.dateKey}: ${error.code}',
+      final existing = await isar.getSleepEntriesForDate(plan.dateKey);
+      final alreadySeeded = existing.any(
+        (entry) => entry.notes.contains(_seedMarker),
+      );
+      if (!alreadySeeded) {
+        await isar.writeSleepEntry(
+          SleepEntry()
+            ..date = plan.dateKey
+            ..bedTime = plan.bedTime
+            ..wakeTime = plan.wakeTime
+            ..quality = 'poor'
+            ..qualityValue = 1
+            ..notes = '${plan.sleepNote} $_seedMarker'
+            ..durationMinutes = plan.sleepMinutes
+            ..timestamp = plan.bedTime,
         );
       }
     }
   }
 
   static Future<void> _writeExerciseLogs({
-    required FirebaseFirestore firestore,
-    required String uid,
+    required IsarService isar,
     required List<_SeedDayPlan> plans,
-    required List<String> warnings,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final historyKey = 'exercise_history_v2_$uid';
-    final existing =
-        prefs
-            .getStringList(historyKey)
-            ?.map(_decodeHistoryRecord)
-            .where((record) => record['seedId'] != _seedId)
-            .toList(growable: true) ??
-        <Map<String, String>>[];
-    final seedRecords = plans
-        .map(
-          (plan) => <String, String>{
-            'exerciseId': 'no_exercise',
-            'exerciseName': 'No exercise',
-            'mood': plan.moodLabel,
-            'durationMinutes': '0',
-            'sets': '0',
-            'reps': '0',
-            'noExercise': 'true',
-            'timestamp': plan.exerciseTimestamp.toIso8601String(),
-            'seedId': _seedId,
-          },
-        )
-        .toList(growable: false);
-    final merged = <Map<String, String>>[...seedRecords, ...existing]
-      ..sort((a, b) => (b['timestamp'] ?? '').compareTo(a['timestamp'] ?? ''));
-    await prefs.setStringList(
-      historyKey,
-      merged.map(jsonEncode).toList(growable: false),
-    );
-
-    for (final record in seedRecords) {
-      final timestamp = DateTime.parse(record['timestamp']!);
-      final dateKey = _dateKey(timestamp);
-      try {
-        await firestore
-            .collection('users')
-            .doc(uid)
-            .collection('exercise_logs')
-            .doc('${_seedId}_${_compactDateKey(timestamp)}')
-            .set({
-              'exerciseId': record['exerciseId'],
-              'exerciseName': record['exerciseName'],
-              'mood': record['mood'],
-              'durationMinutes': 0,
-              'sets': 0,
-              'reps': 0,
-              'noExercise': true,
-              'timestamp': Timestamp.fromDate(timestamp),
-              'createdAt': FieldValue.serverTimestamp(),
-              'seedId': _seedId,
-            }, SetOptions(merge: true));
-      } on FirebaseException catch (error) {
-        warnings.add('exercise cloud sync failed for $dateKey: ${error.code}');
+    for (final plan in plans) {
+      final existing = await isar.getExerciseEntriesForDate(plan.dateKey);
+      final alreadySeeded = existing.any(
+        (entry) => entry.exerciseId == 'no_exercise' &&
+            entry.exerciseName.contains(_seedMarker),
+      );
+      if (!alreadySeeded) {
+        await isar.writeExerciseEntry(
+          ExerciseEntry()
+            ..date = plan.dateKey
+            ..exerciseId = 'no_exercise'
+            ..exerciseName = 'No exercise $_seedMarker'
+            ..mood = plan.moodLabel
+            ..durationMinutes = 0
+            ..sets = 0
+            ..reps = 0
+            ..noExercise = true
+            ..workoutItemsJson = ''
+            ..workoutCount = 0
+            ..timestamp = plan.exerciseTimestamp,
+        );
       }
     }
   }
 
   static Future<bool> _writeSymptomsIfNeeded({
     required IsarService isar,
-    required FirebaseFirestore firestore,
-    required String uid,
     required _SeedDayPlan plan,
-    required List<String> warnings,
   }) async {
     final symptomPlan = plan.symptomPlan;
     if (symptomPlan == null) return false;
@@ -383,53 +281,13 @@ class DevNegativeWeekSeedService {
       await isar.writeSymptomEntry(entry);
     }
 
-    try {
-      await firestore
-          .collection('symptom_entries')
-          .doc('${_safeDocId(uid)}_${_seedId}_${plan.compactDateKey}')
-          .set({
-            'userId': uid,
-            'rawInput': symptomPlan.raw,
-            'symptoms': symptomPlan.symptoms,
-            'createdAt': Timestamp.fromDate(plan.symptomTimestamp),
-            'date': Timestamp.fromDate(plan.date),
-            'seedId': _seedId,
-          }, SetOptions(merge: true));
-    } on FirebaseException catch (error) {
-      warnings.add(
-        'symptom cloud sync failed for ${plan.dateKey}: ${error.code}',
-      );
-    }
-
     return !alreadySeeded;
-  }
-
-  static Map<String, String> _decodeHistoryRecord(String encoded) {
-    try {
-      final decoded = jsonDecode(encoded);
-      if (decoded is Map<String, dynamic>) {
-        return decoded.map(
-          (key, value) => MapEntry(key, value?.toString() ?? ''),
-        );
-      }
-    } catch (_) {}
-    return const <String, String>{};
   }
 
   static String _dateKey(DateTime date) {
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
     return '${date.year}-$month-$day';
-  }
-
-  static String _compactDateKey(DateTime date) {
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '${date.year}$month$day';
-  }
-
-  static String _safeDocId(String value) {
-    return value.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
   }
 }
 
@@ -465,7 +323,6 @@ class _SeedDayPlan extends _SeedDayPlanData {
 
   List<String> get symptoms => symptomPlan?.symptoms ?? const <String>[];
   String get dateKey => DevNegativeWeekSeedService._dateKey(date);
-  String get compactDateKey => DevNegativeWeekSeedService._compactDateKey(date);
   DateTime get moodTimestamp =>
       date.add(const Duration(hours: 10, minutes: 15));
   DateTime get wakeTime => date.add(const Duration(hours: 6, minutes: 20));

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'theme_controller.dart';
 import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
+import 'dev_test_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -231,6 +232,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     label: 'Security',
                     value: 'Manage',
                     onTap: () => _showSecurityDialog(context),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              _ProfileSection(
+                title: 'Developer',
+                children: [
+                  _ProfileTile(
+                    icon: Icons.science_outlined,
+                    label: 'Pipeline Tests',
+                    value: 'Open',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const DevTestScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

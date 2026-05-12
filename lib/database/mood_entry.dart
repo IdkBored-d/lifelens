@@ -28,19 +28,13 @@ class MoodEntry {
   /// Values: "base" (MobileBERT), "gemma2b" (legacy/MiniGen), "gemini"
   late String resolvedBy;
 
-  /// MobileBERT's raw top prediction before any user interaction.
-  /// Null if MobileBERT was skipped due to low confidence.
+  /// MobileBERT's raw top prediction — advisory only, never overrides user pick.
   String? mobileBertPrediction;
 
   /// MobileBERT's softmax probability for its top prediction.
   double? mobileBertTopProb;
 
-  /// Whether the user confirmed the mood prediction.
-  /// Null = user skipped the confirmation step.
-  bool? userConfirmed;
-
-  /// MiniGen / Gemini response text shown to the user.
-  /// NOTE: logic may be incorrect -- this is replacing our old version.
+  /// Text shown to the user (or "I am feeling [intensity] [mood]" if no notes).
   late String responseText;
 
   /// Fitness score snapshot at the time of this log entry.

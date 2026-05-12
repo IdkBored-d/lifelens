@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:lifelens/database/isar_service.dart';
+import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/mood_entry.dart';
 
 class MoodCheckIn {
@@ -67,15 +67,14 @@ class MoodLogStore extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await IsarService.instance.init();
+      await AppServices.isar.init();
       if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
-      final entries = await IsarService.instance.getRecentMoodEntries(
+      final entries = await AppServices.isar.getRecentMoodEntries(
         days: 365,
       );
       if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
       final persisted =
           entries
-              .where((entry) => entry.resolvedBy != 'minime')
               .map(_fromMoodEntry)
               .toList()
             ..sort((a, b) => b.createdAt.compareTo(a.createdAt));

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/avatar_store.dart';
-import 'package:lifelens/database/fitness_entry.dart';
 import 'package:lifelens/onboarding_screen.dart';
 import 'package:lifelens/services/health_service.dart';
 import 'package:provider/provider.dart';
@@ -125,19 +124,9 @@ class _IntroScreenState extends State<IntroScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Write health snapshot to ISAR (source of truth for health data).
-      const activityMap = {
-        'Rarely or never': 0.0,
-        '1-2 times per week': 0.25,
-        '3-4 times per week': 0.5,
-        '5-6 times per week': 0.75,
-        'Daily': 1.0,
-      };
       final weightKg = (_weightUnit == 'lb') ? weight * 0.453592 : weight;
       final heightM = (_heightUnit == 'in') ? height * 0.0254 : height / 100.0;
       final bmi = weightKg / (heightM * heightM);
-      final activityIndex = activityMap[workoutInfo] ?? 0.25;
-      final now = DateTime.now();
       final miniMeBaseline = _OnboardingMiniMeBaseline.fromInputs(
         baseBodyWidthScale: avatarStore.bodyWidthScale,
         bmi: bmi,
@@ -145,33 +134,9 @@ class _IntroScreenState extends State<IntroScreen> {
         sleepHours: sleepHours,
         workoutFrequency: workoutInfo,
       );
-      final snapshot = FitnessEntry()
-        ..date = now.toIso8601String().split('T').first
-        ..fitnessScore = 0.0
-        ..fitProbability = 0.0
-        ..isFit = false
-        ..confidenceOk = false
-        ..dataFreshnessFlagged = true
-        ..isOnboardingSnapshot = true
-        ..age = 0.0
-        ..bmi = bmi
-        ..heartRate = 0.0
-        ..sleepHours = sleepHours
-        ..smokes = false
-        ..nutritionQuality = 0.5
-        ..activityIndex = activityIndex
-        ..isMale = false
-        ..healthDataTimestamp = _importedHealthSnapshot?.capturedAt ?? now
-        ..inferenceTimestamp = now;
-      await AppServices.isar.writeFitnessEntry(snapshot);
+      await AppServices.fitnessPipeline.score(forceRun: true);
       avatarStore.setAutoBodyWidthScale(miniMeBaseline.autoBodyWidthScale);
       avatarStore.setDegradationLevel(miniMeBaseline.degradationLevel);
-
-      if (_importedHealthSnapshot != null) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'onboardingHealthImport': _importedHealthSnapshot!.toFirestore(),
-        }, SetOptions(merge: true));
-      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

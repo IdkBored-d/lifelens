@@ -66,11 +66,6 @@ const MoodEntrySchema = CollectionSchema(
       id: 9,
       name: r'timestamp',
       type: IsarType.dateTime,
-    ),
-    r'userConfirmed': PropertySchema(
-      id: 10,
-      name: r'userConfirmed',
-      type: IsarType.bool,
     )
   },
   estimateSize: _moodEntryEstimateSize,
@@ -151,7 +146,6 @@ void _moodEntrySerialize(
   writer.writeString(offsets[7], object.resolvedMood);
   writer.writeString(offsets[8], object.responseText);
   writer.writeDateTime(offsets[9], object.timestamp);
-  writer.writeBool(offsets[10], object.userConfirmed);
 }
 
 MoodEntry _moodEntryDeserialize(
@@ -172,7 +166,6 @@ MoodEntry _moodEntryDeserialize(
   object.resolvedMood = reader.readString(offsets[7]);
   object.responseText = reader.readString(offsets[8]);
   object.timestamp = reader.readDateTime(offsets[9]);
-  object.userConfirmed = reader.readBoolOrNull(offsets[10]);
   return object;
 }
 
@@ -203,8 +196,6 @@ P _moodEntryDeserializeProp<P>(
       return (reader.readString(offset)) as P;
     case 9:
       return (reader.readDateTime(offset)) as P;
-    case 10:
-      return (reader.readBoolOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -1653,34 +1644,6 @@ extension MoodEntryQueryFilter
       ));
     });
   }
-
-  QueryBuilder<MoodEntry, MoodEntry, QAfterFilterCondition>
-      userConfirmedIsNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNull(
-        property: r'userConfirmed',
-      ));
-    });
-  }
-
-  QueryBuilder<MoodEntry, MoodEntry, QAfterFilterCondition>
-      userConfirmedIsNotNull() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(const FilterCondition.isNotNull(
-        property: r'userConfirmed',
-      ));
-    });
-  }
-
-  QueryBuilder<MoodEntry, MoodEntry, QAfterFilterCondition>
-      userConfirmedEqualTo(bool? value) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'userConfirmed',
-        value: value,
-      ));
-    });
-  }
 }
 
 extension MoodEntryQueryObject
@@ -1812,18 +1775,6 @@ extension MoodEntryQuerySortBy on QueryBuilder<MoodEntry, MoodEntry, QSortBy> {
   QueryBuilder<MoodEntry, MoodEntry, QAfterSortBy> sortByTimestampDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'timestamp', Sort.desc);
-    });
-  }
-
-  QueryBuilder<MoodEntry, MoodEntry, QAfterSortBy> sortByUserConfirmed() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'userConfirmed', Sort.asc);
-    });
-  }
-
-  QueryBuilder<MoodEntry, MoodEntry, QAfterSortBy> sortByUserConfirmedDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'userConfirmed', Sort.desc);
     });
   }
 }
@@ -1966,18 +1917,6 @@ extension MoodEntryQuerySortThenBy
       return query.addSortBy(r'timestamp', Sort.desc);
     });
   }
-
-  QueryBuilder<MoodEntry, MoodEntry, QAfterSortBy> thenByUserConfirmed() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'userConfirmed', Sort.asc);
-    });
-  }
-
-  QueryBuilder<MoodEntry, MoodEntry, QAfterSortBy> thenByUserConfirmedDesc() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addSortBy(r'userConfirmed', Sort.desc);
-    });
-  }
 }
 
 extension MoodEntryQueryWhereDistinct
@@ -2050,12 +1989,6 @@ extension MoodEntryQueryWhereDistinct
       return query.addDistinctBy(r'timestamp');
     });
   }
-
-  QueryBuilder<MoodEntry, MoodEntry, QDistinct> distinctByUserConfirmed() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addDistinctBy(r'userConfirmed');
-    });
-  }
 }
 
 extension MoodEntryQueryProperty
@@ -2126,12 +2059,6 @@ extension MoodEntryQueryProperty
   QueryBuilder<MoodEntry, DateTime, QQueryOperations> timestampProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'timestamp');
-    });
-  }
-
-  QueryBuilder<MoodEntry, bool?, QQueryOperations> userConfirmedProperty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addPropertyName(r'userConfirmed');
     });
   }
 }

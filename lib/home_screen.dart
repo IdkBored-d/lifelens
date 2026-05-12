@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:lifelens/app_services.dart';
 import 'package:lifelens/minime_screen.dart';
 import 'package:lifelens/profile_screen.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
@@ -61,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshSuggestionsInbox(refreshStores: true));
+      unawaited(AppServices.fitnessPipeline.score());
     }
   }
 

@@ -19,7 +19,6 @@ class SymptomEntry {
   late List<String> symptomList;
 
   /// Top predicted ailment (disease name).
-  @Index()
   late String predictedAilment;
 
   /// DisEmbed's raw cosine similarity score for the top prediction.

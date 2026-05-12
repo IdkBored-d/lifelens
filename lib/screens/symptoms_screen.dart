@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lifelens/app_services.dart';
-import 'package:lifelens/database/isar_service.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
@@ -71,7 +68,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     setState(() => _saveButtonState = LogButtonVisualState.loading);
 
     final messenger = ScaffoldMessenger.of(context);
-    String? syncWarning;
 
     try {
       HapticFeedback.mediumImpact();
@@ -79,7 +75,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       final isOnline = await AppServices.isOnline();
       const List<String> miniMeTop3 = [];
       final now = DateTime.now();
-      await IsarService.instance.writeSymptomEntry(
+      await AppServices.isar.writeSymptomEntry(
         SymptomEntry()
           ..date = now.toIso8601String().substring(0, 10)
           ..rawSymptoms = symptomsForPipeline.join(', ')
@@ -97,28 +93,8 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
 
       await TrackingReminderService.instance.handleLogRecorded();
 
-      final savedAt = DateTime.now();
-      try {
-        await _syncSymptomsToCloud(
-          rawInput: rawInput,
-          symptoms: symptomsForPipeline,
-          timestamp: savedAt,
-        );
-      } catch (_) {
-        syncWarning =
-            'Saved on this device. Cloud sync failed for this symptom log.';
-      }
-
       _symptomsController.clear();
       setState(() => _saveButtonState = LogButtonVisualState.success);
-      if (syncWarning != null) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(syncWarning),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
       if (mounted) {
         final inbox = context.read<MiniMeSuggestionsInbox>();
         if (miniMeTop3.isNotEmpty) {
@@ -159,25 +135,6 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
     setState(() {
       _symptomsController.clear();
       _saveButtonState = LogButtonVisualState.idle;
-    });
-  }
-
-  Future<void> _syncSymptomsToCloud({
-    required String rawInput,
-    required List<String> symptoms,
-    required DateTime timestamp,
-  }) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return;
-    }
-
-    await FirebaseFirestore.instance.collection('symptom_entries').add({
-      'userId': uid,
-      'rawInput': rawInput,
-      'symptoms': symptoms,
-      'createdAt': Timestamp.fromDate(timestamp),
-      'date': Timestamp.fromDate(timestamp),
     });
   }
 

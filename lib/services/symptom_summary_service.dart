@@ -1,5 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:lifelens/app_services.dart';
 
 enum SymptomSummaryRange { last7, last14, last30, last90, custom }
 
@@ -70,12 +69,7 @@ class SymptomDoctorSummary {
 }
 
 class SymptomSummaryService {
-  SymptomSummaryService({FirebaseFirestore? firestore, FirebaseAuth? auth})
-    : _firestore = firestore ?? FirebaseFirestore.instance,
-      _auth = auth ?? FirebaseAuth.instance;
-
-  final FirebaseFirestore _firestore;
-  final FirebaseAuth _auth;
+  SymptomSummaryService();
 
   Future<SymptomDoctorSummary> generateSummary(
     SymptomSummaryRange range,
@@ -99,11 +93,6 @@ class SymptomSummaryService {
     required bool compareWithPrevious,
     String? symptomFocus,
   }) async {
-    final user = _auth.currentUser;
-    if (user == null) {
-      throw Exception('Please sign in to generate a summary.');
-    }
-
     final start = _startOfDay(startDate);
     final endExclusive = _startOfDay(endDate).add(const Duration(days: 1));
     if (!endExclusive.isAfter(start)) {
@@ -114,32 +103,19 @@ class SymptomSummaryService {
     final prevStart = start.subtract(Duration(days: windowDays));
     final normalizedFocus = _normalizeFocus(symptomFocus);
 
-    final snapshot = await _firestore
-        .collection('symptom_entries')
-        .where('userId', isEqualTo: user.uid)
-        .limit(2000)
-        .get();
+    final fetchDays = windowDays + (compareWithPrevious ? windowDays : 0) + 1;
+    final entries = await AppServices.isar.getRecentSymptomEntries(
+      days: fetchDays,
+    );
 
     final currentCounts = <String, int>{};
     final previousCounts = <String, int>{};
     var entryCount = 0;
     final activeDaysSet = <DateTime>{};
 
-    for (final doc in snapshot.docs) {
-      final data = doc.data();
-      final ts = data['createdAt'];
-      if (ts is! Timestamp) {
-        continue;
-      }
-
-      final createdAt = ts.toDate();
-      final symptomsRaw = data['symptoms'];
-      if (symptomsRaw is! List) {
-        continue;
-      }
-
-      final symptoms = symptomsRaw
-          .whereType<String>()
+    for (final entry in entries) {
+      final createdAt = entry.timestamp;
+      final symptoms = entry.symptomList
           .map((s) => s.trim().toLowerCase())
           .where((s) => s.isNotEmpty)
           .where((s) => _matchesFocus(s, normalizedFocus))

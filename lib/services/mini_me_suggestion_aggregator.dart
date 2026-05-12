@@ -1,4 +1,4 @@
-import 'package:lifelens/database/isar_service.dart';
+import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/mood_entry.dart';
 import 'package:lifelens/services/daily_suggestions_service.dart';
 import 'package:lifelens/services/minime_backend_service.dart';
@@ -12,21 +12,19 @@ class MiniMeSuggestionAggregator {
   static Future<List<DailySuggestion>> generateDailySuggestions({
     int days = 7,
   }) async {
-    await IsarService.instance.init();
-
-    final recentEntries = await IsarService.instance.getRecentMoodEntries(
+    final recentEntries = await AppServices.isar.getRecentMoodEntries(
       days: days,
     );
 
     const summaryContext = '';
 
     // ── Recent ISAR chat history (last session, up to 20 messages) ───────────
-    final recentSessions = await IsarService.instance.getRecentChatSessions(
+    final recentSessions = await AppServices.isar.getRecentChatSessions(
       limit: 1,
     );
     final List<MiniMeChatTurn> history;
     if (recentSessions.isNotEmpty) {
-      final msgs = await IsarService.instance
+      final msgs = await AppServices.isar
           .getMessagesForSession(recentSessions.first.sessionId);
       final recent = msgs.length <= 20 ? msgs : msgs.sublist(msgs.length - 20);
       history = recent
@@ -36,10 +34,8 @@ class MiniMeSuggestionAggregator {
       history = const [];
     }
     final chatMessages = await _loadRecentChatMessages();
-    final activeSymptoms = await IsarService.instance.getActiveSymptomEntries();
-    final moodEntries = recentEntries
-        .where((entry) => entry.resolvedBy != 'minime')
-        .toList(growable: false);
+    final activeSymptoms = await AppServices.isar.getActiveSymptomEntries();
+    final moodEntries = recentEntries.toList(growable: false);
 
     if (moodEntries.isEmpty && chatMessages.isEmpty && activeSymptoms.isEmpty) {
       return const [
@@ -231,12 +227,12 @@ class MiniMeSuggestionAggregator {
   }
 
   static Future<List<_ChatMessageView>> _loadRecentChatMessages() async {
-    final sessions = await IsarService.instance.getRecentChatSessions(limit: 8);
+    final sessions = await AppServices.isar.getRecentChatSessions(limit: 8);
     if (sessions.isEmpty) return const [];
 
     final collected = <_ChatMessageView>[];
     for (final session in sessions.reversed) {
-      final messages = await IsarService.instance.getMessagesForSession(
+      final messages = await AppServices.isar.getMessagesForSession(
         session.sessionId,
       );
       collected.addAll(

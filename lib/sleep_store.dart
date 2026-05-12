@@ -1,23 +1,21 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 
+import 'app_services.dart';
+import 'database/sleep_entry.dart';
 import 'models/sleep.dart';
 
 class SleepStore extends ChangeNotifier {
-  SleepStore({FirebaseFirestore? firestore, FirebaseAuth? auth})
-    : _firestore = firestore ?? FirebaseFirestore.instance,
-      _auth = auth ?? FirebaseAuth.instance {
+  SleepStore({FirebaseAuth? auth}) : _auth = auth ?? FirebaseAuth.instance {
     _authSub = _auth.authStateChanges().listen((user) {
       _handleAuthChanged(user);
     });
-    _loadFromCloud();
+    _loadFromIsar();
   }
 
-  final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   late final StreamSubscription<User?> _authSub;
 
@@ -40,7 +38,7 @@ class SleepStore extends ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
     }
-    _loadFromCloud();
+    _loadFromIsar();
   }
 
   Future<String?> add(Sleep sleep) async {
@@ -48,32 +46,30 @@ class SleepStore extends ChangeNotifier {
     notifyListeners();
     await TrackingReminderService.instance.handleLogRecorded();
 
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) {
-      _errorMessage = 'Saved locally. Sign in to sync sleep logs to cloud.';
-      notifyListeners();
-      return _errorMessage;
-    }
-
     try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('sleep_logs')
-          .add(_toFirestore(sleep));
+      final entry = SleepEntry()
+        ..date = _isoDate(sleep.date)
+        ..bedTime = sleep.bedTime
+        ..wakeTime = sleep.wakeTime
+        ..quality = sleep.quality.name
+        ..qualityValue = sleep.quality.value
+        ..notes = sleep.notes
+        ..durationMinutes = sleep.duration.inMinutes
+        ..timestamp = DateTime.now();
+      await AppServices.isar.writeSleepEntry(entry);
       _errorMessage = null;
       notifyListeners();
       return null;
-    } on FirebaseException {
-      _errorMessage = 'Saved locally. Cloud sync failed for this sleep log.';
+    } catch (e) {
+      _errorMessage = 'Could not save sleep log.';
       notifyListeners();
       return _errorMessage;
     }
   }
 
-  Future<void> refresh() => _loadFromCloud();
+  Future<void> refresh() => _loadFromIsar();
 
-  Future<void> _loadFromCloud() async {
+  Future<void> _loadFromIsar() async {
     final requestId = ++_loadRequestId;
     final uid = _auth.currentUser?.uid;
     final scopeKey = uid ?? 'guest';
@@ -81,35 +77,20 @@ class SleepStore extends ChangeNotifier {
       _loadedScopeKey = scopeKey;
       _items.clear();
     }
-    if (uid == null) {
-      _items.clear();
-      _isLoading = false;
-      _errorMessage = null;
-      notifyListeners();
-      return;
-    }
 
     _isLoading = true;
     notifyListeners();
 
     try {
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('sleep_logs')
-          .orderBy('date', descending: true)
-          .limit(120)
-          .get();
-
+      final entries = await AppServices.isar.getRecentSleepEntries(days: 120);
       if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
-
       _items
         ..clear()
-        ..addAll(snapshot.docs.map(_fromFirestore));
+        ..addAll(entries.map(_fromEntry));
       _errorMessage = null;
-    } on FirebaseException {
+    } catch (_) {
       if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
-      _errorMessage = 'Could not sync sleep logs from cloud.';
+      _errorMessage = 'Could not load sleep logs.';
     } finally {
       if (requestId == _loadRequestId && _loadedScopeKey == scopeKey) {
         _isLoading = false;
@@ -118,52 +99,21 @@ class SleepStore extends ChangeNotifier {
     }
   }
 
-  Map<String, dynamic> _toFirestore(Sleep sleep) {
-    return {
-      'bedTime': Timestamp.fromDate(sleep.bedTime),
-      'wakeTime': Timestamp.fromDate(sleep.wakeTime),
-      'quality': sleep.quality.name,
-      'qualityValue': sleep.quality.value,
-      'date': Timestamp.fromDate(sleep.date),
-      'notes': sleep.notes,
-      'durationMinutes': sleep.duration.inMinutes,
-    };
-  }
-
-  Sleep _fromFirestore(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data();
-
-    final bedTime = _parseDate(data['bedTime']) ?? DateTime.now();
-    final wakeTime = _parseDate(data['wakeTime']) ?? DateTime.now();
-    final date = _parseDate(data['date']) ?? DateTime.now();
-    final qualityName = (data['quality'] ?? 'fair').toString();
-
+  Sleep _fromEntry(SleepEntry e) {
     final quality = SleepQuality.values.firstWhere(
-      (item) => item.name == qualityName,
+      (q) => q.name == e.quality,
       orElse: () => SleepQuality.fair,
     );
-
     return Sleep(
-      bedTime: bedTime,
-      wakeTime: wakeTime,
+      bedTime: e.bedTime,
+      wakeTime: e.wakeTime,
       quality: quality,
-      date: date,
-      notes: (data['notes'] ?? '').toString(),
+      date: DateTime.parse(e.date),
+      notes: e.notes,
     );
   }
 
-  DateTime? _parseDate(Object? value) {
-    if (value is Timestamp) {
-      return value.toDate();
-    }
-    if (value is DateTime) {
-      return value;
-    }
-    if (value is String) {
-      return DateTime.tryParse(value);
-    }
-    return null;
-  }
+  String _isoDate(DateTime dt) => dt.toIso8601String().substring(0, 10);
 
   @override
   void dispose() {

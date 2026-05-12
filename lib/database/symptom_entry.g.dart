@@ -102,19 +102,6 @@ const SymptomEntrySchema = CollectionSchema(
         )
       ],
     ),
-    r'predictedAilment': IndexSchema(
-      id: 5556288958411965805,
-      name: r'predictedAilment',
-      unique: false,
-      replace: false,
-      properties: [
-        IndexPropertySchema(
-          name: r'predictedAilment',
-          type: IndexType.hash,
-          caseSensitive: true,
-        )
-      ],
-    ),
     r'status': IndexSchema(
       id: -107785170620420283,
       name: r'status',
@@ -399,51 +386,6 @@ extension SymptomEntryQueryWhere
               indexName: r'date',
               lower: [],
               upper: [date],
-              includeUpper: false,
-            ));
-      }
-    });
-  }
-
-  QueryBuilder<SymptomEntry, SymptomEntry, QAfterWhereClause>
-      predictedAilmentEqualTo(String predictedAilment) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'predictedAilment',
-        value: [predictedAilment],
-      ));
-    });
-  }
-
-  QueryBuilder<SymptomEntry, SymptomEntry, QAfterWhereClause>
-      predictedAilmentNotEqualTo(String predictedAilment) {
-    return QueryBuilder.apply(this, (query) {
-      if (query.whereSort == Sort.asc) {
-        return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'predictedAilment',
-              lower: [],
-              upper: [predictedAilment],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'predictedAilment',
-              lower: [predictedAilment],
-              includeLower: false,
-              upper: [],
-            ));
-      } else {
-        return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'predictedAilment',
-              lower: [predictedAilment],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'predictedAilment',
-              lower: [],
-              upper: [predictedAilment],
               includeUpper: false,
             ));
       }

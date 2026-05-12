@@ -1,15 +1,15 @@
 import 'dart:async' show unawaited;
 import 'dart:math' as math;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lifelens/assets/minime/minime_avatar.dart';
 import 'package:lifelens/avatar_store.dart';
 import 'package:lifelens/services/mood_log_draft_storage_service.dart';
-import 'package:lifelens/database/isar_service.dart';
+import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/mood_entry.dart';
+import 'package:lifelens/models/mood_result.dart';
+import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/sleep_store.dart';
@@ -496,8 +496,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             setState(
                               () => _buttonState = LogButtonVisualState.loading,
                             );
-                            String? syncWarning;
-
                             final m = moods[selectedMood];
                             final notes = notesCtrl.text.trim();
 
@@ -508,22 +506,44 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               final persistedSummary = notes.isEmpty
                                   ? '${m.label} ($intensity/5)'
                                   : '$notes ($intensity/5)';
+
+                              final fitnessScore = await AppServices.isar
+                                  .getLastFitnessScore();
+
+                              String? bertPrediction;
+                              double? bertTopProb;
+                              try {
+                                await ModelLifecycleService.instance
+                                    .ensureLoaded([ModelType.mobileBert]);
+                                if (AppServices.mobileBert.isLoaded) {
+                                  final probs =
+                                      await AppServices.mobileBert.classify(
+                                    persistedSummary,
+                                    AppServices.mobileBertTokenize,
+                                  );
+                                  final topIdx = probs.indexWhere(
+                                    (p) => p ==
+                                        probs.reduce((a, b) => a > b ? a : b),
+                                  );
+                                  bertPrediction = kMobileBertLabels[topIdx];
+                                  bertTopProb = probs[topIdx];
+                                }
+                              } catch (_) {}
+
                               final moodEntry = MoodEntry()
                                 ..date = now.toIso8601String().substring(0, 10)
                                 ..rawLog = userLog
                                 ..condensedLog = persistedSummary
                                 ..resolvedMood = m.label
                                 ..resolvedBy = "user"
-                                ..mobileBertPrediction = null
-                                ..mobileBertTopProb = null
-                                ..userConfirmed = null
-                                ..responseText = ""
-                                ..fitnessScoreSnapshot = 0.0
+                                ..mobileBertPrediction = bertPrediction
+                                ..mobileBertTopProb = bertTopProb
+                                ..responseText = notes.isNotEmpty
+                                    ? notes
+                                    : 'I am feeling $intensity/5 ${m.label}'
+                                ..fitnessScoreSnapshot = fitnessScore
                                 ..timestamp = now;
-                              await IsarService.instance.init();
-                              await IsarService.instance.writeMoodEntry(
-                                moodEntry,
-                              );
+                              await AppServices.isar.writeMoodEntry(moodEntry);
                               if (context.mounted) {
                                 final moodStore = context.read<MoodLogStore>();
                                 moodStore.add(
@@ -548,15 +568,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                               }
                               await TrackingReminderService.instance
                                   .handleLogRecorded();
-                              try {
-                                await _syncMoodToCloud(
-                                  entry: moodEntry,
-                                  selectedTags: tags.toList(growable: false),
-                                );
-                              } catch (_) {
-                                syncWarning =
-                                    'Saved on this device. Cloud sync failed for this mood log.';
-                              }
                             } catch (e) {
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -577,14 +588,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                             setState(
                               () => _buttonState = LogButtonVisualState.success,
                             );
-                            if (syncWarning != null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(syncWarning),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                            }
                             await Future<void>.delayed(
                               const Duration(milliseconds: 800),
                             );
@@ -620,34 +623,6 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
     );
   }
 
-  Future<void> _syncMoodToCloud({
-    required MoodEntry entry,
-    required List<String> selectedTags,
-  }) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      return;
-    }
-
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('mood_logs')
-        .add({
-          'date': entry.date,
-          'rawLog': entry.rawLog,
-          'condensedLog': entry.condensedLog,
-          'resolvedMood': entry.resolvedMood,
-          'resolvedBy': entry.resolvedBy,
-          'mobileBertPrediction': entry.mobileBertPrediction,
-          'mobileBertTopProb': entry.mobileBertTopProb,
-          'userConfirmed': entry.userConfirmed,
-          'responseText': entry.responseText,
-          'fitnessScoreSnapshot': entry.fitnessScoreSnapshot,
-          'tags': selectedTags,
-          'createdAt': Timestamp.fromDate(entry.timestamp),
-        });
-  }
 }
 
 class _MoodOption {

@@ -1,22 +1,20 @@
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:lifelens/app_services.dart';
+import 'package:lifelens/database/exercise_entry.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
 import '../models/exercise_model.dart';
 
 class ExerciseStore {
-  ExerciseStore({FirebaseFirestore? firestore, FirebaseAuth? auth})
-    : _firestore = firestore ?? FirebaseFirestore.instance,
-      _auth = auth ?? FirebaseAuth.instance {
+  ExerciseStore({FirebaseAuth? auth})
+    : _auth = auth ?? FirebaseAuth.instance {
     _ready = _initializePrefs();
   }
 
   static const String _favoritesKeyBase = 'favorite_exercises';
   static const String _exerciseHistoryKeyBase = 'exercise_history_v2';
-  static const String _pendingExerciseSyncKeyBase = 'pending_exercise_sync_v1';
-  final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
   late SharedPreferences _prefs;
   late final Future<void> _ready;
@@ -28,8 +26,7 @@ class ExerciseStore {
     _prefs = await SharedPreferences.getInstance();
     _loadedScopeKey = _scopeKey;
     _loadFavorites();
-    await _flushPendingCloudSync();
-    await _loadCloudHistory();
+    await _loadFromIsar();
   }
 
   Future<void> ensureReady() => _ready;
@@ -38,8 +35,6 @@ class ExerciseStore {
 
   String get _favoritesKey => '${_favoritesKeyBase}_$_scopeKey';
   String get _exerciseHistoryKey => '${_exerciseHistoryKeyBase}_$_scopeKey';
-  String get _pendingExerciseSyncKey =>
-      '${_pendingExerciseSyncKeyBase}_$_scopeKey';
 
   void _ensureCurrentScopeLoaded() {
     if (_loadedScopeKey == _scopeKey) return;
@@ -106,13 +101,12 @@ class ExerciseStore {
 
   /// Get recommended exercises based on current mood
   List<ExerciseModel> getRecommendedExercises(String currentMood) {
-    // Filter exercises based on mood recommendations
     final moodExerciseMap = {
       'happy': ['cardio', 'dance', 'running'],
       'sad': ['yoga', 'meditation', 'walking'],
       'anxious': ['yoga', 'meditation', 'pilates'],
       'stressed': ['stretching', 'yoga', 'pilates'],
-      'calm': ['any'], // Any exercise works when calm
+      'calm': ['any'],
     };
 
     final recommendedTypes =
@@ -187,28 +181,12 @@ class ExerciseStore {
       _exerciseHistoryKey,
       history.map(_encodeHistoryRecord).toList(growable: false),
     );
-    await _enqueuePendingSync(record);
+    await _writeToIsar(record, timestamp: timestamp);
     await TrackingReminderService.instance.handleLogRecorded();
-
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) {
-      return 'Saved on this device. Sign in to sync exercise logs.';
-    }
-
-    final synced = await _syncRecordToCloud(record, timestamp: timestamp);
-    if (synced) {
-      await _removePendingSync(record);
-      return null;
-    }
-
-    return 'Saved on this device. Cloud sync will retry automatically.';
+    return null;
   }
 
-  Future<void> refreshFromCloud() async {
-    await _ready;
-    await _flushPendingCloudSync();
-    await _loadCloudHistory();
-  }
+  Future<void> refreshFromCloud() => _loadFromIsar();
 
   /// Return recent exercise activity as daily counts for the last [days] days.
   /// Index 0 is today.
@@ -289,175 +267,57 @@ class ExerciseStore {
     };
   }
 
-  Future<void> _loadCloudHistory() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-
+  Future<void> _loadFromIsar() async {
     try {
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('exercise_logs')
-          .orderBy('timestamp', descending: true)
-          .limit(120)
-          .get();
-
-      if (snapshot.docs.isEmpty) return;
-
-      final history = snapshot.docs
-          .map(_fromFirestore)
-          .where((record) => record['exerciseId']?.isNotEmpty ?? false)
+      final entries = await AppServices.isar.getRecentExerciseEntries(
+        days: 120,
+      );
+      if (entries.isEmpty) return;
+      final history = entries
+          .map(
+            (e) => <String, String>{
+              'exerciseId': e.exerciseId,
+              'exerciseName': e.exerciseName,
+              'mood': e.mood,
+              'durationMinutes': e.durationMinutes.toString(),
+              'sets': e.sets.toString(),
+              'reps': e.reps.toString(),
+              'noExercise': e.noExercise.toString(),
+              'workoutItemsJson': e.workoutItemsJson,
+              'workoutCount': e.workoutCount.toString(),
+              'timestamp': e.timestamp.toIso8601String(),
+            },
+          )
           .toList(growable: false);
-
       await _prefs.setStringList(
         _exerciseHistoryKey,
         history.map(_encodeHistoryRecord).toList(growable: false),
       );
-    } on FirebaseException {
-      // Keep the local history when cloud sync is unavailable.
+    } catch (_) {
+      // Keep the local history when ISAR is unavailable.
     }
   }
 
-  Future<void> _enqueuePendingSync(Map<String, String> record) async {
-    final pending = List<Map<String, String>>.from(_loadPendingSyncRecords());
-    final recordId = _cloudLogIdFor(record);
-    final exists = pending.any((item) => _cloudLogIdFor(item) == recordId);
-    if (exists) return;
-
-    pending.add(record);
-    await _prefs.setStringList(
-      _pendingExerciseSyncKey,
-      pending.map(_encodeHistoryRecord).toList(growable: false),
-    );
-  }
-
-  Future<void> _removePendingSync(Map<String, String> record) async {
-    final recordId = _cloudLogIdFor(record);
-    final pending = _loadPendingSyncRecords()
-        .where((item) => _cloudLogIdFor(item) != recordId)
-        .toList(growable: false);
-    await _prefs.setStringList(
-      _pendingExerciseSyncKey,
-      pending.map(_encodeHistoryRecord).toList(growable: false),
-    );
-  }
-
-  List<Map<String, String>> _loadPendingSyncRecords() {
-    _ensureCurrentScopeLoaded();
-    final raw =
-        _prefs.getStringList(_pendingExerciseSyncKey) ?? const <String>[];
-    return raw
-        .map(_decodeHistoryRecord)
-        .where((record) => record['exerciseId']?.isNotEmpty ?? false)
-        .where((record) => record['timestamp']?.isNotEmpty ?? false)
-        .toList(growable: true);
-  }
-
-  Future<void> _flushPendingCloudSync() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-
-    final pending = _loadPendingSyncRecords();
-    if (pending.isEmpty) return;
-
-    final remaining = <Map<String, String>>[];
-    for (final record in pending) {
-      final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
-      final synced = await _syncRecordToCloud(record, timestamp: timestamp);
-      if (!synced) {
-        remaining.add(record);
-      }
-    }
-
-    await _prefs.setStringList(
-      _pendingExerciseSyncKey,
-      remaining.map(_encodeHistoryRecord).toList(growable: false),
-    );
-  }
-
-  Future<bool> _syncRecordToCloud(
+  Future<void> _writeToIsar(
     Map<String, String> record, {
     DateTime? timestamp,
   }) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return false;
-
     final effectiveTimestamp =
         timestamp ?? DateTime.tryParse(record['timestamp'] ?? '');
-    if (effectiveTimestamp == null) return false;
-
-    try {
-      await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('exercise_logs')
-          .doc(_cloudLogIdFor(record))
-          .set(
-            _toFirestore(record, effectiveTimestamp),
-            SetOptions(merge: true),
-          );
-      return true;
-    } on FirebaseException {
-      return false;
-    }
-  }
-
-  String _cloudLogIdFor(Map<String, String> record) {
-    final exerciseId = (record['exerciseId'] ?? '').trim();
-    final timestamp = (record['timestamp'] ?? '').trim();
-    final safeExerciseId = exerciseId.replaceAll(
-      RegExp(r'[^A-Za-z0-9_-]'),
-      '_',
-    );
-    final safeTimestamp = timestamp.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-    return '${safeExerciseId}_$safeTimestamp';
-  }
-
-  Map<String, dynamic> _toFirestore(
-    Map<String, String> record,
-    DateTime timestamp,
-  ) {
-    final workoutItems = _decodeWorkoutItems(record['workoutItemsJson'] ?? '');
-    return {
-      'exerciseId': record['exerciseId'],
-      'exerciseName': record['exerciseName'],
-      'mood': record['mood'],
-      'durationMinutes': int.tryParse(record['durationMinutes'] ?? '') ?? 0,
-      'sets': int.tryParse(record['sets'] ?? '') ?? 0,
-      'reps': int.tryParse(record['reps'] ?? '') ?? 0,
-      'noExercise': (record['noExercise'] ?? '').trim() == 'true',
-      if (workoutItems.isNotEmpty) 'workoutItems': workoutItems,
-      if ((record['workoutCount'] ?? '').trim().isNotEmpty)
-        'workoutCount': int.tryParse(record['workoutCount'] ?? '') ?? 0,
-      'timestamp': Timestamp.fromDate(timestamp),
-      'createdAt': FieldValue.serverTimestamp(),
-    };
-  }
-
-  Map<String, String> _fromFirestore(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data();
-    final timestamp = data['timestamp'];
-    final workoutItems = _normalizeWorkoutItemsFromCloud(data['workoutItems']);
-
-    return {
-      'exerciseId': (data['exerciseId'] ?? '').toString(),
-      'exerciseName': (data['exerciseName'] ?? '').toString(),
-      'mood': (data['mood'] ?? '').toString(),
-      'durationMinutes': (data['durationMinutes'] ?? '').toString(),
-      'sets': (data['sets'] ?? '').toString(),
-      'reps': (data['reps'] ?? '').toString(),
-      'noExercise': (data['noExercise'] ?? false).toString(),
-      if (workoutItems.isNotEmpty) 'workoutItemsJson': jsonEncode(workoutItems),
-      'workoutCount': (data['workoutCount'] ?? workoutItems.length).toString(),
-      'timestamp': switch (timestamp) {
-        Timestamp value => value.toDate().toIso8601String(),
-        DateTime value => value.toIso8601String(),
-        String value => value,
-        _ => '',
-      },
-    };
+    if (effectiveTimestamp == null) return;
+    final entry = ExerciseEntry()
+      ..date = effectiveTimestamp.toIso8601String().substring(0, 10)
+      ..exerciseId = record['exerciseId'] ?? ''
+      ..exerciseName = record['exerciseName'] ?? ''
+      ..mood = record['mood'] ?? ''
+      ..durationMinutes = int.tryParse(record['durationMinutes'] ?? '') ?? 0
+      ..sets = int.tryParse(record['sets'] ?? '') ?? 0
+      ..reps = int.tryParse(record['reps'] ?? '') ?? 0
+      ..noExercise = (record['noExercise'] ?? '').trim() == 'true'
+      ..workoutItemsJson = record['workoutItemsJson'] ?? ''
+      ..workoutCount = int.tryParse(record['workoutCount'] ?? '') ?? 0
+      ..timestamp = effectiveTimestamp;
+    await AppServices.isar.writeExerciseEntry(entry);
   }
 
   String _workoutSummaryLabel(List<Map<String, String>> items) {
@@ -470,47 +330,5 @@ class ExerciseStore {
     if (names.length == 1) return names.first;
     if (names.length == 2) return '${names[0]} + ${names[1]}';
     return '${names[0]} + ${names.length - 1} more';
-  }
-
-  List<Map<String, String>> _decodeWorkoutItems(String encoded) {
-    if (encoded.trim().isEmpty) return const <Map<String, String>>[];
-    try {
-      final decoded = jsonDecode(encoded);
-      if (decoded is! List) return const <Map<String, String>>[];
-      return decoded
-          .whereType<Map>()
-          .map(
-            (item) => <String, String>{
-              'exerciseId': (item['exerciseId'] ?? '').toString(),
-              'exerciseName': (item['exerciseName'] ?? '').toString(),
-              'sets': (item['sets'] ?? '').toString(),
-              'reps': (item['reps'] ?? '').toString(),
-              'durationMinutes': (item['durationMinutes'] ?? '').toString(),
-            },
-          )
-          .where((item) => (item['exerciseId'] ?? '').isNotEmpty)
-          .toList(growable: false);
-    } catch (_) {
-      return const <Map<String, String>>[];
-    }
-  }
-
-  List<Map<String, String>> _normalizeWorkoutItemsFromCloud(dynamic value) {
-    if (value is! List) return const <Map<String, String>>[];
-    return value
-        .whereType<Map>()
-        .map(
-          (item) => <String, String>{
-            'exerciseId': (item['exerciseId'] ?? '').toString().trim(),
-            'exerciseName': (item['exerciseName'] ?? '').toString().trim(),
-            'sets': (item['sets'] ?? '').toString().trim(),
-            'reps': (item['reps'] ?? '').toString().trim(),
-            'durationMinutes': (item['durationMinutes'] ?? '')
-                .toString()
-                .trim(),
-          },
-        )
-        .where((item) => (item['exerciseId'] ?? '').isNotEmpty)
-        .toList(growable: false);
   }
 }
