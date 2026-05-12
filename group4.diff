@@ -1,0 +1,1202 @@
+diff --git a/lib/avatar_store.dart b/lib/avatar_store.dart
+index 22f2d960..65a5ebf6 100644
+--- a/lib/avatar_store.dart
++++ b/lib/avatar_store.dart
+@@ -0,0 +1,3 @@
++import 'dart:async';
++
++import 'package:firebase_auth/firebase_auth.dart';
+@@ -32,0 +36,3 @@ class AvatarStore extends ChangeNotifier {
++  String _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
++  int _loadRequestId = 0;
++  late final StreamSubscription<User?> _authSub;
+@@ -34,0 +41,3 @@ class AvatarStore extends ChangeNotifier {
++    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
++      _handleAuthChanged(user);
++    });
+@@ -53,0 +63,27 @@ class AvatarStore extends ChangeNotifier {
++  String _scopedKey(String key) => '${key}_$_loadedScopeKey';
++
++  void _resetToDefaults() {
++    final preset = miniMeCompanionPresets.first;
++    _bodyModel = preset.bodyModel;
++    _hairModel = preset.hairModel;
++    _shirtModel = preset.shirtModel;
++    _bodyWidthScale = preset.bodyWidthScale;
++    _miniMeName = 'Mini-Me';
++    _companionId = preset.id;
++    _isMiniMeHatched = false;
++    _degradationLevel = 0.0;
++    _autoBodyWidthScale = 1.0;
++    _trendBodyWidthScale = 1.0;
++    _fatigueAppearanceLevel = 0.0;
++    _healthTrendScore = 0.0;
++  }
++
++  void _handleAuthChanged(User? user) {
++    final nextScopeKey = user?.uid ?? 'guest';
++    if (_loadedScopeKey == nextScopeKey) return;
++    _loadedScopeKey = nextScopeKey;
++    _resetToDefaults();
++    notifyListeners();
++    unawaited(_loadFromPrefs());
++  }
++
+@@ -133,0 +170,18 @@ class AvatarStore extends ChangeNotifier {
++  void resetAdaptiveHealthAppearance() {
++    final changed =
++        _degradationLevel != 0.0 ||
++        _autoBodyWidthScale != 1.0 ||
++        _trendBodyWidthScale != 1.0 ||
++        _fatigueAppearanceLevel != 0.0 ||
++        _healthTrendScore != 0.0;
++    if (!changed) return;
++
++    _degradationLevel = 0.0;
++    _autoBodyWidthScale = 1.0;
++    _trendBodyWidthScale = 1.0;
++    _fatigueAppearanceLevel = 0.0;
++    _healthTrendScore = 0.0;
++    _saveToPrefs();
++    notifyListeners();
++  }
++
+@@ -272,0 +327,3 @@ class AvatarStore extends ChangeNotifier {
++    final requestId = ++_loadRequestId;
++    _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
++    _resetToDefaults();
+@@ -274,3 +331,7 @@ class AvatarStore extends ChangeNotifier {
+-    final hasCustomization = prefs.getBool(_hasAvatarCustomizationKey) ?? false;
+-    _companionId = prefs.getString(_companionIdKey) ?? _companionId;
+-    _isMiniMeHatched = prefs.getBool(_isMiniMeHatchedKey) ?? _isMiniMeHatched;
++    if (requestId != _loadRequestId) return;
++
++    final hasCustomization =
++        prefs.getBool(_scopedKey(_hasAvatarCustomizationKey)) ?? false;
++    _companionId = prefs.getString(_scopedKey(_companionIdKey)) ?? _companionId;
++    _isMiniMeHatched =
++        prefs.getBool(_scopedKey(_isMiniMeHatchedKey)) ?? _isMiniMeHatched;
+@@ -278 +339 @@ class AvatarStore extends ChangeNotifier {
+-        prefs.getDouble(_degradationLevelKey) ?? _degradationLevel;
++        prefs.getDouble(_scopedKey(_degradationLevelKey)) ?? _degradationLevel;
+@@ -280 +341,2 @@ class AvatarStore extends ChangeNotifier {
+-        prefs.getDouble(_autoBodyWidthScaleKey) ?? _autoBodyWidthScale;
++        prefs.getDouble(_scopedKey(_autoBodyWidthScaleKey)) ??
++        _autoBodyWidthScale;
+@@ -282 +344,2 @@ class AvatarStore extends ChangeNotifier {
+-        prefs.getDouble(_trendBodyWidthScaleKey) ?? _trendBodyWidthScale;
++        prefs.getDouble(_scopedKey(_trendBodyWidthScaleKey)) ??
++        _trendBodyWidthScale;
+@@ -284 +347,2 @@ class AvatarStore extends ChangeNotifier {
+-        prefs.getDouble(_fatigueAppearanceLevelKey) ?? _fatigueAppearanceLevel;
++        prefs.getDouble(_scopedKey(_fatigueAppearanceLevelKey)) ??
++        _fatigueAppearanceLevel;
+@@ -286 +350 @@ class AvatarStore extends ChangeNotifier {
+-        prefs.getDouble(_healthTrendScoreKey) ?? _healthTrendScore;
++        prefs.getDouble(_scopedKey(_healthTrendScoreKey)) ?? _healthTrendScore;
+@@ -289,4 +353,5 @@ class AvatarStore extends ChangeNotifier {
+-      _bodyModel = prefs.getString(_bodyModelKey) ?? _bodyModel;
+-      _hairModel = prefs.getString(_hairModelKey) ?? _hairModel;
+-      _shirtModel = prefs.getString(_shirtModelKey) ?? _shirtModel;
+-      _bodyWidthScale = prefs.getDouble(_bodyWidthScaleKey) ?? _bodyWidthScale;
++      _bodyModel = prefs.getString(_scopedKey(_bodyModelKey)) ?? _bodyModel;
++      _hairModel = prefs.getString(_scopedKey(_hairModelKey)) ?? _hairModel;
++      _shirtModel = prefs.getString(_scopedKey(_shirtModelKey)) ?? _shirtModel;
++      _bodyWidthScale =
++          prefs.getDouble(_scopedKey(_bodyWidthScaleKey)) ?? _bodyWidthScale;
+@@ -301 +366 @@ class AvatarStore extends ChangeNotifier {
+-    _miniMeName = prefs.getString(_miniMeNameKey) ?? _miniMeName;
++    _miniMeName = prefs.getString(_scopedKey(_miniMeNameKey)) ?? _miniMeName;
+@@ -307,12 +372,21 @@ class AvatarStore extends ChangeNotifier {
+-    await prefs.setString(_bodyModelKey, _bodyModel);
+-    await prefs.setString(_hairModelKey, _hairModel);
+-    await prefs.setString(_shirtModelKey, _shirtModel);
+-    await prefs.setDouble(_bodyWidthScaleKey, _bodyWidthScale);
+-    await prefs.setString(_miniMeNameKey, _miniMeName);
+-    await prefs.setString(_companionIdKey, _companionId);
+-    await prefs.setBool(_isMiniMeHatchedKey, _isMiniMeHatched);
+-    await prefs.setDouble(_degradationLevelKey, _degradationLevel);
+-    await prefs.setDouble(_autoBodyWidthScaleKey, _autoBodyWidthScale);
+-    await prefs.setDouble(_trendBodyWidthScaleKey, _trendBodyWidthScale);
+-    await prefs.setDouble(_fatigueAppearanceLevelKey, _fatigueAppearanceLevel);
+-    await prefs.setDouble(_healthTrendScoreKey, _healthTrendScore);
++    await prefs.setString(_scopedKey(_bodyModelKey), _bodyModel);
++    await prefs.setString(_scopedKey(_hairModelKey), _hairModel);
++    await prefs.setString(_scopedKey(_shirtModelKey), _shirtModel);
++    await prefs.setDouble(_scopedKey(_bodyWidthScaleKey), _bodyWidthScale);
++    await prefs.setString(_scopedKey(_miniMeNameKey), _miniMeName);
++    await prefs.setString(_scopedKey(_companionIdKey), _companionId);
++    await prefs.setBool(_scopedKey(_isMiniMeHatchedKey), _isMiniMeHatched);
++    await prefs.setDouble(_scopedKey(_degradationLevelKey), _degradationLevel);
++    await prefs.setDouble(
++      _scopedKey(_autoBodyWidthScaleKey),
++      _autoBodyWidthScale,
++    );
++    await prefs.setDouble(
++      _scopedKey(_trendBodyWidthScaleKey),
++      _trendBodyWidthScale,
++    );
++    await prefs.setDouble(
++      _scopedKey(_fatigueAppearanceLevelKey),
++      _fatigueAppearanceLevel,
++    );
++    await prefs.setDouble(_scopedKey(_healthTrendScoreKey), _healthTrendScore);
+@@ -320 +394 @@ class AvatarStore extends ChangeNotifier {
+-      await prefs.setBool(_hasAvatarCustomizationKey, true);
++      await prefs.setBool(_scopedKey(_hasAvatarCustomizationKey), true);
+@@ -322,0 +397,6 @@ class AvatarStore extends ChangeNotifier {
++
++  @override
++  void dispose() {
++    _authSub.cancel();
++    super.dispose();
++  }
+diff --git a/lib/minime_screen.dart b/lib/minime_screen.dart
+index de2cf0b3..ec8fe4fc 100644
+--- a/lib/minime_screen.dart
++++ b/lib/minime_screen.dart
+@@ -4,0 +5 @@ import 'package:firebase_auth/firebase_auth.dart';
++import 'package:flutter/foundation.dart' show kDebugMode;
+@@ -16,0 +18 @@ import 'package:lifelens/services/daily_suggestions_service.dart';
++import 'package:lifelens/services/dev_negative_week_seed_service.dart';
+@@ -38,0 +41,5 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++  static const bool _autoSeedNegativeWeek = bool.fromEnvironment(
++    'LIFELENS_SEED_NEGATIVE_WEEK',
++  );
++  static bool _autoSeedAttemptedThisRun = false;
++
+@@ -48,0 +56 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++  bool _hasMiniMeHealthLogs = false;
+@@ -79,0 +88,5 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++      if (kDebugMode && _autoSeedNegativeWeek && !_autoSeedAttemptedThisRun) {
++        _autoSeedAttemptedThisRun = true;
++        await _seedNegativeWeekForCurrentUser();
++        if (!mounted) return;
++      }
+@@ -348 +361 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
+-                'Glad to hear it! I have marked $resolvedName as resolved. Keep listening to your body — log anything new if it comes up.',
++                'Glad to hear your symptoms went away. I marked them as resolved, and I will stay out of the way unless something new comes up.',
+@@ -786 +799 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
+-          .getRecentExerciseActivity(days: 7)
++          .getRecentExerciseActivity(days: 7, includeNoExercise: false)
+@@ -788,0 +802 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++      final exerciseHistory = _exerciseStore.getRecentExerciseHistory(limit: 1);
+@@ -800,0 +815,27 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++      final hasHealthLogs =
++          recentMoods.isNotEmpty ||
++          recentSleep.isNotEmpty ||
++          exerciseHistory.isNotEmpty ||
++          recentSymptomEntries.isNotEmpty ||
++          activeSymptoms.isNotEmpty;
++      if (!hasHealthLogs) {
++        avatarStore.resetAdaptiveHealthAppearance();
++        if (!mounted) return;
++        setState(() {
++          _hasMiniMeHealthLogs = false;
++          _intelligence = null;
++          _activeSymptomCount = 0;
++          _lastIntelligenceInputSignature = 'empty-health-logs';
++          _danceOnOpen = false;
++          _derivedUiSignature = null;
++          _derivedUiState = null;
++        });
++        return;
++      }
++
++      if (!_hasMiniMeHealthLogs && mounted) {
++        setState(() {
++          _hasMiniMeHealthLogs = true;
++        });
++      }
++
+@@ -924,0 +966,4 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++    if (!_hasMiniMeHealthLogs) {
++      return 'neutral';
++    }
++
+@@ -1001,0 +1047,5 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++    if (_isDebugSeedCommand(text)) {
++      await _handleDebugSeedCommand(text);
++      return;
++    }
++
+@@ -1039,0 +1090,56 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++  bool _isDebugSeedCommand(String text) {
++    if (!kDebugMode) return false;
++
++    final normalized = text.trim().toLowerCase();
++    return normalized == DevNegativeWeekSeedService.command ||
++        normalized == 'seed negative week';
++  }
++
++  Future<void> _handleDebugSeedCommand(String text) async {
++    setState(() {
++      _isCoachExpanded = true;
++      _appendMessage(_MiniMeChatMessage(role: _ChatRole.user, text: text));
++      _isReplying = true;
++    });
++    await _persistMessages();
++    _chatController.clear();
++    _scrollToBottom();
++
++    String reply;
++    try {
++      final result = await _seedNegativeWeekForCurrentUser();
++      if (!mounted) return;
++
++      reply =
++          '${result.summary}\n\nI refreshed your Mini-Me context too, so suggestions and appearance should now react to the tougher week.';
++    } catch (error) {
++      reply = 'I could not seed the current account yet: $error';
++    }
++
++    if (!mounted) return;
++    await _appendAssistantReplyInChunks(reply);
++  }
++
++  Future<DevNegativeWeekSeedResult> _seedNegativeWeekForCurrentUser() async {
++    final result = await DevNegativeWeekSeedService.seedCurrentUser();
++    if (!mounted) return result;
++
++    final moodStore = context.read<MoodLogStore>();
++    final sleepStore = context.read<SleepStore>();
++    final inbox = context.read<MiniMeSuggestionsInbox>();
++
++    await moodStore.refreshFromPersistence();
++    await sleepStore.refresh();
++    await _exerciseStore.refreshFromCloud();
++    await _refreshStartLoggingPromptState();
++    _lastIntelligenceInputSignature = null;
++    await _refreshIntelligence();
++    await inbox.refresh(
++      moodStore: moodStore,
++      sleepStore: sleepStore,
++      fromLog: true,
++    );
++
++    return result;
++  }
++
+@@ -1133 +1239,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
+-    final normalized = reply
++    final normalized = _correctAssistantTypos(reply)
++        .replaceAllMapped(
++          RegExp(r'\[context:\s*([^\]]+)\]', caseSensitive: false),
++          (match) => match.group(1) ?? '',
++        )
++        .replaceAll(RegExp(r'\bcontext\s*:\s*', caseSensitive: false), '')
+@@ -1139,0 +1251,37 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++  String _correctAssistantTypos(String text) {
++    const corrections = <String, String>{
++      'butif': 'but if',
++      'alot': 'a lot',
++      'becuase': 'because',
++      'definately': 'definitely',
++      'seperate': 'separate',
++      'seperately': 'separately',
++      'recieve': 'receive',
++      'recieved': 'received',
++      'wierd': 'weird',
++      'tommorow': 'tomorrow',
++      'occured': 'occurred',
++      'untill': 'until',
++      'enviroment': 'environment',
++      'neccessary': 'necessary',
++    };
++
++    var corrected = text;
++    for (final entry in corrections.entries) {
++      corrected = corrected.replaceAllMapped(
++        RegExp('\\b${entry.key}\\b', caseSensitive: false),
++        (match) => _matchReplacementCase(match.group(0) ?? '', entry.value),
++      );
++    }
++    return corrected;
++  }
++
++  String _matchReplacementCase(String original, String replacement) {
++    if (original.isEmpty) return replacement;
++    final first = original[0];
++    if (first == first.toUpperCase() && first != first.toLowerCase()) {
++      return '${replacement[0].toUpperCase()}${replacement.substring(1)}';
++    }
++    return replacement;
++  }
++
+@@ -1666,0 +1815,4 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
++    if (!_hasMiniMeHealthLogs) {
++      return const MiniMeVisualState();
++    }
++
+@@ -2148 +2300,4 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
+-                    return _MiniMeStreakSection(moodLogs: moodSelection.items);
++                    return _MiniMeStreakSection(
++                      moodLogs: moodSelection.items,
++                      forceEmpty: _isNewUserAccount,
++                    );
+@@ -4105 +4260 @@ class _MiniMeStreakSection extends StatefulWidget {
+-  const _MiniMeStreakSection({required this.moodLogs});
++  const _MiniMeStreakSection({required this.moodLogs, this.forceEmpty = false});
+@@ -4107,0 +4263 @@ class _MiniMeStreakSection extends StatefulWidget {
++  final bool forceEmpty;
+@@ -4128 +4284,2 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
+-    if (newSignature != _signature) {
++    if (newSignature != _signature ||
++        oldWidget.forceEmpty != widget.forceEmpty) {
+@@ -4134,0 +4292,3 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
++    if (widget.forceEmpty) {
++      return Future.value(_emptyStreakSnapshot());
++    }
+@@ -4137,0 +4298,19 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
++  StreakSnapshot _emptyStreakSnapshot() {
++    final today = DateTime.now();
++    final startOfToday = DateTime(today.year, today.month, today.day);
++    return StreakSnapshot(
++      currentStreak: 0,
++      bestStreak: 0,
++      loggedToday: false,
++      recentDays: List<StreakCalendarDay>.generate(7, (index) {
++        return StreakCalendarDay(
++          date: startOfToday.subtract(Duration(days: 6 - index)),
++          isLogged: false,
++          runLevel: 0,
++        );
++      }, growable: false),
++      badge: 'Start fresh',
++      message: 'Log your first check-in to start a streak.',
++    );
++  }
++
+@@ -4147,0 +4327,63 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
++    Widget buildStreakContent(StreakSnapshot streak) {
++      final badgeIcon = _badgeToIcon(streak.badge);
++
++      return _StreakShell(
++        title: 'Daily Streak',
++        headerTrailing: Container(
++          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
++          decoration: BoxDecoration(
++            color: cs.primaryContainer,
++            borderRadius: BorderRadius.circular(999),
++          ),
++          child: Row(
++            mainAxisSize: MainAxisSize.min,
++            children: [
++              Icon(badgeIcon, size: 16, color: cs.onPrimaryContainer),
++              const SizedBox(width: 6),
++              Text(
++                '${streak.currentStreak} days',
++                style: theme.textTheme.labelLarge?.copyWith(
++                  color: cs.onPrimaryContainer,
++                  fontWeight: FontWeight.w800,
++                ),
++              ),
++            ],
++          ),
++        ),
++        child: Column(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            Row(
++              mainAxisAlignment: MainAxisAlignment.spaceBetween,
++              children: streak.recentDays.map((day) {
++                final weekday = _weekdayLetter(day.date.weekday);
++                return _DayCircle(
++                  label: Text(
++                    weekday,
++                    style: theme.textTheme.labelSmall?.copyWith(
++                      color: cs.onSurfaceVariant,
++                      fontWeight: FontWeight.w700,
++                    ),
++                  ),
++                  icon: _levelToIcon(day.runLevel),
++                  filled: day.isLogged,
++                );
++              }).toList(),
++            ),
++            const SizedBox(height: 4),
++            Text(
++              'Best streak: ${streak.bestStreak} day${streak.bestStreak == 1 ? '' : 's'}',
++              style: theme.textTheme.labelMedium?.copyWith(
++                color: cs.primary,
++                fontWeight: FontWeight.w700,
++              ),
++            ),
++          ],
++        ),
++      );
++    }
++
++    if (widget.forceEmpty) {
++      return buildStreakContent(_emptyStreakSnapshot());
++    }
++
+@@ -4181,56 +4423 @@ class _MiniMeStreakSectionState extends State<_MiniMeStreakSection> {
+-        final badgeIcon = _badgeToIcon(streak.badge);
+-
+-        return _StreakShell(
+-          title: 'Daily Streak',
+-          headerTrailing: Container(
+-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+-            decoration: BoxDecoration(
+-              color: cs.primaryContainer,
+-              borderRadius: BorderRadius.circular(999),
+-            ),
+-            child: Row(
+-              mainAxisSize: MainAxisSize.min,
+-              children: [
+-                Icon(badgeIcon, size: 16, color: cs.onPrimaryContainer),
+-                const SizedBox(width: 6),
+-                Text(
+-                  '${streak.currentStreak} days',
+-                  style: theme.textTheme.labelLarge?.copyWith(
+-                    color: cs.onPrimaryContainer,
+-                    fontWeight: FontWeight.w800,
+-                  ),
+-                ),
+-              ],
+-            ),
+-          ),
+-          child: Column(
+-            crossAxisAlignment: CrossAxisAlignment.start,
+-            children: [
+-              Row(
+-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+-                children: streak.recentDays.map((day) {
+-                  final weekday = _weekdayLetter(day.date.weekday);
+-                  return _DayCircle(
+-                    label: Text(
+-                      weekday,
+-                      style: theme.textTheme.labelSmall?.copyWith(
+-                        color: cs.onSurfaceVariant,
+-                        fontWeight: FontWeight.w700,
+-                      ),
+-                    ),
+-                    icon: _levelToIcon(day.runLevel),
+-                    filled: day.isLogged,
+-                  );
+-                }).toList(),
+-              ),
+-              const SizedBox(height: 4),
+-              Text(
+-                'Best streak: ${streak.bestStreak} day${streak.bestStreak == 1 ? '' : 's'}',
+-                style: theme.textTheme.labelMedium?.copyWith(
+-                  color: cs.primary,
+-                  fontWeight: FontWeight.w700,
+-                ),
+-              ),
+-            ],
+-          ),
+-        );
++        return buildStreakContent(streak);
+diff --git a/lib/services/daily_suggestions_service.dart b/lib/services/daily_suggestions_service.dart
+index 0cfc8e38..e8fecd87 100644
+--- a/lib/services/daily_suggestions_service.dart
++++ b/lib/services/daily_suggestions_service.dart
+@@ -546,0 +547,7 @@ class DailySuggestionsService {
++          if (latestContext != null)
++            _GeneratedSuggestion(
++              action:
++                  'Treat "$latestContext" as the real signal today: lower one demand connected to it, then choose one small reset you can finish in five minutes.',
++              reason:
++                  'The repeated mood label matters, but the note gives Mini-Me the specific situation to respond to.',
++            ),
+@@ -566,2 +573,3 @@ class DailySuggestionsService {
+-              action:
+-                  'Treat low recovery as part of the mood today: hydrate, avoid stacking hard tasks, and plan an earlier wind-down.',
++              action: latestContext == null
++                  ? 'Treat low recovery as part of the mood today: hydrate, avoid stacking hard tasks, and plan an earlier wind-down.'
++                  : 'Connect $latestContext with low recovery: avoid stacking hard tasks around it, and plan an earlier wind-down tonight.',
+@@ -618,2 +626,3 @@ class DailySuggestionsService {
+-          action:
+-              'Protect recovery for the next block: choose a lighter task first and delay anything that needs peak focus.',
++          action: latestContext == null
++              ? 'Protect recovery for the next block: choose a lighter task first and delay anything that needs peak focus.'
++              : 'Since $latestContext showed up in the sleep log, choose a lighter task first and delay anything that needs peak focus.',
+@@ -638,2 +647,3 @@ class DailySuggestionsService {
+-            action:
+-                'Keep the day in recovery mode: avoid adding extra intensity, hydrate early, and choose the shortest version of one demanding task.',
++            action: latestContext == null
++                ? 'Keep the day in recovery mode: avoid adding extra intensity, hydrate early, and choose the shortest version of one demanding task.'
++                : 'Keep the day in recovery mode around $latestContext: hydrate early and choose the shortest version of one demanding task.',
+@@ -664,2 +674,3 @@ class DailySuggestionsService {
+-            action:
+-                'Choose one tiny movement option for later, like a two-minute stretch or a short walk, only if your energy allows it.',
++            action: latestContext == null
++                ? 'Choose one tiny movement option for later, like a two-minute stretch or a short walk, only if your energy allows it.'
++                : 'Let $latestContext explain the no-exercise day, then choose only a two-minute stretch or short walk if your energy allows it.',
+@@ -733,2 +744,3 @@ class DailySuggestionsService {
+-          action:
+-              'Track symptom intensity once later today and avoid the activity that seems most likely to worsen it.',
++          action: latestContext == null
++              ? 'Track symptom intensity once later today and avoid the activity that seems most likely to worsen it.'
++              : 'Track whether $latestContext changes later today, then avoid the activity that seems most likely to worsen it.',
+@@ -904 +916 @@ class DailySuggestionsService {
+-    final text = latestLogFocus?.text ?? '';
++    final text = _stripInternalContextMetadata(latestLogFocus?.text ?? '');
+@@ -920,0 +933 @@ class DailySuggestionsService {
++          lower.startsWith('context ') ||
+@@ -937,0 +951,11 @@ class DailySuggestionsService {
++  String _stripInternalContextMetadata(String value) {
++    return value
++        .replaceAllMapped(
++          RegExp(r'\[context:\s*([^\]]+)\]', caseSensitive: false),
++          (match) => match.group(1) ?? '',
++        )
++        .replaceAll(RegExp(r'\bcontext\s*:\s*', caseSensitive: false), '')
++        .replaceAll(RegExp(r'\s+'), ' ')
++        .trim();
++  }
++
+@@ -979,0 +1004,7 @@ class DailySuggestionsService {
++      if (!_usesRequiredSpecificContext(
++        suggestion,
++        latestLogFocus: latestLogFocus,
++        suggestionWindow: suggestionWindow,
++      )) {
++        continue;
++      }
+@@ -1071,0 +1103,7 @@ class DailySuggestionsService {
++    if (!_usesRequiredSpecificContext(
++      generated,
++      latestLogFocus: latestLogFocus,
++      suggestionWindow: suggestionWindow,
++    )) {
++      return false;
++    }
+@@ -1164,0 +1203,43 @@ class DailySuggestionsService {
++  bool _usesRequiredSpecificContext(
++    _GeneratedSuggestion suggestion, {
++    required _LatestLogFocus? latestLogFocus,
++    String? suggestionWindow,
++  }) {
++    if (latestLogFocus == null) return true;
++    final window = (suggestionWindow ?? '').trim().toLowerCase();
++    final strictLatestLog =
++        window == 'log_update' || window == 'event_override';
++    if (!strictLatestLog) return true;
++
++    final context = _latestContextFromFocus(latestLogFocus);
++    if (context == null) return true;
++
++    final contextTokens = _specificContextTokens(context).take(8).toSet();
++    if (contextTokens.isEmpty) return true;
++
++    final combined = '${suggestion.action} ${suggestion.reason}'.toLowerCase();
++    if (contextTokens.any(combined.contains)) return true;
++
++    final contextWords = context
++        .toLowerCase()
++        .replaceAll(RegExp(r'[^a-z0-9\s-]'), ' ')
++        .split(RegExp(r'\s+'))
++        .where((word) => word.length >= 4)
++        .toList(growable: false);
++    for (var index = 0; index < contextWords.length - 1; index++) {
++      final phrase = '${contextWords[index]} ${contextWords[index + 1]}';
++      if (phrase.length >= 8 && combined.contains(phrase)) {
++        return true;
++      }
++    }
++
++    return false;
++  }
++
++  Iterable<String> _specificContextTokens(String value) sync* {
++    for (final token in _keywordTokens(value)) {
++      if (token.length < 5) continue;
++      yield token;
++    }
++  }
++
+@@ -1323,0 +1405,6 @@ class DailySuggestionsService {
++      'logged',
++      'entry',
++      'entries',
++      'note',
++      'notes',
++      'context',
+@@ -1425,2 +1512,3 @@ class DailySuggestionsService {
+-        if (mood.notes.trim().isNotEmpty) mood.notes.trim(),
+-        if (mood.tags.isNotEmpty) 'context ${mood.tags.join(', ')}',
++        if (mood.notes.trim().isNotEmpty)
++          _stripInternalContextMetadata(mood.notes.trim()),
++        if (mood.tags.isNotEmpty) 'tags ${mood.tags.join(', ')}',
+@@ -1674 +1762,7 @@ class DailySuggestionsService {
+-    return 'Sleep logs: average ${avgHours.toStringAsFixed(1)} hours over the recent entries. Sleep quality pattern: $qualityLabels. ${lowSleepCount == 0 ? 'Recent sleep has mostly met the baseline.' : '$lowSleepCount recent entries were under 7 hours.'}';
++    final notes = recent
++        .map((item) => item.notes.trim())
++        .where((text) => text.isNotEmpty)
++        .take(4)
++        .map(_trimShort)
++        .toList(growable: false);
++    return 'Sleep logs: average ${avgHours.toStringAsFixed(1)} hours over the recent entries. Sleep quality pattern: $qualityLabels. ${lowSleepCount == 0 ? 'Recent sleep has mostly met the baseline.' : '$lowSleepCount recent entries were under 7 hours.'}${notes.isEmpty ? '' : ' Recent sleep notes: ${notes.join(' | ')}'}';
+@@ -1730,0 +1825,3 @@ class DailySuggestionsService {
++    final noExerciseCount = recent
++        .where((item) => (item['noExercise'] ?? '').trim() == 'true')
++        .length;
+@@ -1732 +1829 @@ class DailySuggestionsService {
+-        .getRecentExerciseActivity(days: 7)
++        .getRecentExerciseActivity(days: 7, includeNoExercise: false)
+@@ -1734 +1831 @@ class DailySuggestionsService {
+-    return 'Exercise logs: $todayExerciseCount today and $weeklyCount in the last 7 days. Recent sessions include ${names.isEmpty ? 'recorded activity' : names.join(', ')}.';
++    return 'Exercise logs: $todayExerciseCount today and $weeklyCount actual movement sessions in the last 7 days. Recent entries include ${names.isEmpty ? 'recorded activity' : names.join(', ')}.${noExerciseCount == 0 ? '' : ' $noExerciseCount recent entries were no-exercise check-ins, so treat them as inactivity/recovery context rather than workouts.'}';
+@@ -1770 +1867 @@ class DailySuggestionsService {
+-        .getRecentExerciseActivity(days: 7)
++        .getRecentExerciseActivity(days: 7, includeNoExercise: false)
+diff --git a/lib/services/dev_negative_week_seed_service.dart b/lib/services/dev_negative_week_seed_service.dart
+new file mode 100644
+index 00000000..18aab8df
+--- /dev/null
++++ b/lib/services/dev_negative_week_seed_service.dart
+@@ -0,0 +1,491 @@
++import 'dart:convert';
++
++import 'package:cloud_firestore/cloud_firestore.dart';
++import 'package:firebase_auth/firebase_auth.dart';
++import 'package:flutter/foundation.dart' show debugPrint;
++import 'package:lifelens/database/isar_service.dart';
++import 'package:lifelens/database/mood_entry.dart';
++import 'package:lifelens/database/symptom_entry.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++
++class DevNegativeWeekSeedResult {
++  const DevNegativeWeekSeedResult({
++    required this.uid,
++    required this.moodDays,
++    required this.sleepDays,
++    required this.exerciseDays,
++    required this.symptomDays,
++    required this.warnings,
++  });
++
++  final String uid;
++  final int moodDays;
++  final int sleepDays;
++  final int exerciseDays;
++  final int symptomDays;
++  final List<String> warnings;
++
++  String get summary {
++    final warningText = warnings.isEmpty
++        ? ''
++        : '\n\nCloud sync warnings: ${warnings.join('; ')}';
++    return 'Seeded this account with $moodDays mood logs, $sleepDays poor sleep logs, $exerciseDays no-exercise check-ins, and $symptomDays symptom days across the last week.$warningText';
++  }
++}
++
++class DevNegativeWeekSeedService {
++  DevNegativeWeekSeedService._();
++
++  static const command = '/seed-negative-week';
++  static const _seedId = 'lifelens_negative_week_v1';
++  static const _seedMarker = '[LifeLens negative-week seed]';
++
++  static Future<DevNegativeWeekSeedResult> seedCurrentUser() async {
++    final user = FirebaseAuth.instance.currentUser;
++    if (user == null) {
++      throw StateError('Sign in before seeding demo logs.');
++    }
++
++    final now = DateTime.now();
++    final firestore = FirebaseFirestore.instance;
++    final isar = IsarService.instance;
++    final warnings = <String>[];
++    debugPrint('[DevSeed] negative week seed requested for ${user.uid}');
++    await isar.init();
++
++    final plans = _buildPlans(now);
++    for (final plan in plans) {
++      await _writeMoodIfNeeded(
++        isar: isar,
++        firestore: firestore,
++        uid: user.uid,
++        plan: plan,
++        warnings: warnings,
++      );
++
++      if (plan.symptoms.isNotEmpty) {
++        await _writeSymptomsIfNeeded(
++          isar: isar,
++          firestore: firestore,
++          uid: user.uid,
++          plan: plan,
++          warnings: warnings,
++        );
++      }
++    }
++
++    await _writeSleepLogs(
++      firestore: firestore,
++      uid: user.uid,
++      plans: plans,
++      warnings: warnings,
++    );
++    await _writeExerciseLogs(
++      firestore: firestore,
++      uid: user.uid,
++      plans: plans,
++      warnings: warnings,
++    );
++
++    final result = DevNegativeWeekSeedResult(
++      uid: user.uid,
++      moodDays: plans.length,
++      sleepDays: plans.length,
++      exerciseDays: plans.length,
++      symptomDays: plans.where((plan) => plan.symptoms.isNotEmpty).length,
++      warnings: warnings,
++    );
++    debugPrint('[DevSeed] negative week seed complete: ${result.summary}');
++    return result;
++  }
++
++  static List<_SeedDayPlan> _buildPlans(DateTime now) {
++    final today = DateTime(now.year, now.month, now.day);
++    final symptomPlans = <int, _SymptomPlan>{
++      4: const _SymptomPlan(
++        raw: 'Headache, fatigue, and nausea after a stressful day.',
++        symptoms: ['headache', 'fatigue', 'nausea'],
++        predictedAilment: 'Tension headache',
++        diagnoses: ['Tension headache', 'Migraine', 'Viral illness'],
++      ),
++      1: const _SymptomPlan(
++        raw: 'Sore throat, body aches, and chills with low energy.',
++        symptoms: ['sore throat', 'body aches', 'chills', 'fatigue'],
++        predictedAilment: 'Viral upper respiratory infection',
++        diagnoses: [
++          'Viral upper respiratory infection',
++          'Influenza-like illness',
++          'COVID-like respiratory infection',
++        ],
++      ),
++    };
++
++    final entries = <_SeedDayPlanData>[
++      const _SeedDayPlanData(
++        moodLabel: 'sadness',
++        intensity: 2,
++        note: 'Low energy all day and had trouble focusing at work.',
++        sleepMinutes: 305,
++        sleepNote: 'Restless night, woke up several times.',
++      ),
++      const _SeedDayPlanData(
++        moodLabel: 'fear',
++        intensity: 2,
++        note: 'Anxious and tense, kept worrying about small things.',
++        sleepMinutes: 270,
++        sleepNote: 'Took a long time to fall asleep and woke up tired.',
++      ),
++      const _SeedDayPlanData(
++        moodLabel: 'anger',
++        intensity: 2,
++        note: 'Frustrated, irritable, and overwhelmed most of the afternoon.',
++        sleepMinutes: 340,
++        sleepNote: 'Light sleep with a lot of tossing and turning.',
++      ),
++      const _SeedDayPlanData(
++        moodLabel: 'sadness',
++        intensity: 1,
++        note: 'Felt drained, isolated, and not motivated to do much.',
++        sleepMinutes: 250,
++        sleepNote: 'Very short sleep and felt unrefreshed.',
++      ),
++      const _SeedDayPlanData(
++        moodLabel: 'fear',
++        intensity: 2,
++        note: 'Stress stayed high and I felt physically worn down.',
++        sleepMinutes: 315,
++        sleepNote: 'Woke up with a headache and low energy.',
++      ),
++      const _SeedDayPlanData(
++        moodLabel: 'sadness',
++        intensity: 2,
++        note: 'Heavy mood, low appetite, and did not feel like socializing.',
++        sleepMinutes: 285,
++        sleepNote: 'Interrupted sleep and felt groggy in the morning.',
++      ),
++      const _SeedDayPlanData(
++        moodLabel: 'sadness',
++        intensity: 1,
++        note: 'Exhausted, discouraged, and still feeling run down today.',
++        sleepMinutes: 300,
++        sleepNote: 'Poor sleep again and woke up already tired.',
++      ),
++    ];
++
++    return List<_SeedDayPlan>.generate(entries.length, (index) {
++      final offsetFromToday = entries.length - 1 - index;
++      final day = today.subtract(Duration(days: offsetFromToday));
++      final data = entries[index];
++      return _SeedDayPlan(
++        date: day,
++        moodLabel: data.moodLabel,
++        intensity: data.intensity,
++        note: data.note,
++        sleepMinutes: data.sleepMinutes,
++        sleepNote: data.sleepNote,
++        symptomPlan: symptomPlans[offsetFromToday],
++      );
++    }, growable: false);
++  }
++
++  static Future<bool> _writeMoodIfNeeded({
++    required IsarService isar,
++    required FirebaseFirestore firestore,
++    required String uid,
++    required _SeedDayPlan plan,
++    required List<String> warnings,
++  }) async {
++    final existing = await isar.getMoodEntriesForDate(plan.dateKey);
++    final alreadySeeded = existing.any(
++      (entry) => entry.rawLog.contains(_seedMarker),
++    );
++    if (!alreadySeeded) {
++      final entry = MoodEntry()
++        ..date = plan.dateKey
++        ..rawLog = '${plan.note} $_seedMarker'
++        ..condensedLog = '${plan.moodLabel} ${plan.intensity}/5 - ${plan.note}'
++        ..resolvedMood = plan.moodLabel
++        ..resolvedBy = 'user'
++        ..mobileBertPrediction = null
++        ..mobileBertTopProb = null
++        ..userConfirmed = true
++        ..responseText = ''
++        ..fitnessScoreSnapshot = 32.0
++        ..timestamp = plan.moodTimestamp;
++      await isar.writeMoodEntry(entry);
++    }
++
++    try {
++      await firestore
++          .collection('users')
++          .doc(uid)
++          .collection('mood_logs')
++          .doc('${_seedId}_${plan.compactDateKey}')
++          .set({
++            'date': plan.dateKey,
++            'rawLog': '${plan.note} $_seedMarker',
++            'condensedLog':
++                '${plan.moodLabel} ${plan.intensity}/5 - ${plan.note}',
++            'resolvedMood': plan.moodLabel,
++            'resolvedBy': 'user',
++            'mobileBertPrediction': null,
++            'mobileBertTopProb': null,
++            'userConfirmed': true,
++            'responseText': '',
++            'fitnessScoreSnapshot': 32.0,
++            'tags': const ['low energy', 'stress', 'demo seed'],
++            'createdAt': Timestamp.fromDate(plan.moodTimestamp),
++            'seedId': _seedId,
++          }, SetOptions(merge: true));
++    } on FirebaseException catch (error) {
++      warnings.add('mood cloud sync failed for ${plan.dateKey}: ${error.code}');
++    }
++
++    return !alreadySeeded;
++  }
++
++  static Future<void> _writeSleepLogs({
++    required FirebaseFirestore firestore,
++    required String uid,
++    required List<_SeedDayPlan> plans,
++    required List<String> warnings,
++  }) async {
++    for (final plan in plans) {
++      try {
++        await firestore
++            .collection('users')
++            .doc(uid)
++            .collection('sleep_logs')
++            .doc('${_seedId}_${plan.compactDateKey}')
++            .set({
++              'bedTime': Timestamp.fromDate(plan.bedTime),
++              'wakeTime': Timestamp.fromDate(plan.wakeTime),
++              'quality': 'poor',
++              'qualityValue': 1,
++              'date': Timestamp.fromDate(plan.date),
++              'notes': '${plan.sleepNote} $_seedMarker',
++              'durationMinutes': plan.sleepMinutes,
++              'seedId': _seedId,
++            }, SetOptions(merge: true));
++      } on FirebaseException catch (error) {
++        warnings.add(
++          'sleep cloud sync failed for ${plan.dateKey}: ${error.code}',
++        );
++      }
++    }
++  }
++
++  static Future<void> _writeExerciseLogs({
++    required FirebaseFirestore firestore,
++    required String uid,
++    required List<_SeedDayPlan> plans,
++    required List<String> warnings,
++  }) async {
++    final prefs = await SharedPreferences.getInstance();
++    final historyKey = 'exercise_history_v2_$uid';
++    final existing =
++        prefs
++            .getStringList(historyKey)
++            ?.map(_decodeHistoryRecord)
++            .where((record) => record['seedId'] != _seedId)
++            .toList(growable: true) ??
++        <Map<String, String>>[];
++    final seedRecords = plans
++        .map(
++          (plan) => <String, String>{
++            'exerciseId': 'no_exercise',
++            'exerciseName': 'No exercise',
++            'mood': plan.moodLabel,
++            'durationMinutes': '0',
++            'sets': '0',
++            'reps': '0',
++            'noExercise': 'true',
++            'timestamp': plan.exerciseTimestamp.toIso8601String(),
++            'seedId': _seedId,
++          },
++        )
++        .toList(growable: false);
++    final merged = <Map<String, String>>[...seedRecords, ...existing]
++      ..sort((a, b) => (b['timestamp'] ?? '').compareTo(a['timestamp'] ?? ''));
++    await prefs.setStringList(
++      historyKey,
++      merged.map(jsonEncode).toList(growable: false),
++    );
++
++    for (final record in seedRecords) {
++      final timestamp = DateTime.parse(record['timestamp']!);
++      final dateKey = _dateKey(timestamp);
++      try {
++        await firestore
++            .collection('users')
++            .doc(uid)
++            .collection('exercise_logs')
++            .doc('${_seedId}_${_compactDateKey(timestamp)}')
++            .set({
++              'exerciseId': record['exerciseId'],
++              'exerciseName': record['exerciseName'],
++              'mood': record['mood'],
++              'durationMinutes': 0,
++              'sets': 0,
++              'reps': 0,
++              'noExercise': true,
++              'timestamp': Timestamp.fromDate(timestamp),
++              'createdAt': FieldValue.serverTimestamp(),
++              'seedId': _seedId,
++            }, SetOptions(merge: true));
++      } on FirebaseException catch (error) {
++        warnings.add('exercise cloud sync failed for $dateKey: ${error.code}');
++      }
++    }
++  }
++
++  static Future<bool> _writeSymptomsIfNeeded({
++    required IsarService isar,
++    required FirebaseFirestore firestore,
++    required String uid,
++    required _SeedDayPlan plan,
++    required List<String> warnings,
++  }) async {
++    final symptomPlan = plan.symptomPlan;
++    if (symptomPlan == null) return false;
++
++    final existing = await isar.getSymptomEntriesForDate(plan.dateKey);
++    final alreadySeeded = existing.any(
++      (entry) => entry.rawSymptoms.contains(_seedMarker),
++    );
++    if (!alreadySeeded) {
++      final entry = SymptomEntry()
++        ..date = plan.dateKey
++        ..rawSymptoms = '${symptomPlan.raw} $_seedMarker'
++        ..symptomList = symptomPlan.symptoms
++        ..predictedAilment = symptomPlan.predictedAilment
++        ..disEmbedScore = 0.0
++        ..diagnosesJson = jsonEncode(
++          symptomPlan.diagnoses
++              .map(
++                (diagnosis) => {
++                  'disease': diagnosis,
++                  'reasoning':
++                      'Demo seed based on the reported symptom cluster.',
++                  'next_steps':
++                      'Monitor symptoms, rest, hydrate, and seek care if symptoms worsen.',
++                  'is_urgent': false,
++                },
++              )
++              .toList(growable: false),
++        )
++        ..resolvedBy = 'gemini'
++        ..ragUsed = true
++        ..wasOffline = false
++        ..status = 'active'
++        ..timestamp = plan.symptomTimestamp
++        ..updatedAt = plan.symptomTimestamp;
++      await isar.writeSymptomEntry(entry);
++    }
++
++    try {
++      await firestore
++          .collection('symptom_entries')
++          .doc('${_safeDocId(uid)}_${_seedId}_${plan.compactDateKey}')
++          .set({
++            'userId': uid,
++            'rawInput': symptomPlan.raw,
++            'symptoms': symptomPlan.symptoms,
++            'createdAt': Timestamp.fromDate(plan.symptomTimestamp),
++            'date': Timestamp.fromDate(plan.date),
++            'seedId': _seedId,
++          }, SetOptions(merge: true));
++    } on FirebaseException catch (error) {
++      warnings.add(
++        'symptom cloud sync failed for ${plan.dateKey}: ${error.code}',
++      );
++    }
++
++    return !alreadySeeded;
++  }
++
++  static Map<String, String> _decodeHistoryRecord(String encoded) {
++    try {
++      final decoded = jsonDecode(encoded);
++      if (decoded is Map<String, dynamic>) {
++        return decoded.map(
++          (key, value) => MapEntry(key, value?.toString() ?? ''),
++        );
++      }
++    } catch (_) {}
++    return const <String, String>{};
++  }
++
++  static String _dateKey(DateTime date) {
++    final month = date.month.toString().padLeft(2, '0');
++    final day = date.day.toString().padLeft(2, '0');
++    return '${date.year}-$month-$day';
++  }
++
++  static String _compactDateKey(DateTime date) {
++    final month = date.month.toString().padLeft(2, '0');
++    final day = date.day.toString().padLeft(2, '0');
++    return '${date.year}$month$day';
++  }
++
++  static String _safeDocId(String value) {
++    return value.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
++  }
++}
++
++class _SeedDayPlanData {
++  const _SeedDayPlanData({
++    required this.moodLabel,
++    required this.intensity,
++    required this.note,
++    required this.sleepMinutes,
++    required this.sleepNote,
++  });
++
++  final String moodLabel;
++  final int intensity;
++  final String note;
++  final int sleepMinutes;
++  final String sleepNote;
++}
++
++class _SeedDayPlan extends _SeedDayPlanData {
++  const _SeedDayPlan({
++    required this.date,
++    required super.moodLabel,
++    required super.intensity,
++    required super.note,
++    required super.sleepMinutes,
++    required super.sleepNote,
++    required this.symptomPlan,
++  });
++
++  final DateTime date;
++  final _SymptomPlan? symptomPlan;
++
++  List<String> get symptoms => symptomPlan?.symptoms ?? const <String>[];
++  String get dateKey => DevNegativeWeekSeedService._dateKey(date);
++  String get compactDateKey => DevNegativeWeekSeedService._compactDateKey(date);
++  DateTime get moodTimestamp =>
++      date.add(const Duration(hours: 10, minutes: 15));
++  DateTime get wakeTime => date.add(const Duration(hours: 6, minutes: 20));
++  DateTime get bedTime => wakeTime.subtract(Duration(minutes: sleepMinutes));
++  DateTime get exerciseTimestamp =>
++      date.add(const Duration(hours: 18, minutes: 30));
++  DateTime get symptomTimestamp =>
++      date.add(const Duration(hours: 13, minutes: 45));
++}
++
++class _SymptomPlan {
++  const _SymptomPlan({
++    required this.raw,
++    required this.symptoms,
++    required this.predictedAilment,
++    required this.diagnoses,
++  });
++
++  final String raw;
++  final List<String> symptoms;
++  final String predictedAilment;
++  final List<String> diagnoses;
++}
+diff --git a/lib/services/mini_me_suggestions_inbox.dart b/lib/services/mini_me_suggestions_inbox.dart
+index c262808f..3d81b1cf 100644
+--- a/lib/services/mini_me_suggestions_inbox.dart
++++ b/lib/services/mini_me_suggestions_inbox.dart
+@@ -0,0 +1 @@
++import 'dart:async';
+@@ -14,0 +16,3 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
++    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
++      _handleAuthChanged(user);
++    });
+@@ -30,0 +35 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
++  late final StreamSubscription<User?> _authSub;
+@@ -50,0 +56,19 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
++  void _clearInMemoryStateForScope(String scopeKey) {
++    _loadedScopeKey = scopeKey;
++    _viewedDigests.clear();
++    _unread = const <_StoredSuggestion>[];
++    _deliveryState = const _SuggestionDeliveryState();
++    _refreshQueued = false;
++    _refreshQueuedFromLog = false;
++  }
++
++  void _handleAuthChanged(User? user) {
++    final nextScopeKey = user?.uid ?? 'guest';
++    if (_loadedScopeKey == nextScopeKey) return;
++    _clearInMemoryStateForScope(nextScopeKey);
++    notifyListeners();
++    if (_isInitialized) {
++      unawaited(_loadScopedState().then((_) => notifyListeners()));
++    }
++  }
++
+@@ -66,0 +91,2 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
++    _unread = const <_StoredSuggestion>[];
++    _deliveryState = const _SuggestionDeliveryState();
+@@ -682,0 +709,6 @@ class MiniMeSuggestionsInbox extends ChangeNotifier {
++
++  @override
++  void dispose() {
++    _authSub.cancel();
++    super.dispose();
++  }
+diff --git a/lib/services/minigen_chat.dart b/lib/services/minigen_chat.dart
+index 9c76d10b..4b04361d 100644
+--- a/lib/services/minigen_chat.dart
++++ b/lib/services/minigen_chat.dart
+@@ -248 +248 @@ class MiniGenChat {
+-        : _compactList(recentLogs, limit: 6, itemChars: 120, separator: '\n');
++        : _compactList(recentLogs, limit: 10, itemChars: 150, separator: '\n');
+@@ -260 +260 @@ class MiniGenChat {
+-    final summary = _compactText(summaryContext, 700);
++    final summary = _compactText(summaryContext, 1100);
+@@ -279,3 +279,4 @@ First suggestion must answer LATEST_LOG_FOCUS. Avoid RECENT_SUGGESTIONS_TO_AVOID
+-Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, or follow-through.
+-If the latest log includes notes, tags, workout details, sleep notes, or symptom context, mention that context directly and address it.
+-Do not give category-only advice like "log mood" or "rest more" when a specific note/context is available.
++Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, boundary, support, or follow-through.
++If the latest log includes notes, tags, workout details, sleep notes, or symptom context, reuse at least one concrete phrase or noun from that context and address it directly.
++Do not give category-only advice like "log mood", "sleep earlier", "rest more", or "take a walk" when a specific note/context is available.
++If logs look similar to previous days, change the angle rather than the data: focus on trigger, friction, timing, environment, recovery cost, or what to protect next.

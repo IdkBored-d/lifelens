@@ -1,0 +1,243 @@
+diff --git a/lib/database/isar_service.dart b/lib/database/isar_service.dart
+index c689a30f..68b4a56d 100644
+--- a/lib/database/isar_service.dart
++++ b/lib/database/isar_service.dart
+@@ -143 +143,12 @@ class IsarService {
+-    return entries.map((e) => e.rawLog).toList();
++    return entries.map((e) => _stripInternalContextMetadata(e.rawLog)).toList();
++  }
++
++  String _stripInternalContextMetadata(String value) {
++    return value
++        .replaceAllMapped(
++          RegExp(r'\[context:\s*([^\]]+)\]', caseSensitive: false),
++          (match) => match.group(1) ?? '',
++        )
++        .replaceAll(RegExp(r'\bcontext\s*:\s*', caseSensitive: false), '')
++        .replaceAll(RegExp(r'\s+'), ' ')
++        .trim();
+diff --git a/lib/moodlog_screen.dart b/lib/moodlog_screen.dart
+index e7118fda..abc4d8ca 100644
+--- a/lib/moodlog_screen.dart
++++ b/lib/moodlog_screen.dart
+@@ -504,6 +504 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
+-                            // Compose log text: notes are primary, tags appended for context.
+-                            final tagPart = tags.isNotEmpty
+-                                ? ' [context: ${tags.join(', ')}]'
+-                                : '';
+-                            final userLog =
+-                                '${notes.isNotEmpty ? notes : m.label}$tagPart';
++                            final userLog = notes.isNotEmpty ? notes : m.label;
+diff --git a/lib/moodlog_store.dart b/lib/moodlog_store.dart
+index 6d2dfd80..afd6926f 100644
+--- a/lib/moodlog_store.dart
++++ b/lib/moodlog_store.dart
+@@ -27,2 +27,2 @@ class MoodLogStore extends ChangeNotifier {
+-    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) {
+-      refreshFromPersistence();
++    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
++      _handleAuthChanged(user);
+@@ -34,0 +35,2 @@ class MoodLogStore extends ChangeNotifier {
++  String _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
++  int _loadRequestId = 0;
+@@ -40,0 +43,11 @@ class MoodLogStore extends ChangeNotifier {
++  void _handleAuthChanged(User? user) {
++    final nextScopeKey = user?.uid ?? 'guest';
++    if (_loadedScopeKey != nextScopeKey) {
++      _loadedScopeKey = nextScopeKey;
++      _items.clear();
++      _isLoading = true;
++      notifyListeners();
++    }
++    refreshFromPersistence();
++  }
++
+@@ -46,0 +60,6 @@ class MoodLogStore extends ChangeNotifier {
++    final requestId = ++_loadRequestId;
++    final scopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
++    if (_loadedScopeKey != scopeKey) {
++      _loadedScopeKey = scopeKey;
++      _items.clear();
++    }
+@@ -51,0 +71 @@ class MoodLogStore extends ChangeNotifier {
++      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
+@@ -54,0 +75 @@ class MoodLogStore extends ChangeNotifier {
++      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
+@@ -68,2 +89,4 @@ class MoodLogStore extends ChangeNotifier {
+-      _isLoading = false;
+-      notifyListeners();
++      if (requestId == _loadRequestId && _loadedScopeKey == scopeKey) {
++        _isLoading = false;
++        notifyListeners();
++      }
+@@ -90 +113 @@ class MoodLogStore extends ChangeNotifier {
+-      notes: entry.rawLog,
++      notes: _stripInternalContextMetadata(entry.rawLog),
+@@ -94,0 +118,10 @@ class MoodLogStore extends ChangeNotifier {
++  String _stripInternalContextMetadata(String value) {
++    return value
++        .replaceAll(
++          RegExp(r'\s*\[context:\s*[^\]]+\]\s*', caseSensitive: false),
++          ' ',
++        )
++        .replaceAll(RegExp(r'\s+'), ' ')
++        .trim();
++  }
++
+diff --git a/lib/screens/history_calendar_screen.dart b/lib/screens/history_calendar_screen.dart
+index 03c14010..3dbdb7d6 100644
+--- a/lib/screens/history_calendar_screen.dart
++++ b/lib/screens/history_calendar_screen.dart
+@@ -0,0 +1,2 @@
++import 'dart:async';
++
+@@ -17,0 +20 @@ class HistoryCalendarScreen extends StatefulWidget {
++    this.refreshOnInitialLoad = true,
+@@ -21,0 +25 @@ class HistoryCalendarScreen extends StatefulWidget {
++  final bool refreshOnInitialLoad;
+@@ -35,0 +40 @@ class HistoryCalendarView extends StatefulWidget {
++    this.refreshOnInitialLoad = true,
+@@ -43,0 +49 @@ class HistoryCalendarView extends StatefulWidget {
++  final bool refreshOnInitialLoad;
+@@ -62,0 +69 @@ class _HistoryCalendarScreenState extends State<HistoryCalendarScreen> {
++          refreshOnInitialLoad: widget.refreshOnInitialLoad,
+@@ -74,0 +82 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
++  int _loadRequestId = 0;
+@@ -80,0 +89,4 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
++    if (!widget.showDetails) {
++      _isLoading = false;
++      return;
++    }
+@@ -89 +101 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-    await _loadDayData(refreshStores: true);
++    await _loadDayData(refreshStores: widget.refreshOnInitialLoad);
+@@ -92,0 +105,2 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
++    final requestId = ++_loadRequestId;
++    final selectedDate = _selectedDate;
+@@ -96 +110,3 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-    setState(() => _isLoading = true);
++    if (mounted) {
++      setState(() => _isLoading = true);
++    }
+@@ -99,3 +115,5 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-      await moodStore.refreshFromPersistence();
+-      await sleepStore.refresh();
+-      await _exerciseStore.refreshFromCloud();
++      await Future.wait<void>([
++        moodStore.refreshFromPersistence(),
++        sleepStore.refresh(),
++        _exerciseStore.refreshFromCloud(),
++      ]);
+@@ -104 +122,7 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-    final dateKey = _dateKey(_selectedDate);
++    final dateKey = _dateKey(selectedDate);
++
++    final results = await Future.wait<Object?>([
++      AppServices.isar.getMoodEntriesForDate(dateKey),
++      AppServices.isar.getSymptomEntriesForDate(dateKey),
++      AppServices.isar.getEodEntry(dateKey),
++    ]);
+@@ -106,3 +130,3 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-    final moods = await AppServices.isar.getMoodEntriesForDate(dateKey);
+-    final symptoms = await AppServices.isar.getSymptomEntriesForDate(dateKey);
+-    final eod = await AppServices.isar.getEodEntry(dateKey);
++    final moods = results[0] as List<MoodEntry>;
++    final symptoms = results[1] as List<SymptomEntry>;
++    final eod = results[2] as EodEntry?;
+@@ -112 +136 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-            .where((item) => _matchesSleepDate(item, _selectedDate))
++            .where((item) => _matchesSleepDate(item, selectedDate))
+@@ -120 +144 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-          return timestamp != null && _isSameDay(timestamp, _selectedDate);
++          return timestamp != null && _isSameDay(timestamp, selectedDate);
+@@ -124 +148 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-    if (!mounted) return;
++    if (!mounted || requestId != _loadRequestId) return;
+@@ -127 +151 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-        date: _selectedDate,
++        date: selectedDate,
+@@ -146 +170 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
+-      _loadDayData();
++      unawaited(_loadDayData());
+diff --git a/lib/screens/log_hub_screen.dart b/lib/screens/log_hub_screen.dart
+index 44845d99..80e9bdc9 100644
+--- a/lib/screens/log_hub_screen.dart
++++ b/lib/screens/log_hub_screen.dart
+@@ -92 +92,5 @@ class _LogHubScreenState extends State<LogHubScreen> {
+-      HistoryCalendarScreen(initialDate: date, showCalendar: false),
++      HistoryCalendarScreen(
++        initialDate: date,
++        showCalendar: false,
++        refreshOnInitialLoad: false,
++      ),
+diff --git a/lib/services/exercise_store.dart b/lib/services/exercise_store.dart
+index 8c82216d..7057f508 100644
+--- a/lib/services/exercise_store.dart
++++ b/lib/services/exercise_store.dart
+@@ -178,2 +178,4 @@ class ExerciseStore {
+-      if (hasWorkoutItems) 'workoutItemsJson': jsonEncode(normalizedWorkoutItems),
+-      if (hasWorkoutItems) 'workoutCount': normalizedWorkoutItems.length.toString(),
++      if (hasWorkoutItems)
++        'workoutItemsJson': jsonEncode(normalizedWorkoutItems),
++      if (hasWorkoutItems)
++        'workoutCount': normalizedWorkoutItems.length.toString(),
+@@ -213 +215,4 @@ class ExerciseStore {
+-  List<int> getRecentExerciseActivity({int days = 7}) {
++  List<int> getRecentExerciseActivity({
++    int days = 7,
++    bool includeNoExercise = true,
++  }) {
+@@ -218,0 +224,3 @@ class ExerciseStore {
++      if (!includeNoExercise && (record['noExercise'] ?? '').trim() == 'true') {
++        continue;
++      }
+@@ -500 +508,3 @@ class ExerciseStore {
+-            'durationMinutes': (item['durationMinutes'] ?? '').toString().trim(),
++            'durationMinutes': (item['durationMinutes'] ?? '')
++                .toString()
++                .trim(),
+diff --git a/lib/sleep_store.dart b/lib/sleep_store.dart
+index 68b4104a..7280c9ef 100644
+--- a/lib/sleep_store.dart
++++ b/lib/sleep_store.dart
+@@ -14,2 +14,2 @@ class SleepStore extends ChangeNotifier {
+-    _authSub = _auth.authStateChanges().listen((_) {
+-      _loadFromCloud();
++    _authSub = _auth.authStateChanges().listen((user) {
++      _handleAuthChanged(user);
+@@ -26,0 +27,2 @@ class SleepStore extends ChangeNotifier {
++  String _loadedScopeKey = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
++  int _loadRequestId = 0;
+@@ -31,0 +34,12 @@ class SleepStore extends ChangeNotifier {
++  void _handleAuthChanged(User? user) {
++    final nextScopeKey = user?.uid ?? 'guest';
++    if (_loadedScopeKey != nextScopeKey) {
++      _loadedScopeKey = nextScopeKey;
++      _items.clear();
++      _isLoading = user != null;
++      _errorMessage = null;
++      notifyListeners();
++    }
++    _loadFromCloud();
++  }
++
+@@ -62,0 +77 @@ class SleepStore extends ChangeNotifier {
++    final requestId = ++_loadRequestId;
+@@ -63,0 +79,5 @@ class SleepStore extends ChangeNotifier {
++    final scopeKey = uid ?? 'guest';
++    if (_loadedScopeKey != scopeKey) {
++      _loadedScopeKey = scopeKey;
++      _items.clear();
++    }
+@@ -83,0 +104,2 @@ class SleepStore extends ChangeNotifier {
++      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
++
+@@ -88,0 +111 @@ class SleepStore extends ChangeNotifier {
++      if (requestId != _loadRequestId || _loadedScopeKey != scopeKey) return;
+@@ -91,2 +114,4 @@ class SleepStore extends ChangeNotifier {
+-      _isLoading = false;
+-      notifyListeners();
++      if (requestId == _loadRequestId && _loadedScopeKey == scopeKey) {
++        _isLoading = false;
++        notifyListeners();
++      }

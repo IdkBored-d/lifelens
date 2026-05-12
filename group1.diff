@@ -1,0 +1,975 @@
+diff --git a/backend/main.py b/backend/main.py
+index 56accb6d..2fc9c7f0 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -946,0 +947,3 @@ Requirements:
++- If logs contain notes, tags, sleep notes, workout details, or symptom context, reuse at least one concrete phrase/noun from those details in the action or reason.
++- If recent logs are similar to previous days, change the angle instead of repeating the same advice: trigger, friction, timing, environment, recovery cost, boundary, support, or what to protect next.
++- Do not give category-only advice like "log mood", "sleep earlier", "rest more", or "take a walk" when a specific note/context is available.
+@@ -1007,0 +1011,2 @@ Task:
++- Preserve concrete user context from notes/logs when it appears in the original suggestion or summary.
++- If a suggestion is generic but the context includes notes, tags, sleep notes, workout details, or symptom context, make the wording point to that concrete detail without inventing facts.
+diff --git a/backend/scripts/seed_default_spheres.py b/backend/scripts/seed_default_spheres.py
+new file mode 100644
+index 00000000..02f0aeb8
+--- /dev/null
++++ b/backend/scripts/seed_default_spheres.py
+@@ -0,0 +1,886 @@
++"""
++Seed the default LifeLens community spheres with demo activity.
++
++This uses firebase-admin because Firestore security rules correctly prevent the
++Flutter client from impersonating other users. It is safe to rerun: sphere,
++member, post, and reaction documents use deterministic IDs and are upserted.
++
++Auth options:
++- FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account", ...}'
++- GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
++- Application Default Credentials
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import subprocess
++from dataclasses import dataclass, field
++from datetime import UTC, datetime, timedelta
++from typing import Any
++
++import requests
++
++DEFAULT_CONTENT_SEED_VERSION = 1
++CHAT_SEED_VERSION = 7
++SYSTEM_USER_ID = "lifelens_default_guide"
++
++
++@dataclass(frozen=True)
++class SeedUser:
++    uid: str
++    username: str
++    companion_id: str
++    body_model: str = "default"
++    hair_model: str = "short"
++    shirt_model: str = "tee"
++    body_width_scale: float = 1.0
++    degradation_level: float = 0.0
++
++    def mini_me(self) -> dict[str, Any]:
++        return {
++            "bodyModel": self.body_model,
++            "hairModel": self.hair_model,
++            "shirtModel": self.shirt_model,
++            "bodyWidthScale": self.body_width_scale,
++            "companionId": self.companion_id,
++            "isHatched": True,
++            "degradationLevel": self.degradation_level,
++        }
++
++
++@dataclass(frozen=True)
++class SeedPost:
++    id: str
++    sphere: str
++    user: str
++    type: str
++    text: str
++    minutes_ago: int
++    reactions: dict[str, int] = field(default_factory=dict)
++    reply_to: str | None = None
++    extra: dict[str, Any] = field(default_factory=dict)
++
++
++USERS: dict[str, SeedUser] = {
++    "mira": SeedUser(
++        uid="seed_user_mira",
++        username="mira_checks_in",
++        companion_id="starling",
++        hair_model="curly",
++        shirt_model="hoodie",
++        body_width_scale=0.96,
++    ),
++    "kai": SeedUser(
++        uid="seed_user_kai",
++        username="kai_keeps_trying",
++        companion_id="orbit",
++        hair_model="fade",
++        shirt_model="tank",
++        body_width_scale=1.06,
++    ),
++    "jules": SeedUser(
++        uid="seed_user_jules",
++        username="jules_logs_it",
++        companion_id="sprout",
++        hair_model="bob",
++        shirt_model="crew",
++        body_width_scale=0.92,
++    ),
++    "sam": SeedUser(
++        uid="seed_user_sam",
++        username="sam_small_steps",
++        companion_id="pulse",
++        hair_model="short",
++        shirt_model="zip",
++        body_width_scale=1.02,
++        degradation_level=0.08,
++    ),
++    "nora": SeedUser(
++        uid="seed_user_nora",
++        username="nora_rest_mode",
++        companion_id="moonlet",
++        hair_model="long",
++        shirt_model="sweater",
++        body_width_scale=0.98,
++        degradation_level=0.04,
++    ),
++    "leo": SeedUser(
++        uid="seed_user_leo",
++        username="leo_lifts_light",
++        companion_id="ember",
++        hair_model="waves",
++        shirt_model="jersey",
++        body_width_scale=1.1,
++    ),
++}
++
++SPHERE_METADATA: dict[str, dict[str, str]] = {
++    "General": {
++        "description": "Heartwarming daily support, gratitude, and steady progress.",
++        "pinnedTitle": "Welcome to General",
++        "pinnedBody": "Use this sphere for check-ins, gentle motivation, and practical support for this week.",
++        "bannerTemplate": "general",
++    },
++    "Sleep": {
++        "description": "Better nights through calm routines, gentle accountability, and rest tips.",
++        "pinnedTitle": "Welcome to Sleep",
++        "pinnedBody": "Share bedtime wins, wind-down routines, and kind tips for better rest tonight.",
++        "bannerTemplate": "sleep",
++    },
++    "Exercise": {
++        "description": "Small consistent workouts, motivation boosts, and progress celebrations.",
++        "pinnedTitle": "Welcome to Exercise",
++        "pinnedBody": "Celebrate every rep, encourage beginners, and share realistic workout routines.",
++        "bannerTemplate": "exercise",
++    },
++}
++
++POSTS: list[SeedPost] = [
++    SeedPost(
++        id="general_checkin_01",
++        sphere="General",
++        user="mira",
++        type="check_in",
++        text="Tiny win today: I logged even though I almost skipped it. The note helped me notice that lunch timing keeps affecting my afternoon mood.",
++        minutes_ago=70,
++        reactions={"👍": 4, "💙": 3},
++    ),
++    SeedPost(
++        id="general_reply_01",
++        sphere="General",
++        user="sam",
++        type="check_in",
++        text="That lunch timing pattern is real. I started setting a 1:00 reminder and it made the rest of the day less chaotic.",
++        minutes_ago=58,
++        reactions={"👍": 3},
++        reply_to="general_checkin_01",
++    ),
++    SeedPost(
++        id="general_milestone_01",
++        sphere="General",
++        user="jules",
++        type="milestone_card",
++        text="Achievement unlocked: Seven honest check-ins",
++        minutes_ago=150,
++        reactions={"🎉": 6, "💙": 2},
++        extra={
++            "milestoneCardKind": "achievement",
++            "milestoneTitle": "Seven honest check-ins",
++            "milestoneDescription": "I stopped trying to make every log sound fine and wrote what actually happened for a full week.",
++        },
++    ),
++    SeedPost(
++        id="general_prompt_01",
++        sphere="General",
++        user="kai",
++        type="check_in",
++        text="What is one thing you are protecting today? Mine is not stacking errands after a short night.",
++        minutes_ago=210,
++        reactions={"👍": 5},
++    ),
++    SeedPost(
++        id="general_reply_02",
++        sphere="General",
++        user="nora",
++        type="check_in",
++        text="Protecting a quiet dinner. I noticed I spiral more when I answer messages while eating.",
++        minutes_ago=198,
++        reactions={"💙": 4},
++        reply_to="general_prompt_01",
++    ),
++    SeedPost(
++        id="general_checkin_02",
++        sphere="General",
++        user="leo",
++        type="check_in",
++        text="Low-energy day, but I kept the promise small: water, one outside lap, and no guilt about the unfinished list.",
++        minutes_ago=310,
++        reactions={"👍": 6, "💙": 2},
++    ),
++    SeedPost(
++        id="general_milestone_02",
++        sphere="General",
++        user="sam",
++        type="milestone_card",
++        text="Achievement unlocked: Asked for help before crashing",
++        minutes_ago=460,
++        reactions={"🎉": 4, "👍": 2},
++        extra={
++            "milestoneCardKind": "achievement",
++            "milestoneTitle": "Asked for help before crashing",
++            "milestoneDescription": "I told a friend I was overloaded instead of waiting until I fully shut down.",
++        },
++    ),
++    SeedPost(
++        id="general_reply_03",
++        sphere="General",
++        user="mira",
++        type="check_in",
++        text="That is such a hard skill. I am borrowing the phrase 'before crashing' for my own notes.",
++        minutes_ago=430,
++        reactions={"💙": 3},
++        reply_to="general_milestone_02",
++    ),
++    SeedPost(
++        id="sleep_help_01",
++        sphere="Sleep",
++        user="nora",
++        type="sleep_help_request",
++        text="Sleep help request: I slept 5h 20m (poor) from 12:45 AM to 6:05 AM. Any tips to fall asleep earlier without feeling wired?",
++        minutes_ago=80,
++        reactions={"💙": 5, "👍": 2},
++        extra={
++            "sleepCardKind": "help",
++            "restDuration": "5h 20m",
++            "restQuality": "Poor",
++            "restBedTime": "12:45 AM",
++            "restWakeTime": "6:05 AM",
++            "restHours": 5.33,
++            "restAsk": "Any tips to fall asleep earlier without feeling wired?",
++            "restNote": "Scrolled after getting into bed and felt alert again.",
++        },
++    ),
++    SeedPost(
++        id="sleep_reply_01",
++        sphere="Sleep",
++        user="mira",
++        type="check_in",
++        text="The phone-in-bed part is my trap too. I moved the charger across the room and made the first goal just 'screen down by 12:20'.",
++        minutes_ago=66,
++        reactions={"👍": 4},
++        reply_to="sleep_help_01",
++    ),
++    SeedPost(
++        id="sleep_checkin_01",
++        sphere="Sleep",
++        user="jules",
++        type="rest_check_in",
++        text="Rest check-in: 6h 10m, fair quality. The warm shower helped more than the breathing timer tonight.",
++        minutes_ago=160,
++        reactions={"👍": 5, "💙": 1},
++        extra={
++            "sleepCardKind": "checkin",
++            "restDuration": "6h 10m",
++            "restQuality": "Fair",
++            "restBedTime": "11:35 PM",
++            "restWakeTime": "5:45 AM",
++            "restHours": 6.17,
++            "restEnergy": "Slow start, better after breakfast",
++            "restHelped": "Warm shower",
++            "restPlan": "Put tea on before opening apps",
++            "restNote": "Woke twice but fell back asleep faster.",
++        },
++    ),
++    SeedPost(
++        id="sleep_milestone_01",
++        sphere="Sleep",
++        user="sam",
++        type="milestone_card",
++        text="Achievement unlocked: Three nights of a real wind-down",
++        minutes_ago=250,
++        reactions={"🎉": 7, "👍": 2},
++        extra={
++            "milestoneCardKind": "achievement",
++            "milestoneTitle": "Three nights of a real wind-down",
++            "milestoneDescription": "Lights dimmed, dishes left for morning, and no work tabs after 10:30 for three nights in a row.",
++        },
++    ),
++    SeedPost(
++        id="sleep_help_02",
++        sphere="Sleep",
++        user="kai",
++        type="sleep_help_request",
++        text="Sleep help request: I slept 4h 55m (poor) from 1:20 AM to 6:15 AM. Any tips to make sleep deeper and less interrupted?",
++        minutes_ago=360,
++        reactions={"💙": 4},
++        extra={
++            "sleepCardKind": "help",
++            "restDuration": "4h 55m",
++            "restQuality": "Poor",
++            "restBedTime": "1:20 AM",
++            "restWakeTime": "6:15 AM",
++            "restHours": 4.92,
++            "restAsk": "Any tips to make sleep deeper and less interrupted?",
++            "restNote": "Late caffeine and a tense work email kept looping.",
++        },
++    ),
++    SeedPost(
++        id="sleep_reply_02",
++        sphere="Sleep",
++        user="nora",
++        type="check_in",
++        text="For the work-email loop, I write one next action on paper. It does not solve it, but it tells my brain it is parked.",
++        minutes_ago=338,
++        reactions={"👍": 5, "💙": 2},
++        reply_to="sleep_help_02",
++    ),
++    SeedPost(
++        id="sleep_checkin_02",
++        sphere="Sleep",
++        user="leo",
++        type="rest_check_in",
++        text="Rest check-in: 7h 05m, good quality. Keeping the room cooler actually worked.",
++        minutes_ago=500,
++        reactions={"🎉": 3, "👍": 3},
++        extra={
++            "sleepCardKind": "checkin",
++            "restDuration": "7h 05m",
++            "restQuality": "Good",
++            "restBedTime": "10:50 PM",
++            "restWakeTime": "5:55 AM",
++            "restHours": 7.08,
++            "restWin": "Cooler room, fewer wakeups",
++            "restPlan": "Keep the fan on low again tonight",
++        },
++    ),
++    SeedPost(
++        id="exercise_log_01",
++        sphere="Exercise",
++        user="leo",
++        type="exercise_log",
++        text="Exercise log: Goblet squat (3x10) | Incline push-up (3x8) | Farmer carry (8 min)",
++        minutes_ago=90,
++        reactions={"💪": 7, "👍": 3},
++        extra={
++            "exerciseCardKind": "log",
++            "exerciseItems": [
++                {"name": "Goblet squat", "sets": 3, "reps": 10, "durationMinutes": 0},
++                {"name": "Incline push-up", "sets": 3, "reps": 8, "durationMinutes": 0},
++                {"name": "Farmer carry", "sets": 0, "reps": 0, "durationMinutes": 8},
++            ],
++            "exerciseCount": 3,
++            "noExercise": False,
++        },
++    ),
++    SeedPost(
++        id="exercise_reply_01",
++        sphere="Exercise",
++        user="kai",
++        type="check_in",
++        text="That farmer carry finisher is sneaky. I like how it gets grip and core without needing a long workout.",
++        minutes_ago=72,
++        reactions={"👍": 4},
++        reply_to="exercise_log_01",
++    ),
++    SeedPost(
++        id="exercise_recovery_01",
++        sphere="Exercise",
++        user="nora",
++        type="exercise_log",
++        text="Exercise log: No workout today, focusing on recovery.",
++        minutes_ago=170,
++        reactions={"💙": 5, "👍": 2},
++        extra={
++            "exerciseCardKind": "log",
++            "exerciseItems": [{"name": "Recovery day", "sets": 0, "reps": 0, "durationMinutes": 0}],
++            "exerciseCount": 1,
++            "noExercise": True,
++        },
++    ),
++    SeedPost(
++        id="exercise_milestone_01",
++        sphere="Exercise",
++        user="mira",
++        type="milestone_card",
++        text="Achievement unlocked: First full week of tiny movement",
++        minutes_ago=260,
++        reactions={"🎉": 8, "💪": 3},
++        extra={
++            "milestoneCardKind": "achievement",
++            "milestoneTitle": "First full week of tiny movement",
++            "milestoneDescription": "Five short sessions counted. Two were only stretching, but I still showed up.",
++        },
++    ),
++    SeedPost(
++        id="exercise_log_02",
++        sphere="Exercise",
++        user="sam",
++        type="exercise_log",
++        text="Exercise log: 18-minute walk after dinner. Mood was low before, but the outside air helped a little.",
++        minutes_ago=390,
++        reactions={"👍": 6, "💙": 2},
++        extra={
++            "exerciseCardKind": "log",
++            "exerciseItems": [{"name": "Walk", "sets": 0, "reps": 0, "durationMinutes": 18}],
++            "exerciseCount": 1,
++            "noExercise": False,
++        },
++    ),
++    SeedPost(
++        id="exercise_reply_02",
++        sphere="Exercise",
++        user="jules",
++        type="check_in",
++        text="The after-dinner timing is smart. I am going to try that before I sit down and lose all momentum.",
++        minutes_ago=360,
++        reactions={"👍": 3},
++        reply_to="exercise_log_02",
++    ),
++    SeedPost(
++        id="exercise_log_03",
++        sphere="Exercise",
++        user="kai",
++        type="exercise_log",
++        text="Exercise log: Dumbbell row (3x12) | Step-up (2x10) | Mobility flow (10 min)",
++        minutes_ago=540,
++        reactions={"💪": 5, "👍": 2},
++        extra={
++            "exerciseCardKind": "log",
++            "exerciseItems": [
++                {"name": "Dumbbell row", "sets": 3, "reps": 12, "durationMinutes": 0},
++                {"name": "Step-up", "sets": 2, "reps": 10, "durationMinutes": 0},
++                {"name": "Mobility flow", "sets": 0, "reps": 0, "durationMinutes": 10},
++            ],
++            "exerciseCount": 3,
++            "noExercise": False,
++        },
++    ),
++]
++
++
++def get_firebase_app():
++    import firebase_admin
++    from firebase_admin import credentials
++
++    if firebase_admin._apps:
++        return firebase_admin.get_app()
++
++    service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
++    if service_account_json:
++        return firebase_admin.initialize_app(
++            credentials.Certificate(json.loads(service_account_json))
++        )
++
++    credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
++    if credentials_path:
++        return firebase_admin.initialize_app(
++            credentials.Certificate(credentials_path)
++        )
++
++    return firebase_admin.initialize_app()
++
++
++def normalized_name(value: str) -> str:
++    return " ".join(value.strip().lower().split())
++
++
++def sphere_doc_id(name: str) -> str:
++    return f"default_{normalized_name(name).replace(' ', '_')}"
++
++
++def reaction_assignments(post: SeedPost) -> list[tuple[str, str]]:
++    assignments: list[tuple[str, str]] = []
++    used_user_ids: set[str] = set()
++    candidates = [user.uid for user in USERS.values() if user.uid != USERS[post.user].uid]
++    cursor = 0
++    for emoji, count in post.reactions.items():
++        assigned = 0
++        while assigned < count and cursor < len(candidates):
++            user_id = candidates[cursor]
++            cursor += 1
++            if user_id in used_user_ids:
++                continue
++            used_user_ids.add(user_id)
++            assignments.append((emoji, user_id))
++            assigned += 1
++    return assignments
++
++
++def post_payload(post: SeedPost, created_at: datetime) -> dict[str, Any]:
++    user = USERS[post.user]
++    payload: dict[str, Any] = {
++        "type": post.type,
++        "text": post.text,
++        "userId": user.uid,
++        "username": user.username,
++        "seedVersion": CHAT_SEED_VERSION,
++        "defaultContentSeedVersion": DEFAULT_CONTENT_SEED_VERSION,
++        "miniMe": user.mini_me(),
++        "miniMeName": user.username,
++        "createdAt": created_at,
++        "updatedAt": created_at,
++        "latestActivityAt": created_at,
++        "replyCount": 0,
++        "reactionCounts": post.reactions,
++        "isPinned": False,
++        **post.extra,
++    }
++    if post.reply_to:
++        parent = next(item for item in POSTS if item.id == post.reply_to)
++        parent_user = USERS[parent.user]
++        payload.update(
++            {
++                "replyToPostId": post.reply_to,
++                "replyToUserId": parent_user.uid,
++                "replyToUserName": parent_user.username,
++                "replyToText": parent.text[:140],
++            }
++        )
++    return payload
++
++
++def posts_for_sphere(name: str) -> list[SeedPost]:
++    return [post for post in POSTS if post.sphere == name]
++
++
++def find_existing_sphere(db: Any, name: str) -> Any | None:
++    matches = (
++        db.collection("spheres")
++        .where("isPremade", "==", True)
++        .where("name", "==", name)
++        .limit(1)
++        .stream()
++    )
++    return next(matches, None)
++
++
++def commit_batch(db: Any, writes: list[tuple[Any, dict[str, Any]]]) -> None:
++    batch = db.batch()
++    for ref, payload in writes:
++        batch.set(ref, payload, merge=True)
++    batch.commit()
++
++
++def firestore_value(value: Any) -> dict[str, Any]:
++    if value is None:
++        return {"nullValue": None}
++    if isinstance(value, bool):
++        return {"booleanValue": value}
++    if isinstance(value, int):
++        return {"integerValue": str(value)}
++    if isinstance(value, float):
++        return {"doubleValue": value}
++    if isinstance(value, datetime):
++        return {"timestampValue": value.isoformat().replace("+00:00", "Z")}
++    if isinstance(value, list):
++        return {"arrayValue": {"values": [firestore_value(item) for item in value]}}
++    if isinstance(value, dict):
++        return {
++            "mapValue": {
++                "fields": {key: firestore_value(item) for key, item in value.items()}
++            }
++        }
++    return {"stringValue": str(value)}
++
++
++def run_command(args: list[str]) -> str:
++    return subprocess.check_output(args, text=True).strip()
++
++
++def gcloud_project_id() -> str:
++    project_id = (
++        os.environ.get("GOOGLE_CLOUD_PROJECT")
++        or os.environ.get("GCLOUD_PROJECT")
++        or run_command(["gcloud", "config", "get-value", "project"])
++    ).strip()
++    if not project_id:
++        raise RuntimeError("No Google Cloud project configured. Run: gcloud config set project YOUR_PROJECT_ID")
++    return project_id
++
++
++def firestore_document_path(document_name: str) -> str:
++    marker = "/documents/"
++    if marker not in document_name:
++        raise ValueError(f"Unexpected Firestore document name: {document_name}")
++    return document_name.split(marker, 1)[1]
++
++
++def find_existing_sphere_rest(
++    *,
++    project_id: str,
++    headers: dict[str, str],
++    name: str,
++) -> str | None:
++    url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents:runQuery"
++    query = {
++        "structuredQuery": {
++            "from": [{"collectionId": "spheres"}],
++            "where": {
++                "compositeFilter": {
++                    "op": "AND",
++                    "filters": [
++                        {
++                            "fieldFilter": {
++                                "field": {"fieldPath": "isPremade"},
++                                "op": "EQUAL",
++                                "value": {"booleanValue": True},
++                            }
++                        },
++                        {
++                            "fieldFilter": {
++                                "field": {"fieldPath": "name"},
++                                "op": "EQUAL",
++                                "value": {"stringValue": name},
++                            }
++                        },
++                    ],
++                }
++            },
++            "limit": 1,
++        }
++    }
++    response = requests.post(url, headers=headers, json=query, timeout=60)
++    if response.status_code >= 400:
++        raise RuntimeError(f"Firestore query failed ({response.status_code}): {response.text}")
++    for row in response.json():
++        document = row.get("document")
++        if document:
++            return firestore_document_path(document["name"])
++    return None
++
++
++def member_count_rest(
++    *,
++    project_id: str,
++    headers: dict[str, str],
++    sphere_path: str,
++) -> int:
++    url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{sphere_path}/members?pageSize=1000"
++    response = requests.get(url, headers=headers, timeout=60)
++    if response.status_code == 404:
++        return 0
++    if response.status_code >= 400:
++        raise RuntimeError(f"Firestore members list failed ({response.status_code}): {response.text}")
++    return len(response.json().get("documents", []))
++
++
++def commit_rest_batch(
++    *,
++    project_id: str,
++    headers: dict[str, str],
++    writes: list[tuple[str, dict[str, Any]]],
++) -> None:
++    url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents:batchWrite"
++    for start in range(0, len(writes), 20):
++        payload = {
++            "writes": [
++                {
++                    "update": {
++                        "name": f"projects/{project_id}/databases/(default)/documents/{path}",
++                        "fields": {key: firestore_value(value) for key, value in data.items()},
++                    },
++                    "updateMask": {"fieldPaths": list(data.keys())},
++                }
++                for path, data in writes[start : start + 20]
++            ]
++        }
++        response = requests.post(url, headers=headers, json=payload, timeout=60)
++        if response.status_code >= 400:
++            raise RuntimeError(f"Firestore batchWrite failed ({response.status_code}): {response.text}")
++
++
++def seed_default_spheres_with_gcloud_rest() -> None:
++    project_id = gcloud_project_id()
++    token = run_command(["gcloud", "auth", "print-access-token"])
++    if not token:
++        raise RuntimeError("Could not get gcloud access token. Run: gcloud auth login")
++    headers = {
++        "Authorization": f"Bearer {token}",
++        "Content-Type": "application/json",
++    }
++    now = datetime.now(UTC).replace(microsecond=0)
++
++    total_posts = 0
++    total_reactions = 0
++    for name, metadata in SPHERE_METADATA.items():
++        sphere_path = find_existing_sphere_rest(
++            project_id=project_id,
++            headers=headers,
++            name=name,
++        ) or f"spheres/{sphere_doc_id(name)}"
++        sphere_posts = posts_for_sphere(name)
++        latest_post = min(sphere_posts, key=lambda item: item.minutes_ago)
++        latest_at = now - timedelta(minutes=latest_post.minutes_ago)
++
++        writes: list[tuple[str, dict[str, Any]]] = [
++            (
++                sphere_path,
++                {
++                    "name": name,
++                    "description": metadata["description"],
++                    "memberCount": len(USERS),
++                    "createdAt": now - timedelta(days=14),
++                    "creatorId": SYSTEM_USER_ID,
++                    "isPremade": True,
++                    "pinnedTitle": metadata["pinnedTitle"],
++                    "pinnedBody": metadata["pinnedBody"],
++                    "bannerTemplate": metadata["bannerTemplate"],
++                    "chatSeedVersion": CHAT_SEED_VERSION,
++                    "defaultContentSeedVersion": DEFAULT_CONTENT_SEED_VERSION,
++                    "lastActivityText": latest_post.text,
++                    "lastActivityAt": latest_at,
++                },
++            )
++        ]
++
++        for index, user in enumerate(USERS.values()):
++            joined_at = now - timedelta(days=12, hours=index)
++            writes.append(
++                (
++                    f"{sphere_path}/members/{user.uid}",
++                    {
++                        "username": user.username,
++                        "joinedAt": joined_at,
++                        "lastReadAt": latest_at - timedelta(minutes=index + 3),
++                        "lastActiveAt": latest_at - timedelta(minutes=index + 1),
++                        "warningCount": 0,
++                        "role": "member",
++                        "miniMe": user.mini_me(),
++                        "miniMeName": user.username,
++                        "defaultContentSeedVersion": DEFAULT_CONTENT_SEED_VERSION,
++                    },
++                )
++            )
++
++        for post in sphere_posts:
++            post_path = f"{sphere_path}/posts/{post.id}"
++            created_at = now - timedelta(minutes=post.minutes_ago)
++            writes.append((post_path, post_payload(post, created_at)))
++            total_posts += 1
++            for emoji, reaction_user_id in reaction_assignments(post):
++                writes.append(
++                    (
++                        f"{post_path}/reactions/{reaction_user_id}",
++                        {
++                            "emoji": emoji,
++                            "userId": reaction_user_id,
++                            "updatedAt": created_at + timedelta(minutes=5),
++                            "defaultContentSeedVersion": DEFAULT_CONTENT_SEED_VERSION,
++                        },
++                    )
++                )
++                total_reactions += 1
++
++        commit_rest_batch(project_id=project_id, headers=headers, writes=writes)
++        count = member_count_rest(project_id=project_id, headers=headers, sphere_path=sphere_path)
++        commit_rest_batch(
++            project_id=project_id,
++            headers=headers,
++            writes=[(sphere_path, {"memberCount": count})],
++        )
++
++    print(
++        "Seeded default spheres with "
++        f"{len(USERS)} demo members, {total_posts} posts, and {total_reactions} reactions using gcloud REST."
++    )
++
++
++def seed_default_spheres(*, dry_run: bool = False, auth: str = "firebase-admin") -> None:
++    if dry_run:
++        print(
++            f"Dry run: would seed {len(SPHERE_METADATA)} default spheres, "
++            f"{len(USERS)} demo members, and {len(POSTS)} seeded posts."
++        )
++        for name in SPHERE_METADATA:
++            print(f"  - {name}: {len(posts_for_sphere(name))} posts")
++        return
++
++    if auth == "gcloud-rest":
++        seed_default_spheres_with_gcloud_rest()
++        return
++
++    get_firebase_app()
++    from firebase_admin import firestore
++
++    db = firestore.client()
++    now = datetime.now(UTC).replace(microsecond=0)
++
++    total_posts = 0
++    total_reactions = 0
++    for name, metadata in SPHERE_METADATA.items():
++        existing = find_existing_sphere(db, name)
++        sphere_ref = existing.reference if existing else db.collection("spheres").document(sphere_doc_id(name))
++        sphere_posts = posts_for_sphere(name)
++        latest_post = min(sphere_posts, key=lambda item: item.minutes_ago)
++        latest_at = now - timedelta(minutes=latest_post.minutes_ago)
++
++        sphere_payload = {
++            "name": name,
++            "description": metadata["description"],
++            "memberCount": len(USERS),
++            "createdAt": now - timedelta(days=14),
++            "creatorId": SYSTEM_USER_ID,
++            "isPremade": True,
++            "pinnedTitle": metadata["pinnedTitle"],
++            "pinnedBody": metadata["pinnedBody"],
++            "bannerTemplate": metadata["bannerTemplate"],
++            "chatSeedVersion": CHAT_SEED_VERSION,
++            "defaultContentSeedVersion": DEFAULT_CONTENT_SEED_VERSION,
++            "lastActivityText": latest_post.text,
++            "lastActivityAt": latest_at,
++        }
++
++        writes: list[tuple[Any, dict[str, Any]]] = [(sphere_ref, sphere_payload)]
++
++        for index, user in enumerate(USERS.values()):
++            joined_at = now - timedelta(days=12, hours=index)
++            writes.append(
++                (
++                    sphere_ref.collection("members").document(user.uid),
++                    {
++                        "username": user.username,
++                        "joinedAt": joined_at,
++                        "lastReadAt": latest_at - timedelta(minutes=index + 3),
++                        "lastActiveAt": latest_at - timedelta(minutes=index + 1),
++                        "warningCount": 0,
++                        "role": "member",
++                        "miniMe": user.mini_me(),
++                        "miniMeName": user.username,
++                        "defaultContentSeedVersion": DEFAULT_CONTENT_SEED_VERSION,
++                    },
++                )
++            )
++
++        for post in sphere_posts:
++            post_ref = sphere_ref.collection("posts").document(post.id)
++            created_at = now - timedelta(minutes=post.minutes_ago)
++            writes.append((post_ref, post_payload(post, created_at)))
++            total_posts += 1
++            for emoji, reaction_user_id in reaction_assignments(post):
++                writes.append(
++                    (
++                        post_ref.collection("reactions").document(reaction_user_id),
++                        {
++                            "emoji": emoji,
++                            "userId": reaction_user_id,
++                            "updatedAt": created_at + timedelta(minutes=5),
++                            "defaultContentSeedVersion": DEFAULT_CONTENT_SEED_VERSION,
++                        },
++                    )
++                )
++                total_reactions += 1
++
++        for start in range(0, len(writes), 450):
++            commit_batch(db, writes[start : start + 450])
++
++        # Keep memberCount aligned with the actual seeded + real member docs.
++        member_count = sum(1 for _ in sphere_ref.collection("members").stream())
++        sphere_ref.set({"memberCount": member_count}, merge=True)
++
++    print(
++        "Seeded default spheres with "
++        f"{len(USERS)} demo members, {total_posts} posts, and {total_reactions} reactions."
++    )
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Seed default community sphere activity.")
++    parser.add_argument(
++        "--dry-run",
++        action="store_true",
++        help="Print what would be seeded without writing to Firestore.",
++    )
++    parser.add_argument(
++        "--auth",
++        choices=("firebase-admin", "gcloud-rest"),
++        default="firebase-admin",
++        help="Authentication method to use for Firestore writes.",
++    )
++    args = parser.parse_args()
++    seed_default_spheres(dry_run=args.dry_run, auth=args.auth)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/firestore.rules b/firestore.rules
+index aaff3661..daace4f8 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -28,0 +29,10 @@ service cloud.firestore {
++    function isPublicSphere(sphereId) {
++      return get(spherePath(sphereId)).data.get('isPublic', true) == true;
++    }
++
++    function hasSphereInvite(sphereId) {
++      return signedIn() &&
++        exists(/databases/$(database)/documents/spheres/$(sphereId)/invites/$(request.auth.uid)) &&
++        get(/databases/$(database)/documents/spheres/$(sphereId)/invites/$(request.auth.uid)).data.status in ['pending', 'accepted'];
++    }
++
+@@ -119 +129,2 @@ service cloud.firestore {
+-          'isPremade'
++          'isPremade',
++          'isPublic'
+@@ -142,2 +153,4 @@ service cloud.firestore {
+-        allow create: if isSelf(memberId) &&
+-          request.resource.data.username is string;
++        allow create: if (isSelf(memberId) &&
++          request.resource.data.username is string &&
++          (isPublicSphere(sphereId) || isSphereOwner(sphereId) || hasSphereInvite(sphereId))) ||
++          (isSphereOwner(sphereId) && request.resource.data.username is string);
+@@ -171,0 +185,32 @@ service cloud.firestore {
++      match /invites/{inviteeId} {
++        allow read: if isSelf(inviteeId) || isSphereMember(sphereId) || isSphereOwner(sphereId);
++        allow create: if signedIn() &&
++          isSphereMember(sphereId) &&
++          request.resource.data.toUserId == inviteeId;
++        allow update: if (
++          signedIn() &&
++          isSphereMember(sphereId) &&
++          request.resource.data.toUserId == inviteeId
++        ) || (
++          isSelf(inviteeId) &&
++          affectedKeys().hasOnly(['status', 'updatedAt']) &&
++          request.resource.data.status in ['declined', 'accepted']
++        );
++        allow delete: if isSelf(inviteeId) || isSphereOwner(sphereId);
++      }
++
++      match /join_requests/{requesterId} {
++        allow read: if isSelf(requesterId) || isSphereOwner(sphereId);
++
++        allow create, update: if isSelf(requesterId) &&
++          request.resource.data.userId == request.auth.uid &&
++          request.resource.data.status == 'pending' &&
++          request.resource.data.username is string;
++
++        allow update: if isSphereOwner(sphereId) &&
++          affectedKeys().hasOnly(['status', 'updatedAt', 'reviewedBy']) &&
++          request.resource.data.status in ['accepted', 'denied'];
++
++        allow delete: if isSelf(requesterId) || isSphereOwner(sphereId);
++      }
++
+@@ -185 +230,2 @@ service cloud.firestore {
+-        allow create: if isSphereMember(sphereId) &&
++        allow create: if (
++          isSphereMember(sphereId) &&
+@@ -188 +234,7 @@ service cloud.firestore {
+-          request.resource.data.text is string;
++          request.resource.data.text is string
++        ) || (
++          isSphereOwner(sphereId) &&
++          request.resource.data.type == 'system_join' &&
++          request.resource.data.username is string &&
++          request.resource.data.text is string
++        );
