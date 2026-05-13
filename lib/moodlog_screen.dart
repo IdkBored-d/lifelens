@@ -581,6 +581,8 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                       userName: userName,
                                       latestAction: 'Mood Log',
                                     );
+                                    await ModelLifecycleService.instance
+                                        .ensureLoaded([ModelType.miniGen]);
                                     final reply = await AppServices.miniGenChat
                                         .generateMiniMeReply(
                                       userMessage: persistedSummary,
