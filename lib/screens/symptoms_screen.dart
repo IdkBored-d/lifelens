@@ -6,6 +6,7 @@ import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
+import 'package:lifelens/services/minime_backend_service.dart';
 import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
@@ -83,6 +84,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       double? disEmbedScore;
       var diagnosesJson = '[]';
       var ragUsed = false;
+      var resolvedBy = 'none';
       final miniMeTop3 = <String>[];
 
       if (isOnline) {
@@ -100,6 +102,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
             predictedAilment = results.first.disease;
             disEmbedScore = results.first.certainty;
             ragUsed = true;
+            resolvedBy = 'base';
             diagnosesJson = jsonEncode(results
                 .map((r) => {
                       'disease': r.disease,
@@ -114,6 +117,46 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
         } catch (e) {
           debugPrint('[SymptomsScreen] Symptom pipeline failed (non-fatal): $e');
         }
+
+        if (miniMeTop3.isEmpty) {
+          try {
+            final backendReply = await MiniMeBackendService.instance
+                .analyzeSymptoms(symptoms: symptomsForPipeline);
+            if (backendReply.predictions.isNotEmpty) {
+              predictedAilment = backendReply.predictions.first.condition;
+              resolvedBy = backendReply.source.isNotEmpty
+                  ? backendReply.source
+                  : 'backend';
+              diagnosesJson = jsonEncode(
+                backendReply.predictions
+                    .map(
+                      (prediction) => {
+                        'disease': prediction.condition,
+                        'reasoning': prediction.description,
+                        'next_steps': prediction.whenToSeekCare.isNotEmpty
+                            ? prediction.whenToSeekCare
+                            : backendReply.selfCareRecommendations
+                                  .take(3)
+                                  .join(' '),
+                        'is_urgent':
+                            backendReply.urgency == 'urgent' ||
+                            backendReply.urgency == 'emergency',
+                      },
+                    )
+                    .toList(),
+              );
+              miniMeTop3.addAll(
+                backendReply.predictions
+                    .map((prediction) => prediction.condition)
+                    .take(3),
+              );
+            }
+          } catch (e) {
+            debugPrint(
+              '[SymptomsScreen] Backend symptom analysis failed (non-fatal): $e',
+            );
+          }
+        }
       }
 
       final now = DateTime.now();
@@ -125,7 +168,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
           ..predictedAilment = predictedAilment
           ..disEmbedScore = disEmbedScore
           ..diagnosesJson = diagnosesJson
-          ..resolvedBy = ragUsed ? 'base' : 'none'
+          ..resolvedBy = resolvedBy
           ..ragUsed = ragUsed
           ..wasOffline = !isOnline
           ..status = 'monitoring'

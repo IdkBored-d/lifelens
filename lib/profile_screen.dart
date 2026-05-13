@@ -7,7 +7,6 @@ import 'package:provider/provider.dart';
 import 'theme_controller.dart';
 import 'package:lifelens/shared_widgets/mini_me_profile_icon.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
-import 'dev_test_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -238,27 +237,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               const SizedBox(height: 24),
 
-              _ProfileSection(
-                title: 'Developer',
-                children: [
-                  _ProfileTile(
-                    icon: Icons.science_outlined,
-                    label: 'Pipeline Tests',
-                    value: 'Open',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const DevTestScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
               _LogoutButton(
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
@@ -305,101 +283,190 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
-    final screenContext = this.context;
+    var saving = false;
+    String? currentPasswordError;
+    String? newPasswordError;
+    String? confirmPasswordError;
+    String? inlineMessage;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Change Password'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: currentPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Current Password',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  prefixIcon: const Icon(Icons.lock_outline),
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Change Password'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: currentPasswordController,
+                      obscureText: true,
+                      enabled: !saving,
+                      decoration: InputDecoration(
+                        labelText: 'Current Password',
+                        errorText: currentPasswordError,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(Icons.lock_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: newPasswordController,
+                      obscureText: true,
+                      enabled: !saving,
+                      decoration: InputDecoration(
+                        labelText: 'New Password',
+                        errorText: newPasswordError,
+                        helperText: 'Must be at least 6 characters',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(Icons.lock_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: confirmPasswordController,
+                      obscureText: true,
+                      enabled: !saving,
+                      decoration: InputDecoration(
+                        labelText: 'Confirm New Password',
+                        errorText: confirmPasswordError,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(Icons.lock_outline),
+                      ),
+                    ),
+                    if (inlineMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          inlineMessage!,
+                          style: TextStyle(
+                            color: Theme.of(dialogContext).colorScheme.error,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: newPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'New Password',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  prefixIcon: const Icon(Icons.lock_outline),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: confirmPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Confirm New Password',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  prefixIcon: const Icon(Icons.lock_outline),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final currentPassword =
+                              currentPasswordController.text.trim();
+                          final newPassword = newPasswordController.text.trim();
+                          final confirmPassword =
+                              confirmPasswordController.text.trim();
+
+                          String? nextCurrentPasswordError;
+                          String? nextNewPasswordError;
+                          String? nextConfirmPasswordError;
+
+                          if (currentPassword.isEmpty) {
+                            nextCurrentPasswordError =
+                                'Enter your current password';
+                          }
+                          if (newPassword.isEmpty) {
+                            nextNewPasswordError =
+                                'Enter a new password';
+                          } else if (newPassword.length < 6) {
+                            nextNewPasswordError =
+                                'Password must be at least 6 characters';
+                          }
+                          if (confirmPassword.isEmpty) {
+                            nextConfirmPasswordError =
+                                'Confirm your new password';
+                          } else if (newPassword != confirmPassword) {
+                            nextConfirmPasswordError =
+                                'New passwords do not match';
+                          }
+
+                          if (nextCurrentPasswordError != null ||
+                              nextNewPasswordError != null ||
+                              nextConfirmPasswordError != null) {
+                            setDialogState(() {
+                              currentPasswordError = nextCurrentPasswordError;
+                              newPasswordError = nextNewPasswordError;
+                              confirmPasswordError = nextConfirmPasswordError;
+                              inlineMessage = null;
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            saving = true;
+                            currentPasswordError = null;
+                            newPasswordError = null;
+                            confirmPasswordError = null;
+                            inlineMessage = null;
+                          });
+                          final dialogNavigator = Navigator.of(
+                            dialogContext,
+                            rootNavigator: true,
+                          );
+
+                          final errorMessage = await _changePassword(
+                            currentPassword,
+                            newPassword,
+                          );
+
+                          if (!mounted) return;
+
+                          if (errorMessage == null) {
+                            if (dialogNavigator.canPop()) {
+                              dialogNavigator.pop();
+                            }
+                            return;
+                          }
+
+                          setDialogState(() {
+                            saving = false;
+                            if (errorMessage ==
+                                'Current password is incorrect') {
+                              currentPasswordError = errorMessage;
+                              inlineMessage = null;
+                            } else if (errorMessage ==
+                                    'New password is too weak' ||
+                                errorMessage ==
+                                    'Password must be at least 6 characters') {
+                              newPasswordError = errorMessage;
+                              inlineMessage = null;
+                            } else {
+                              inlineMessage = errorMessage;
+                            }
+                          });
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Change Password'),
                 ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final currentPassword = currentPasswordController.text.trim();
-              final newPassword = newPasswordController.text.trim();
-              final confirmPassword = confirmPasswordController.text.trim();
-
-              if (currentPassword.isEmpty ||
-                  newPassword.isEmpty ||
-                  confirmPassword.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please fill all fields')),
-                );
-                return;
-              }
-
-              if (newPassword != confirmPassword) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('New passwords do not match')),
-                );
-                return;
-              }
-
-              if (newPassword.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Password must be at least 6 characters'),
-                  ),
-                );
-                return;
-              }
-
-              Navigator.pop(context);
-              await _changePassword(
-                screenContext,
-                currentPassword,
-                newPassword,
-              );
-            },
-            child: const Text('Change Password'),
-          ),
-        ],
-      ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -478,17 +545,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             saving = true;
                           });
                           var dialogClosed = false;
+                          final dialogNavigator = Navigator.of(
+                            dialogContext,
+                            rootNavigator: true,
+                          );
 
                           try {
                             await _changeUsername(
                               newUsernameDisplay,
                             ).timeout(const Duration(seconds: 15));
                             if (!mounted) return;
-                            if (Navigator.of(dialogContext).canPop()) {
-                              Navigator.of(
-                                dialogContext,
-                                rootNavigator: true,
-                              ).pop();
+                            if (dialogNavigator.canPop()) {
+                              dialogNavigator.pop();
                               dialogClosed = true;
                             }
                           } on TimeoutException {
@@ -629,46 +697,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  Future<void> _changePassword(
-    BuildContext context,
+  Future<String?> _changePassword(
     String currentPassword,
     String newPassword,
   ) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.email == null) return;
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context, rootNavigator: true);
-    var loadingShown = false;
+    if (user == null || user.email == null) {
+      return 'You must be signed in to change your password';
+    }
 
     try {
-      if (!context.mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        useRootNavigator: true,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-      loadingShown = true;
-
-      // Re-authenticate user
       final credential = EmailAuthProvider.credential(
         email: user.email!,
         password: currentPassword,
       );
       await user.reauthenticateWithCredential(credential);
 
-      // Change password
       await user.updatePassword(newPassword);
-
-      if (context.mounted) {
-        if (loadingShown && navigator.canPop()) {
-          navigator.pop();
-          loadingShown = false;
-        }
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Password changed successfully')),
-        );
-      }
+      return null;
     } on FirebaseAuthException catch (e) {
       String message = 'Error changing password';
       if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
@@ -680,18 +726,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       } else if (e.code == 'too-many-requests') {
         message = 'Too many attempts. Please wait a moment and try again.';
       }
-
-      if (context.mounted) {
-        messenger.showSnackBar(SnackBar(content: Text(message)));
-      }
+      return message;
     } catch (e) {
-      if (context.mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
-    } finally {
-      if (loadingShown && navigator.canPop()) {
-        navigator.pop();
-      }
+      return 'Error: $e';
     }
   }
 

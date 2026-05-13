@@ -417,12 +417,16 @@ String _normalizedSphereName(String value) =>
 
 List<Sphere> _visibleUniqueSpheres(Iterable<Sphere> spheres) {
   const defaultOrder = <String, int>{'general': 0, 'sleep': 1, 'exercise': 2};
+  const hiddenSphereNames = <String>{'test', 'test sphere'};
 
   final seenNames = <String>{};
   final uniqueSpheres = <Sphere>[];
 
   for (final sphere in spheres) {
     final normalizedName = _normalizedSphereName(sphere.name);
+    if (hiddenSphereNames.contains(normalizedName)) {
+      continue;
+    }
     if (seenNames.add(normalizedName)) {
       uniqueSpheres.add(sphere);
     }

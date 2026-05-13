@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/eod_entry.dart';
+import 'package:lifelens/database/exercise_entry.dart';
 import 'package:lifelens/database/mood_entry.dart';
+import 'package:lifelens/database/sleep_entry.dart';
 import 'package:lifelens/database/symptom_entry.dart';
 import 'package:lifelens/moodlog_store.dart';
 import 'package:lifelens/services/exercise_store.dart';
@@ -125,25 +127,29 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
       AppServices.isar.getMoodEntriesForDate(dateKey),
       AppServices.isar.getSymptomEntriesForDate(dateKey),
       AppServices.isar.getEodEntry(dateKey),
+      AppServices.isar.getSleepEntriesForDate(dateKey),
+      AppServices.isar.getExerciseEntriesForDate(dateKey),
     ]);
 
     final moods = results[0] as List<MoodEntry>;
     final symptoms = results[1] as List<SymptomEntry>;
     final eod = results[2] as EodEntry?;
+    final sleepEntries = results[3] as List<SleepEntry>;
+    final exerciseEntries = results[4] as List<ExerciseEntry>;
 
-    final sleeps =
-        sleepStore.items
-            .where((item) => _matchesSleepDate(item, selectedDate))
-            .toList(growable: false)
-          ..sort((a, b) => b.wakeTime.compareTo(a.wakeTime));
+    final sleeps = sleepEntries
+        .map(_sleepFromEntry)
+        .toList(growable: false)
+      ..sort((a, b) => b.wakeTime.compareTo(a.wakeTime));
 
-    final exercises = _exerciseStore
-        .getRecentExerciseHistory(limit: 365)
-        .where((item) {
-          final timestamp = DateTime.tryParse(item['timestamp'] ?? '');
-          return timestamp != null && _isSameDay(timestamp, selectedDate);
-        })
-        .toList(growable: false);
+    final exercises = exerciseEntries
+        .map(_exerciseRecordFromEntry)
+        .toList(growable: false)
+      ..sort((a, b) {
+        final left = DateTime.tryParse(a['timestamp'] ?? '') ?? DateTime(1970);
+        final right = DateTime.tryParse(b['timestamp'] ?? '') ?? DateTime(1970);
+        return right.compareTo(left);
+      });
 
     if (!mounted || requestId != _loadRequestId) return;
     setState(() {
@@ -328,6 +334,35 @@ class _HistoryCalendarViewState extends State<HistoryCalendarView> {
           );
         })
         .toList(growable: false);
+  }
+
+  Sleep _sleepFromEntry(SleepEntry entry) {
+    final quality = SleepQuality.values.firstWhere(
+      (item) => item.name == entry.quality,
+      orElse: () => SleepQuality.fair,
+    );
+    return Sleep(
+      bedTime: entry.bedTime,
+      wakeTime: entry.wakeTime,
+      quality: quality,
+      date: DateTime.parse(entry.date),
+      notes: entry.notes,
+    );
+  }
+
+  Map<String, String> _exerciseRecordFromEntry(ExerciseEntry entry) {
+    return <String, String>{
+      'exerciseId': entry.exerciseId,
+      'exerciseName': entry.exerciseName,
+      'mood': entry.mood,
+      'durationMinutes': entry.durationMinutes.toString(),
+      'sets': entry.sets.toString(),
+      'reps': entry.reps.toString(),
+      'noExercise': entry.noExercise.toString(),
+      'workoutItemsJson': entry.workoutItemsJson,
+      'workoutCount': entry.workoutCount.toString(),
+      'timestamp': entry.timestamp.toIso8601String(),
+    };
   }
 }
 
@@ -636,10 +671,6 @@ DateTime _startOfDay(DateTime date) =>
 
 bool _isSameDay(DateTime a, DateTime b) {
   return a.year == b.year && a.month == b.month && a.day == b.day;
-}
-
-bool _matchesSleepDate(Sleep sleep, DateTime target) {
-  return _isSameDay(sleep.date, target) || _isSameDay(sleep.wakeTime, target);
 }
 
 String _dateKey(DateTime date) {

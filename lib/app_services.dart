@@ -1,9 +1,12 @@
 import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dart_wordpiece/dart_wordpiece.dart';
+import 'package:llamadart/llamadart.dart';
 
 import 'database/isar_service.dart';
 import 'services/confidence_manager.dart';
@@ -58,7 +61,7 @@ class AppServices {
 
   // ── Configuration ────────────────────────────────────────────────────────────
   static const String _weaviateHost   = 'https://your-cluster.weaviate.network';
-  static const String _weaviateApiKey = 'YOUR_WEAVIATE_API_KEY';
+  static const String _weaviateApiKey = 'WE1tM29sQXVFQmhyZVFnK182L1IvMXZ3d1dneDBIZm11eXhwQy9zR0ZYckZWV0xzc1FVVW1lbVhpcnhjPV92MjAw';
   static const String _geminiApiKey   = 'YOUR_GEMINI_API_KEY';
 
   // Asset paths
@@ -67,12 +70,38 @@ class AppServices {
   static const String _fitnessAsset    = 'assets/models/for MVP/fitness_model_v9.onnx';
   static const String _vocabAsset      = 'assets/models/vocab.txt';
 
+  static Future<bool> _shouldSkipMiniGenLoad() async {
+    if (!Platform.isIOS) {
+      return false;
+    }
+
+    try {
+      final iosInfo = await DeviceInfoPlugin().iosInfo;
+      if (!iosInfo.isPhysicalDevice) {
+        debugPrint(
+          '[AppServices] init: MiniGen skipped on iOS simulator; model load is only supported on macOS and physical iOS devices right now',
+        );
+        return true;
+      }
+    } catch (error) {
+      debugPrint(
+        '[AppServices] init: MiniGen simulator check failed, continuing with load attempt: $error',
+      );
+    }
+
+    return false;
+  }
+
 
   // ── Initialisation ───────────────────────────────────────────────────────────
 
   /// Initialise all services. Call once before runApp().
   static Future<void> init() async {
     WidgetsFlutterBinding.ensureInitialized();
+    LlamaEngine.configureLogging(
+      level: LlamaLogLevel.debug,
+      handler: (record) => debugPrint('[LlamaDart] ${record.toString()}'),
+    );
     final sw = Stopwatch()..start();
     debugPrint('[AppServices] init: start');
 
@@ -126,8 +155,20 @@ class AppServices {
     // MiniGen requires an OTA download on first launch (~96 MB); fire it in the
     // background so the 30-second startup timeout in app_init.dart doesn't kill it.
     unawaited(loadModel('MiniGen', () async {
+      if (await _shouldSkipMiniGenLoad()) {
+        return;
+      }
+
       final path = await MiniGenDownloader.ensureModel();
-      await miniGen.load(path);
+      try {
+        await miniGen.load(path);
+      } catch (error) {
+        debugPrint(
+          '[AppServices] init: MiniGen f16 load failed, retrying with Q8_0 fallback: $error',
+        );
+        final fallbackPath = await MiniGenDownloader.ensureFallbackModel();
+        await miniGen.load(fallbackPath);
+      }
     }));
 
     debugPrint('[AppServices] init: models ready $loadedCount/4 in ${sw.elapsedMilliseconds - modelsStart}ms');

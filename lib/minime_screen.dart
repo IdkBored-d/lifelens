@@ -377,267 +377,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     );
   }
 
-  Future<void> _runDaySummary() async {
-    if (_isReplying) return;
-
-    setState(() {
-      _isCoachExpanded = true;
-      _isReplying = true;
-      _appendMessage(
-        const _MiniMeChatMessage(
-          role: _ChatRole.user,
-          text: 'Generate my day summary',
-        ),
-      );
-    });
-    _scrollToBottom();
-
-    try {
-      final groundedRecap = await _buildGroundedDailyRecap();
-      // TODO: replace `true` with a real connectivity check (connectivity_plus).
-      final result = await AppServices.eodPipeline.runEndOfDay(
-        isOnline: await AppServices.isOnline(),
-      );
-
-      if (!mounted) return;
-
-      final flagNote =
-          result.flagged && (result.flagReason?.isNotEmpty ?? false)
-          ? '\n\n⚠ ${result.flagReason}'
-          : '';
-      final cleanedPipelineSummary = _cleanDailyRecapPipelineSummary(
-        result.summary,
-      );
-      final replyText = cleanedPipelineSummary.isNotEmpty
-          ? '$groundedRecap\n\nOne more note:\n$cleanedPipelineSummary$flagNote'
-          : groundedRecap;
-
-      setState(() {
-        _appendMessage(
-          _MiniMeChatMessage(role: _ChatRole.assistant, text: replyText),
-        );
-        _isReplying = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _appendMessage(
-          const _MiniMeChatMessage(
-            role: _ChatRole.assistant,
-            text:
-                'Could not generate day summary right now. Please try again later.',
-          ),
-        );
-        _isReplying = false;
-      });
-    }
-
-    _scrollToBottom();
-  }
-
-  Future<String> _buildGroundedDailyRecap() async {
-    final now = DateTime.now();
-    final moodStore = context.read<MoodLogStore>();
-    final sleepStore = context.read<SleepStore>();
-
-    await _exerciseStore.ensureReady();
-
-    final todayMoods = moodStore.items
-        .where((item) => _isSameDay(item.createdAt, now))
-        .toList(growable: false);
-    final todaySleep = sleepStore.items
-        .where(
-          (item) =>
-              _isSameDay(item.date, now) || _isSameDay(item.wakeTime, now),
-        )
-        .toList(growable: false);
-    final todayExercise = _exerciseStore
-        .getRecentExerciseHistory(limit: 40)
-        .where((record) {
-          final timestamp = DateTime.tryParse(record['timestamp'] ?? '');
-          return timestamp != null && _isSameDay(timestamp, now);
-        })
-        .toList(growable: false);
-
-    final activeSymptoms = await AppServices.isar.getActiveSymptomEntries();
-    final recentFitness = await AppServices.isar.getRecentFitnessEntries(
-      days: 2,
-    );
-    final latestFitness = recentFitness.isEmpty ? null : recentFitness.first;
-
-    final advice = _dailyRecapAdvice(
-      todayMoods: todayMoods,
-      todaySleep: todaySleep,
-      todayExercise: todayExercise,
-      activeSymptoms: activeSymptoms,
-      latestFitness: latestFitness,
-    );
-
-    return 'Mini-Me recap:\n${advice.overview}\n\nWhy I think that:\n${advice.reasons.map((reason) => '- $reason').join('\n')}\n\nTry this next:\n${advice.nextStep}';
-  }
-
-  String _cleanDailyRecapPipelineSummary(String summary) {
-    final normalized = summary.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (normalized.isEmpty) return '';
-
-    final lower = normalized.toLowerCase();
-    final fallbackMarkers = <String>[
-      'unable to reach gemini',
-      'unable to reach',
-      'end-of-day summary unavailable',
-      'could not generate',
-    ];
-    if (fallbackMarkers.any(lower.contains)) {
-      return '';
-    }
-
-    return normalized;
-  }
-
-  _DailyRecapAdvice _dailyRecapAdvice({
-    required List<MoodCheckIn> todayMoods,
-    required List<Sleep> todaySleep,
-    required List<Map<String, String>> todayExercise,
-    required List<SymptomEntry> activeSymptoms,
-    required FitnessEntry? latestFitness,
-  }) {
-    final hasMood = todayMoods.isNotEmpty;
-    final avgMood = hasMood
-        ? todayMoods.map((item) => item.intensity).reduce((a, b) => a + b) /
-              todayMoods.length
-        : null;
-    final latestMood = todayMoods.isEmpty ? null : todayMoods.first;
-    final latestSleep = todaySleep.isEmpty ? null : todaySleep.first;
-    final sleepMinutes = todaySleep.isEmpty
-        ? null
-        : todaySleep.first.duration.inMinutes;
-    final completedExercises = todayExercise
-        .where((record) => record['noExercise'] != 'true')
-        .toList(growable: false);
-    final completedExercise = completedExercises.isNotEmpty;
-    final checkedNoExercise = todayExercise.any(
-      (record) => record['noExercise'] == 'true',
-    );
-    final exerciseName = completedExercises
-        .map(
-          (record) => (record['exerciseName']?.trim().isNotEmpty ?? false)
-              ? record['exerciseName']!.trim()
-              : record['exerciseId']?.trim() ?? '',
-        )
-        .firstWhere((name) => name.isNotEmpty, orElse: () => '');
-    final activeSymptomCount = activeSymptoms.length;
-    final symptomName = activeSymptoms
-        .map((entry) => entry.predictedAilment.trim())
-        .firstWhere((name) => name.isNotEmpty, orElse: () => '');
-    final hasAnyLog =
-        hasMood || latestSleep != null || todayExercise.isNotEmpty;
-    final reasons = <String>[];
-
-    if (latestMood != null) {
-      reasons.add(
-        'Your latest mood check-in was ${latestMood.moodLabel.toLowerCase()}.',
-      );
-    }
-    if (latestSleep != null) {
-      reasons.add(
-        'Your sleep came in at ${latestSleep.durationFormatted} with ${latestSleep.quality.label.toLowerCase()} quality.',
-      );
-    }
-    if (completedExercise) {
-      reasons.add(
-        exerciseName.isEmpty
-            ? 'You got some movement in today.'
-            : 'You logged movement today with $exerciseName.',
-      );
-    } else if (checkedNoExercise) {
-      reasons.add('You checked in that today was a no-workout day.');
-    }
-    if (activeSymptomCount > 0) {
-      reasons.add(
-        symptomName.isEmpty
-            ? 'You still have active symptoms worth keeping an eye on.'
-            : '$symptomName is still marked active, so your body may need a gentler plan.',
-      );
-    }
-    if (latestFitness != null && latestFitness.dataFreshnessFlagged) {
-      reasons.add(
-        'Your latest fitness snapshot may be based on stale health data.',
-      );
-    }
-    if (reasons.isEmpty) {
-      reasons.add('I only have a light amount of data from today so far.');
-    }
-
-    if (!hasAnyLog) {
-      return _DailyRecapAdvice(
-        overview:
-            'I do not have enough from today to make a confident read yet, and that is okay.',
-        reasons: reasons,
-        nextStep:
-            'Do one tiny check-in before bed: mood, sleep plan, or whether you moved today.',
-      );
-    }
-
-    if (activeSymptomCount > 0 && (avgMood ?? 3) <= 2.5) {
-      return _DailyRecapAdvice(
-        overview:
-            'Today looks like a day where your body and mood both asked for extra care.',
-        reasons: reasons,
-        nextStep:
-            'Keep tomorrow gentle: choose one low-effort log, hydrate, and avoid pushing intensity unless you feel clearly better.',
-      );
-    }
-
-    if (sleepMinutes != null && sleepMinutes < 6 * 60) {
-      return _DailyRecapAdvice(
-        overview: completedExercise
-            ? 'You still showed up with movement, but recovery is the main signal tonight.'
-            : 'Recovery is the main signal tonight because sleep looks short.',
-        reasons: reasons,
-        nextStep:
-            'Aim for a simple wind-down: dim lights, reduce screens, and set up tomorrow so you do not need to rely on willpower.',
-      );
-    }
-
-    if (completedExercise && (avgMood ?? 0) >= 3.5) {
-      return _DailyRecapAdvice(
-        overview:
-            'This looks like a solid momentum day: your mood and movement are pointing in a supportive direction.',
-        reasons: reasons,
-        nextStep:
-            'Repeat the easiest part of today tomorrow, even if you make it smaller.',
-      );
-    }
-
-    if ((avgMood ?? 0) >= 4) {
-      return _DailyRecapAdvice(
-        overview:
-            'Mood was the bright spot today, so it is worth noticing what helped.',
-        reasons: reasons,
-        nextStep:
-            'Write down one thing that supported your mood so you can reuse it on a lower-energy day.',
-      );
-    }
-
-    if (!completedExercise && latestSleep != null) {
-      return _DailyRecapAdvice(
-        overview:
-            'Today looks like a maintenance day more than a progress day, which can still be useful.',
-        reasons: reasons,
-        nextStep:
-            'Pick one small reset for tomorrow: a short walk, a sleep log, or a quick mood check-in.',
-      );
-    }
-
-    return _DailyRecapAdvice(
-      overview:
-          'Today has mixed signals, so I would focus on consistency rather than a big change.',
-      reasons: reasons,
-      nextStep:
-          'Choose one thing to make easier tomorrow: log earlier, move for a few minutes, or protect your wind-down time.',
-    );
-  }
-
   Future<void> _refreshStartLoggingPromptState() async {
     final promptText = await _computeDailyLoggingPromptText();
     final isNewUserAccount = _isCurrentUserNewAccount(DateTime.now());
@@ -1085,8 +824,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       latestAction: 'Chat',
       intelligenceSummary: _buildIntelligenceSummary(),
     );
-    final moodLabel = llmContext.latestMood?.label ?? 'Neutral';
-
     String reply;
 
     try {
@@ -1095,7 +832,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         llmContext: llmContext,
       );
     } catch (_) {
-      reply = _buildOfflineReply(userText: text, moodLabel: moodLabel);
+      reply = _buildOfflineReply(userText: text, llmContext: llmContext);
     }
 
     if (!mounted) return;
@@ -1582,9 +1319,10 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
         _showCrisisOverlay(e.type);
         return _buildOfflineReply(
           userText: userText,
-          moodLabel: llmContext.latestMood?.label ?? 'Neutral',
+          llmContext: llmContext,
         );
-      } catch (_) {
+      } catch (error) {
+        debugPrint('[MiniMeChat] MiniGen reply failed: $error');
         // fall through to backend fallback
       }
     }
@@ -1599,13 +1337,12 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
           intelligence: _intelligence,
         );
 
-        final text = backendReply.reply.trim().isNotEmpty
-            ? backendReply.reply.trim()
-            : backendReply.openingSuggestion.trim();
-        if (text.isNotEmpty) {
-          return text;
+        final replyText = backendReply.reply.trim();
+        if (replyText.isNotEmpty) {
+          return replyText;
         }
-      } catch (_) {
+      } catch (error) {
+        debugPrint('[MiniMeChat] backend chat failed: $error');
         // fall through to offline
       }
     }
@@ -1613,7 +1350,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
     // Tier 3: Offline template
     return _buildOfflineReply(
       userText: userText,
-      moodLabel: llmContext.latestMood?.label ?? 'Neutral',
+      llmContext: llmContext,
     );
   }
 
@@ -1636,10 +1373,23 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   String _buildOfflineReply({
     required String userText,
-    required String moodLabel,
+    required LifeLensContext llmContext,
   }) {
     final q = userText.toLowerCase();
     final i = _intelligence;
+    final firstName = _displayFirstName(widget.userName);
+    final moodLabel = llmContext.latestMood?.label ?? 'neutral';
+    final activeSymptoms = llmContext.activeSymptoms
+        .expand((entry) => entry.symptoms)
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .take(3)
+        .toList(growable: false);
+    final repeatedHeavyMoodCount = llmContext.recentMoods
+        .map((item) => item.label.toLowerCase())
+        .where((item) => item == 'sadness' || item == 'anger' || item == 'fear')
+        .length;
 
     // Intelligence-driven responses (PRIMARY)
     if (i != null) {
@@ -1678,15 +1428,73 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       }
     }
 
-    // Keyword-based fallback (when intelligence is null or stable with no flags)
-    if (q.contains('sleep') || q.contains('tired')) {
-      return "Tonight's sleep plan:\n1) Set a 20-minute wind-down reminder.\n2) Reduce light and screens.\n3) Write one thought to clear your mind before bed.";
+    if (_looksLikeGreeting(q)) {
+      return 'I\'m here with you, $firstName. Tell me what feels most important right now, and I\'ll help you turn it into one small next step.';
     }
-    if (q.contains('plan') || q.contains('routine') || q.contains('organize')) {
-      return 'Your structure for today:\n1) One mood check-in.\n2) One movement block.\n3) One sleep-support action.\nKeep it simple and repeatable.';
+    if (_mentionsSymptoms(q) || activeSymptoms.isNotEmpty) {
+      final symptomLead = activeSymptoms.isEmpty
+          ? 'what your body is telling you'
+          : 'the symptom pattern you\'ve been tracking';
+      return 'Let\'s keep this simple. Based on $symptomLead, focus on one check-in later today, one likely trigger to avoid if you can, and an easier pace until the pattern is clearer.';
+    }
+    if (_mentionsSleep(q)) {
+      return 'If sleep feels like the main issue, keep tonight lightweight: protect a short wind-down, lower stimulation a bit earlier, and make tomorrow morning easier instead of expecting a perfect reset.';
+    }
+    if (_mentionsExercise(q)) {
+      return 'If movement is the main topic, keep the next step small and realistic. Think in terms of recovery, energy, and consistency, not intensity.';
+    }
+    if (_mentionsPlanning(q)) {
+      return 'A simple plan will probably help more than a big reset. Pick one priority, one recovery action, and one thing to avoid overloading today.';
+    }
+    if (repeatedHeavyMoodCount >= 2) {
+      return 'You\'ve had some heavier signals recently, so I would keep today gentle. Choose one useful task, protect your energy, and skip anything that feels like extra pressure.';
     }
 
-    return 'Model connection is not live yet. Based on your latest mood ($moodLabel), tell me your focus area (mood, sleep, symptoms, or exercise) and I will draft a short plan.';
+    return 'I can still help even while the live model connection is shaky. Based on your recent ${moodLabel.toLowerCase()} mood, tell me whether you want help with mood, sleep, symptoms, exercise, or planning, and I\'ll keep it specific.';
+  }
+
+  bool _looksLikeGreeting(String text) {
+    return RegExp(
+      r"^(hi|hey|hello|yo|sup|what's up|whats up)\b",
+    ).hasMatch(text.trim());
+  }
+
+  bool _mentionsSleep(String text) {
+    return text.contains('sleep') ||
+        text.contains('tired') ||
+        text.contains('exhausted') ||
+        text.contains('insomnia') ||
+        text.contains('bed');
+  }
+
+  bool _mentionsSymptoms(String text) {
+    return text.contains('symptom') ||
+        text.contains('sick') ||
+        text.contains('pain') ||
+        text.contains('headache') ||
+        text.contains('nausea') ||
+        text.contains('dizzy') ||
+        text.contains('cough') ||
+        text.contains('fever');
+  }
+
+  bool _mentionsExercise(String text) {
+    return text.contains('exercise') ||
+        text.contains('workout') ||
+        text.contains('gym') ||
+        text.contains('run') ||
+        text.contains('walk') ||
+        text.contains('lift') ||
+        text.contains('movement');
+  }
+
+  bool _mentionsPlanning(String text) {
+    return text.contains('plan') ||
+        text.contains('routine') ||
+        text.contains('organize') ||
+        text.contains('schedule') ||
+        text.contains('what should i do') ||
+        text.contains('what do i do');
   }
 
   /// Persist the most recently added message to ISAR via ChatSessionService.
@@ -2312,7 +2120,6 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                   danceOnOpen: _danceOnOpen,
                   onToggleCoachExpanded: _toggleCoachExpanded,
                   onOpenFullChat: _openFullChatSheet,
-                  onRunDaySummary: _runDaySummary,
                   onSend: _sendMessage,
                 ),
               ),
@@ -2345,7 +2152,6 @@ class _MiniMePanelContent extends StatelessWidget {
     required this.danceOnOpen,
     required this.onToggleCoachExpanded,
     required this.onOpenFullChat,
-    required this.onRunDaySummary,
     required this.onSend,
   });
 
@@ -2373,7 +2179,6 @@ class _MiniMePanelContent extends StatelessWidget {
   final bool danceOnOpen;
   final VoidCallback onToggleCoachExpanded;
   final VoidCallback onOpenFullChat;
-  final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
 
   int _happyMoodJumpToken(MoodCheckIn? mood) {
@@ -2444,7 +2249,6 @@ class _MiniMePanelContent extends StatelessWidget {
       scrollController: scrollController,
       onToggleCoachExpanded: onToggleCoachExpanded,
       onOpenFullChat: onOpenFullChat,
-      onRunDaySummary: onRunDaySummary,
       onSend: onSend,
     );
   }
@@ -2481,7 +2285,6 @@ class _AvatarPanel extends StatelessWidget {
     required this.scrollController,
     required this.onToggleCoachExpanded,
     required this.onOpenFullChat,
-    required this.onRunDaySummary,
     required this.onSend,
   });
 
@@ -2514,7 +2317,6 @@ class _AvatarPanel extends StatelessWidget {
   final ScrollController scrollController;
   final VoidCallback onToggleCoachExpanded;
   final VoidCallback onOpenFullChat;
-  final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
 
   @override
@@ -2666,7 +2468,6 @@ class _AvatarPanel extends StatelessWidget {
                       chatFocusNode: chatFocusNode,
                       isReplying: isReplying,
                       onOpenFullChat: onOpenFullChat,
-                      onRunDaySummary: onRunDaySummary,
                       onSend: onSend,
                     ),
                   ),
@@ -3340,7 +3141,6 @@ class _CoachComposerCard extends StatelessWidget {
     required this.chatFocusNode,
     required this.isReplying,
     required this.onOpenFullChat,
-    required this.onRunDaySummary,
     required this.onSend,
   });
 
@@ -3349,7 +3149,6 @@ class _CoachComposerCard extends StatelessWidget {
   final FocusNode chatFocusNode;
   final bool isReplying;
   final VoidCallback onOpenFullChat;
-  final VoidCallback onRunDaySummary;
   final VoidCallback onSend;
 
   @override
@@ -3415,27 +3214,6 @@ class _CoachComposerCard extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.open_in_full_rounded),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: isReplying ? null : onRunDaySummary,
-                tooltip: 'End-of-day recap',
-                style: IconButton.styleFrom(
-                  fixedSize: const Size(48, 48),
-                  backgroundColor: actionButtonBackground,
-                  foregroundColor: actionButtonForeground,
-                  disabledBackgroundColor: actionButtonBackground.withValues(
-                    alpha: 0.56,
-                  ),
-                  disabledForegroundColor: cs.onSurfaceVariant.withValues(
-                    alpha: 0.42,
-                  ),
-                  side: actionButtonBorder,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.nightlight_round_rounded),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -4080,18 +3858,6 @@ class _SuggestionSection {
 
   final int index;
   final String body;
-}
-
-class _DailyRecapAdvice {
-  const _DailyRecapAdvice({
-    required this.overview,
-    required this.reasons,
-    required this.nextStep,
-  });
-
-  final String overview;
-  final List<String> reasons;
-  final String nextStep;
 }
 
 class _MiniMeDerivedUiState {

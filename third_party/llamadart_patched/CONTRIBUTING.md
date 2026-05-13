@@ -1,0 +1,224 @@
+# Contributing into llamadart
+
+Thank you for your interest in contributing to `llamadart`! We welcome contributions from the community to help improve this package.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+-   **Dart SDK**: >= 3.10.7
+-   **Flutter SDK**: >= 3.38.0 (optional, for running UI examples)
+-   **CMake**: >= 3.10
+-   **C++ Compiler**:
+    -   **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+    -   **Linux**: GCC/G++ (`build-essential`) or Clang
+    -   **Windows**: Visual Studio 2022 (Desktop development with C++). 
+        -   *Tip*: Install `ccache` or `sccache` via `choco install sccache` to speed up local builds.
+
+## Project Structure
+
+The project follows a modular, decoupled architecture:
+
+-   `lib/src/core/engine/`: Core orchestration (`LlamaEngine`, `ChatSession`).
+-   `lib/src/core/template/`: Chat template routing, handlers, parser logic.
+-   `lib/src/backends/`: Platform-agnostic backend interface and native/web backends.
+-   `lib/src/core/models/`: Shared data models (messages, params, tools, config).
+-   `lib/src/core/`: Shared utilities (exceptions, logger, grammar helpers).
+
+## 🛡️ Zero-Patch Strategy
+
+Native source and build orchestration now live in
+[`leehack/llamadart-native`](https://github.com/leehack/llamadart-native).
+
+*   **Zero Direct Modifications**: Do not patch upstream `llama.cpp` sources in this repository.
+*   **Sync-Only in this repo**: This repository consumes released native bundles and generated bindings.
+*   **Build logic lives elsewhere**: Native build scripts and backend matrix changes belong in `llamadart-native`.
+
+## 🏗️ Architecture: Native Assets & CI
+
+`llamadart` uses a modern binary distribution lifecycle:
+
+### 1. Binary Production (CI)
+Native binaries are built and released from
+[`leehack/llamadart-native`](https://github.com/leehack/llamadart-native).
+That repository publishes multi-library native bundles for
+**Android, iOS, macOS, Linux, and Windows**.
+
+### 1b. Web Bridge Asset Production (CI)
+Web bridge source/build and published runtime assets are managed in:
+
+- [`leehack/llama-web-bridge`](https://github.com/leehack/llama-web-bridge)
+- [`leehack/llama-web-bridge-assets`](https://github.com/leehack/llama-web-bridge-assets)
+
+`llamadart` consumes pinned bridge assets from `llama-web-bridge-assets`
+for `example/chat_app` and web backend testing via
+`scripts/fetch_webgpu_bridge_assets.sh`.
+
+### 2. Binary Consumption (Hook)
+When a user adds `llamadart` as a dependency and runs their app:
+- The **`hook/build.dart`** script executes automatically.
+- It detects the user's current target OS and architecture.
+- It downloads the matching pre-compiled native bundle from
+  `leehack/llamadart-native` GitHub Releases.
+- It reports the required shared libraries to the Dart VM as `CodeAsset`s,
+  including `package:llamadart/llamadart`.
+
+### 3. Runtime Resolution (FFI)
+- The library uses **`@Native`** top-level bindings in `lib/src/backends/llama_cpp/bindings.dart`.
+- The Dart VM automatically resolves these calls to the downloaded binary reported by the hook.
+- This provides a "Zero-Setup" experience while maintaining high-performance native execution.
+
+## Setting Up the Development Environment
+
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/leehack/llamadart.git
+    cd llamadart
+    ```
+
+2.  **Initialize**:
+    ```bash
+    dart pub get
+    ```
+
+3.  **Build/Fetch Native Library**:
+    In most cases, simply running the examples will handle everything:
+    ```bash
+    cd example/basic_app
+    dart run
+    ```
+    The `hook/build.dart` will automatically download the correct pre-compiled binaries for your platform.
+
+## Maintainer Workspace Conventions (Multi-Repo)
+
+Maintainers often keep related repositories as siblings one level above
+`llamadart`:
+
+```text
+../llamadart
+../llamadart-native
+../llama-web-bridge
+../llama-web-bridge-assets
+```
+
+This is a convenience convention, not a hard requirement.
+Always verify paths in your environment before using them.
+
+- If changing native runtime behavior: edit `../llamadart-native`, release there,
+  then sync/update `llamadart`.
+- If changing web bridge runtime behavior: edit `../llama-web-bridge`,
+  publish assets to `../llama-web-bridge-assets`, then update pinned tag/docs
+  in `llamadart`.
+- Keep ownership boundaries clear: this repo should avoid direct upstream
+  source patching for native/web runtime internals.
+
+## 🧪 Testing
+
+We take testing seriously. CI enforces **>=70% line coverage on maintainable `lib/` code**. Auto-generated files are excluded when they are marked with `// coverage:ignore-file`.
+
+### 1. Unified Test Runner
+We use `dart_test.yaml` and `@TestOn` tags to manage multi-platform execution.
+Running `dart test` will run VM and Chrome-compatible tests. Tests tagged
+`local-only` are intentionally skipped in default and CI runs.
+
+```bash
+# Run default suite (VM + Chrome-compatible tests)
+dart test
+
+# Run local-only E2E tests
+dart test --run-skipped -t local-only
+```
+
+### 2. Manual Platform Selection
+You can still target specific platforms if needed:
+
+```bash
+# Run only VM tests
+dart test -p vm
+
+# Run only Chrome tests
+dart test -p chrome
+
+# Verify architecture boundaries (shared/web-safe code has no dart:io/dart:ffi)
+dart run tool/testing/check_platform_boundaries.dart
+```
+
+### 3. Coverage
+To collect and view coverage reports:
+
+```bash
+# 1. Run VM tests with coverage
+dart test -p vm --coverage=coverage
+
+# 2. Format into LCOV (respects // coverage:ignore-file)
+dart pub global run coverage:format_coverage --lcov --in=coverage/test --out=coverage/lcov.info --report-on=lib --check-ignore
+
+# 3. Enforce >=70% threshold
+dart run tool/testing/check_lcov_threshold.dart coverage/lcov.info 70
+```
+
+### 4. Testing Standards
+- **Structure**:
+  - Unit tests live in `test/unit/` and mirror `lib/src/` paths.
+  - Generated/native-bridge files are excluded from strict mirroring when marked with `// coverage:ignore-file`.
+  - Scenario, regression, and diagnostic tests live in `test/integration/`.
+  - Slow, local-machine scenarios live in `test/e2e/` with `@Tags(['local-only'])`.
+- **Refactoring**: If you refactor shared logic, ensure both Native and Web tests pass.
+- **New Features**: Every new public API or feature must include unit or integration tests.
+- **Platform-Safety**: `LlamaEngine` must remain `dart:ffi` and `dart:io` free to maintain web support.
+
+## Maintainer: Building Binaries
+
+If you need to build binaries for a new release:
+
+1.  Use the native build repository:
+    ```bash
+    git clone https://github.com/leehack/llamadart-native.git
+    cd llamadart-native
+    git submodule update --init --recursive
+    ```
+
+2.  Build/release with the native pipeline:
+    - Run `Native Build & Release` in `llamadart-native` (`.github/workflows/native_release.yml`), or
+    - Build locally via `python3 tools/build.py ...` as documented in that repository.
+
+3.  Sync `llamadart` hook pin:
+    - Run `Sync Native Version & Bindings`
+      (`.github/workflows/sync_native_bindings.yml`) in this repository to:
+      - resolve a `llamadart-native` release tag,
+      - sync headers from the matching release header bundle,
+      - regenerate Dart bindings from the matching native headers,
+      - open an automated PR with the updates.
+    - For local regeneration, run:
+      ```bash
+      tool/native/sync_native_headers_and_bindings.sh --tag latest
+      ```
+
+## Running Examples
+
+### Basic App (CLI)
+1.  ```bash
+    cd example/basic_app
+    dart run
+    ```
+
+### Chat App (Flutter)
+1.  ```bash
+    cd example/chat_app
+    flutter run -d macos  # or linux, windows, android, ios
+    ```
+
+## Development Guidelines
+
+-   **Code Style**: We follow standard Dart linting rules. Run `dart format .` before committing.
+-   **Native Assets**: The package uses the modern **Dart Native Assets** (hooks) mechanism.
+-   **Testing**: Add unit tests for new features where possible. Use `dart test` for full integration and unit verification.
+
+## Submitting a Pull Request
+
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/my-feature`).
+3.  Commit your changes.
+4.  Push to your fork and submit a Pull Request.
+
+Thank you for contributing!

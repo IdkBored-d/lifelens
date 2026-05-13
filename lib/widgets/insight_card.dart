@@ -28,22 +28,6 @@ class InsightCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: cs.primaryContainer.withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isLight
-                    ? cs.outlineVariant.withValues(alpha: 0.95)
-                    : cs.outlineVariant.withValues(alpha: 0.35),
-              ),
-            ),
-            child: Icon(Icons.lightbulb_outline_rounded, color: cs.primary),
-          ),
-
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

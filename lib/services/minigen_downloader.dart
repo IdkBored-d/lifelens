@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -17,6 +18,8 @@ class MiniGenDownloader {
       'https://huggingface.co/testingtest111/minigen-f16/resolve/main/minigen-f16.gguf?download=true';
   static const String _filename = 'minigen-f16.gguf';
   static const String _bundledAsset = 'assets/models/minigen-f16.gguf';
+  static const String _fallbackFilename = 'minigen-Q8_0.gguf';
+  static const String _fallbackBundledAsset = 'assets/models/minigen-Q8_0.gguf';
 
   // Injected at build time via --dart-define=HF_TOKEN=hf_...
   // If empty, the Authorization header is omitted (public repos work without it).
@@ -64,39 +67,40 @@ class MiniGenDownloader {
     void Function(double progress)? onProgress,
   }) async {
     final dir = await getApplicationSupportDirectory();
-    // Use Platform.pathSeparator to avoid mixed-separator issues on Windows.
     final file = File('${dir.path}${Platform.pathSeparator}$_filename');
+    final bundledAssetBytes = await _tryLoadBundledAssetBytes(_bundledAsset);
 
-    // 1. Cached file — fastest path.
     if (file.existsSync()) {
       final bytes = file.lengthSync();
       if (bytes >= _minValidBytes) {
-        debugPrint('[MiniGenDownloader] model already present: ${file.path}');
+        if (_looksLikeCompatiblePrimaryModel(file)) {
+          debugPrint('[MiniGenDownloader] model already present: ${file.path}');
+          return file.path;
+        }
+        debugPrint(
+          '[MiniGenDownloader] deleting incompatible cached model metadata: ${file.path}',
+        );
+        file.deleteSync();
+      } else {
+        debugPrint(
+          '[MiniGenDownloader] deleting incomplete file ($bytes bytes < $_minValidBytes minimum)',
+        );
+        file.deleteSync();
+      }
+    }
+
+    if (bundledAssetBytes != null) {
+      await file.writeAsBytes(bundledAssetBytes, flush: true);
+      if (_looksLikeCompatiblePrimaryModel(file)) {
+        debugPrint('[MiniGenDownloader] model extracted from bundled asset');
         return file.path;
       }
       debugPrint(
-        '[MiniGenDownloader] deleting incomplete file ($bytes bytes < $_minValidBytes minimum)',
+        '[MiniGenDownloader] bundled primary model is incompatible, deleting extracted copy',
       );
       file.deleteSync();
     }
 
-    // 2. Bundled asset — available on first launch without a network round-trip.
-    try {
-      final data = await rootBundle.load(_bundledAsset);
-      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-      if (file.lengthSync() >= _minValidBytes) {
-        debugPrint('[MiniGenDownloader] model extracted from bundled asset');
-        return file.path;
-      }
-      // Bundle was smaller than expected (bad build?) — delete and fall through.
-      file.deleteSync();
-    } catch (_) {
-      // rootBundle throws if the asset isn't declared or the binding isn't
-      // available (e.g. background isolate without widget binding). Fall through
-      // to the network download.
-    }
-
-    // 3. Network download — last resort.
     debugPrint('[MiniGenDownloader] downloading model to ${file.path}');
 
     final dio = Dio();
@@ -125,7 +129,74 @@ class MiniGenDownloader {
     debugPrint(
       '[MiniGenDownloader] download complete (${file.lengthSync()} bytes)',
     );
+    if (!_looksLikeCompatiblePrimaryModel(file)) {
+      file.deleteSync();
+      throw StateError(
+        'Downloaded MiniGen model is incompatible with this runtime metadata',
+      );
+    }
     return file.path;
+  }
+
+  static bool _looksLikeCompatiblePrimaryModel(File file) {
+    try {
+      final header = _readHeaderString(file);
+      return header.contains('general.architecture') &&
+          header.contains('qwen3') &&
+          header.contains('tokenizer.ggml.pre') &&
+          header.contains('gpt-2');
+    } catch (error) {
+      debugPrint(
+        '[MiniGenDownloader] compatibility check failed for ${file.path}: $error',
+      );
+      return false;
+    }
+  }
+
+  /// Returns the local path to the bundled Q8_0 fallback model.
+  ///
+  /// This is used when the preferred f16 model exists but fails to load on a
+  /// specific platform/runtime combination.
+  static Future<String> ensureFallbackModel() async {
+    final dir = await getApplicationSupportDirectory();
+    final file = File(
+      '${dir.path}${Platform.pathSeparator}$_fallbackFilename',
+    );
+
+    if (file.existsSync() && file.lengthSync() > 0) {
+      final header = _readHeaderString(file);
+      if (_looksLikeCompatibleFallbackHeader(header)) {
+        debugPrint(
+          '[MiniGenDownloader] fallback model already present: ${file.path}',
+        );
+        return file.path;
+      }
+      debugPrint(
+        '[MiniGenDownloader] deleting incompatible fallback model metadata: ${file.path}',
+      );
+      file.deleteSync();
+    }
+
+    final data = await _tryLoadBundledAssetBytes(_fallbackBundledAsset);
+    if (data != null) {
+      await file.writeAsBytes(data, flush: true);
+      final header = _readHeaderString(file);
+      if (_looksLikeCompatibleFallbackHeader(header)) {
+        debugPrint(
+          '[MiniGenDownloader] fallback model extracted from bundled asset',
+        );
+        return file.path;
+      }
+      debugPrint(
+        '[MiniGenDownloader] bundled fallback model is incompatible, deleting extracted copy',
+      );
+      file.deleteSync();
+    }
+
+    debugPrint(
+      '[MiniGenDownloader] no compatible fallback model available, reusing primary model',
+    );
+    return ensureModel();
   }
 
   /// Check if a valid (fully downloaded) model file exists locally.
@@ -143,5 +214,34 @@ class MiniGenDownloader {
       file.deleteSync();
       debugPrint('[MiniGenDownloader] deleted cached model');
     }
+  }
+
+  static Future<List<int>?> _tryLoadBundledAssetBytes(String assetPath) async {
+    try {
+      final data = await rootBundle.load(assetPath);
+      return data.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _readHeaderString(File file, {int maxBytes = 8192}) {
+    final raf = file.openSync(mode: FileMode.read);
+    try {
+      final bytesToRead = file.lengthSync() < maxBytes
+          ? file.lengthSync()
+          : maxBytes;
+      final bytes = raf.readSync(bytesToRead);
+      return ascii.decode(bytes, allowInvalid: true);
+    } finally {
+      raf.closeSync();
+    }
+  }
+
+  static bool _looksLikeCompatibleFallbackHeader(String header) {
+    return header.contains('general.architecture') &&
+        header.contains('qwen3') &&
+        header.contains('tokenizer.ggml.pre') &&
+        header.contains('gpt-2');
   }
 }

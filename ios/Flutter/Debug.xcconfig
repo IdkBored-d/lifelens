@@ -3,3 +3,5 @@
 
 // Allow Apple Silicon simulator builds. Generated.xcconfig may exclude arm64.
 EXCLUDED_ARCHS[sdk=iphonesimulator*]=i386
+SDKROOT=$(SDKROOT)
+SdkRoot=$(SDKROOT)

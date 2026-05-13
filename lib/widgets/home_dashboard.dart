@@ -10,7 +10,6 @@ import 'package:lifelens/shared_widgets/section_title.dart';
 import 'package:lifelens/widgets/contextual_sugestions.dart';
 import 'package:lifelens/widgets/continue_card.dart';
 import 'package:lifelens/widgets/greeting_header.dart';
-import 'package:lifelens/widgets/insight_card.dart';
 import 'package:lifelens/widgets/mini_me_hero_card.dart';
 import 'package:lifelens/widgets/mood_row.dart';
 import 'package:lifelens/widgets/quick_actions_grid.dart';
@@ -114,17 +113,6 @@ class HomeDashboard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-
-          // Insights preview
-          SectionTitle(title: "Today's insight", trailing: "Preview"),
-          const SizedBox(height: 10),
-          InsightCard(
-            title: "You're building consistency 🌿",
-            body:
-                "On days you sleep 7+ hours, your mood trends more positive. Try a 10-minute wind-down tonight.",
-          ),
-
-          const SizedBox(height: 16),
 
           ContextualSuggestions(
             moodLabel: selectedMood == -1

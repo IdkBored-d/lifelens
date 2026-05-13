@@ -298,7 +298,7 @@ packages:
     source: hosted
     version: "0.7.12"
   device_info_plus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: device_info_plus
       sha256: "4df8babf73058181227e18b08e6ea3520cf5fc5d796888d33b7cb0f33f984b7c"
@@ -779,10 +779,9 @@ packages:
   llamadart:
     dependency: "direct main"
     description:
-      name: llamadart
-      sha256: c6962abf53eaee56ef6d786af139993dc0a609a75ad4ba94bbbb08a4a7ce4e7f
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/llamadart_patched"
+      relative: true
+    source: path
     version: "0.6.11"
   logging:
     dependency: transitive

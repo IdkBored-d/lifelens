@@ -45,6 +45,7 @@ dependencies:
 
   # ── Connectivity (real isOnline checks in pipelines) ────────────────────────
   connectivity_plus: ^6.0.5
+  device_info_plus: ^12.3.0
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -63,6 +64,10 @@ dev_dependencies:
   # ── ISAR code generation ───────────────────────────────────────────────────
   isar_generator: ^3.1.0+1
   build_runner: ^2.4.9
+
+dependency_overrides:
+  llamadart:
+    path: third_party/llamadart_patched
 
 flutter:
   uses-material-design: true

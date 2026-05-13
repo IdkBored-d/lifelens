@@ -23,20 +23,26 @@ class MiniGenService {
     if (_isLoaded || _isLoading) return;
     _isLoading = true;
 
-    final nThreads = math.max(1, Platform.numberOfProcessors ~/ 2);
+    final isAppleRuntime = Platform.isIOS || Platform.isMacOS;
+    final nThreads = isAppleRuntime
+        ? math.min(4, math.max(1, Platform.numberOfProcessors ~/ 2))
+        : math.max(1, Platform.numberOfProcessors ~/ 2);
     debugPrint(
       '[MiniGenService] loading model: $modelPath (threads=$nThreads)',
     );
 
     try {
       _engine = LlamaEngine(LlamaBackend());
+      await _engine!.setLogLevel(LlamaLogLevel.debug);
       // Add a timeout to prevent infinite hang if the native isolate crashes
       await _engine!.loadModel(
         modelPath,
         modelParams: ModelParams(
-          gpuLayers: 0, // CPU-only on mobile
+          gpuLayers: 0,
+          preferredBackend: GpuBackend.cpu,
           contextSize: 2048,
           numberOfThreads: nThreads,
+          numberOfThreadsBatch: nThreads,
         ),
       ).timeout(const Duration(seconds: 90));
 

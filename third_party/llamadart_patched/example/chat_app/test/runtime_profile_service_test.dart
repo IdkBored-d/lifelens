@@ -1,0 +1,66 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:llamadart/llamadart.dart';
+import 'package:llamadart_chat_example/services/runtime_profile_service.dart';
+
+void main() {
+  const service = RuntimeProfileService();
+
+  group('RuntimeProfileService', () {
+    test('computes runtime diagnostics fields', () {
+      final diagnostics = service.buildDiagnostics(
+        metadata: const <String, String>{
+          'llamadart.webgpu.n_gpu_layers': '32',
+          'llamadart.webgpu.n_threads': '8',
+          'llamadart.webgpu.thread_pool_size': '2',
+          'llamadart.webgpu.execution': 'worker',
+          'llamadart.webgpu.core_variant': 'wasm64',
+          'llamadart.webgpu.worker_fallback_reason': 'threads_capped_no_coi',
+          'llamadart.webgpu.runtime_notes':
+              'threads_capped_no_coi;model_fetch_backend_attempt',
+          'llamadart.webgpu.model_source': 'network-fetch',
+          'llamadart.webgpu.model_cache_state': 'hit',
+        },
+      );
+
+      expect(diagnostics.runtimeGpuLayers, 32);
+      expect(diagnostics.runtimeThreads, 8);
+      expect(diagnostics.runtimeThreadPoolSize, 2);
+      expect(diagnostics.runtimeExecution, 'worker');
+      expect(diagnostics.runtimeCoreVariant, 'wasm64');
+      expect(diagnostics.runtimeWorkerFallbackReason, 'threads_capped_no_coi');
+      expect(
+        diagnostics.runtimeNotes,
+        'threads_capped_no_coi;model_fetch_backend_attempt',
+      );
+      expect(diagnostics.runtimeModelSource, 'network-fetch');
+      expect(diagnostics.runtimeModelCacheState, 'hit');
+    });
+
+    test('returns fallback estimate when VRAM unavailable', () {
+      final estimate = service.estimateDynamicSettings(
+        totalVramBytes: 0,
+        freeVramBytes: 0,
+        isWeb: false,
+        preferredBackend: GpuBackend.cpu,
+        currentContextSize: 4096,
+        backendInfo: 'CPU',
+      );
+
+      expect(estimate.gpuLayers, 0);
+      expect(estimate.contextSize, 4096);
+    });
+
+    test('returns VRAM-based estimate when data is available', () {
+      final estimate = service.estimateDynamicSettings(
+        totalVramBytes: 8 * 1024 * 1024 * 1024,
+        freeVramBytes: 4 * 1024 * 1024 * 1024,
+        isWeb: false,
+        preferredBackend: GpuBackend.auto,
+        currentContextSize: 8192,
+      );
+
+      expect(estimate.gpuLayers, greaterThan(0));
+      expect(estimate.contextSize, anyOf(2048, 4096));
+    });
+  });
+}

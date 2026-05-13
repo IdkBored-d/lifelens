@@ -203,6 +203,10 @@ class MiniGenChat {
     required List<String> recentLogs,
     required List<String> activeSymptoms,
     String? latestLogFocus,
+    String? latestLogKind,
+    String? latestLogContext,
+    String? contextPriority,
+    String? variationCue,
     List<String> avoidedSuggestions = const <String>[],
     required int targetCount,
     String? suggestionWindow,
@@ -216,6 +220,10 @@ class MiniGenChat {
       recentLogs: recentLogs,
       activeSymptoms: activeSymptoms,
       latestLogFocus: latestLogFocus,
+      latestLogKind: latestLogKind,
+      latestLogContext: latestLogContext,
+      contextPriority: contextPriority,
+      variationCue: variationCue,
       avoidedSuggestions: avoidedSuggestions,
       targetCount: targetCount,
       suggestionWindow: suggestionWindow,
@@ -247,6 +255,10 @@ class MiniGenChat {
     required List<String> recentLogs,
     required List<String> activeSymptoms,
     String? latestLogFocus,
+    String? latestLogKind,
+    String? latestLogContext,
+    String? contextPriority,
+    String? variationCue,
     List<String> avoidedSuggestions = const <String>[],
     required int targetCount,
     String? suggestionWindow,
@@ -270,6 +282,18 @@ class MiniGenChat {
     final latestFocus = (latestLogFocus ?? '').trim().isEmpty
         ? 'No single latest log focus.'
         : _compactText(latestLogFocus!.trim(), 240);
+    final focusKind = (latestLogKind ?? '').trim().isEmpty
+        ? 'unknown'
+        : latestLogKind!.trim();
+    final focusContext = (latestLogContext ?? '').trim().isEmpty
+        ? 'No specific latest-log context.'
+        : _compactText(latestLogContext!.trim(), 180);
+    final priority = (contextPriority ?? '').trim().isEmpty
+        ? 'Use the latest real health log as the main source of truth.'
+        : _compactText(contextPriority!.trim(), 180);
+    final variation = (variationCue ?? '').trim().isEmpty
+        ? 'Pick a fresh angle instead of repeating the last suggestion.'
+        : _compactText(variationCue!.trim(), 180);
     final avoidList = avoidedSuggestions.isEmpty
         ? 'No recent suggestions to avoid.'
         : _compactList(avoidedSuggestions, limit: 4, itemChars: 90, separator: '\n');
@@ -283,7 +307,11 @@ class MiniGenChat {
         'ACTIVE_SYMPTOMS': symptoms,
         'WINDOW': window,
         'TRIGGER': trigger,
+        'LATEST_LOG_KIND': focusKind,
         'LATEST_LOG_FOCUS': latestFocus,
+        'LATEST_LOG_CONTEXT': focusContext,
+        'CONTEXT_PRIORITY': priority,
+        'VARIATION_CUE': variation,
         'RECENT_SUGGESTIONS_TO_AVOID': avoidList,
         'SUMMARY': summary,
         'TIMELINE': timeline,
@@ -291,9 +319,11 @@ class MiniGenChat {
       userMessage:
           '''Return valid JSON only.
 Create exactly $targetCount grounded wellness suggestion${targetCount == 1 ? '' : 's'}.
-First suggestion must answer LATEST_LOG_FOCUS. Avoid RECENT_SUGGESTIONS_TO_AVOID.
+First suggestion must answer LATEST_LOG_FOCUS and respect CONTEXT_PRIORITY. Avoid RECENT_SUGGESTIONS_TO_AVOID.
 Use real logged signals only. Choose a fresh angle: trigger, pacing, recovery, timing, environment, boundary, support, or follow-through.
-If the latest log includes notes, tags, workout details, sleep notes, or symptom context, reuse at least one concrete phrase or noun from that context and address it directly.
+Use LATEST_LOG_KIND and LATEST_LOG_CONTEXT to decide what kind of advice fits the log.
+Use VARIATION_CUE to avoid repeating the same suggestion pattern across similar days.
+If the latest log includes notes, tags, workout details, sleep notes, or symptom context, use that context but paraphrase it naturally. Do not quote or repeat the user's logged words verbatim.
 Do not give category-only advice like "log mood", "sleep earlier", "rest more", or "take a walk" when a specific note/context is available.
 If logs look similar to previous days, change the angle rather than the data: focus on trigger, friction, timing, environment, recovery cost, or what to protect next.
 Action: one realistic step for today. Reason: cite the matching log signal. Do not diagnose. Keep fields short.

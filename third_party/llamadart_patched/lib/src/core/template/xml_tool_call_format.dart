@@ -1,0 +1,548 @@
+import '../models/tools/tool_definition.dart';
+import '../models/chat/completion_chunk.dart';
+import 'chat_parse_result.dart';
+import 'thinking_utils.dart';
+import 'tool_call_parsing_utils.dart';
+
+/// Describes the XML-style tool call format used by several models.
+///
+/// Matches llama.cpp's `xml_tool_call_format` struct. Shared by:
+/// MiniMax M2, Qwen3 Coder XML, Kimi K2, Apriel, Seed OSS.
+class XmlToolCallFormat {
+  /// Opening scope tag (e.g., `<minimax:tool_call>`).
+  final String scopeStart;
+
+  /// Start of a tool call (e.g., `<invoke name="`).
+  final String toolStart;
+
+  /// Separator between tool name and arguments (e.g., `">`).
+  final String toolSep;
+
+  /// Start of a key (e.g., `<parameter name="`).
+  final String keyStart;
+
+  /// Separator between key and value (e.g., `">`).
+  final String keyValSep;
+
+  /// End of a value (e.g., `</parameter>`).
+  final String valEnd;
+
+  /// End of a tool call (e.g., `</invoke>`).
+  final String toolEnd;
+
+  /// Closing scope tag (e.g., `</minimax:tool_call>`).
+  final String scopeEnd;
+
+  /// Whether argument values are raw strings (true) or JSON (false).
+  final bool rawArgval;
+
+  /// Whether to trim whitespace from raw argument values.
+  final bool trimRawArgval;
+
+  /// Override for the last value's end marker.
+  final String? lastValEnd;
+
+  /// Override for the last tool's end marker.
+  final String? lastToolEnd;
+
+  /// Whether tool calls can appear inside thinking blocks.
+  final bool allowToolcallInThink;
+
+  /// Creates a [XmlToolCallFormat] definition.
+  const XmlToolCallFormat({
+    required this.scopeStart,
+    required this.toolStart,
+    required this.toolSep,
+    required this.keyStart,
+    required this.keyValSep,
+    required this.valEnd,
+    required this.toolEnd,
+    required this.scopeEnd,
+    this.rawArgval = true,
+    this.trimRawArgval = false,
+    this.lastValEnd,
+    this.lastToolEnd,
+    this.allowToolcallInThink = false,
+  });
+
+  /// Standard XML format (e.g. Qwen 2.5/3 Coder).
+  static const qwen3Coder = XmlToolCallFormat(
+    scopeStart: '<tool_call>',
+    toolStart: '<function=',
+    toolSep: '>',
+    keyStart: '<parameter=',
+    keyValSep: '>',
+    valEnd: '</parameter>',
+    toolEnd: '</function>',
+    scopeEnd: '</tool_call>',
+    trimRawArgval: true,
+  );
+
+  /// Kimi K2 format.
+  static const kimiK2 = XmlToolCallFormat(
+    scopeStart: '<|tool_calls_section_begin|>',
+    toolStart: '<|tool_call_begin|>',
+    toolSep: '<|tool_call_argument_begin|>{',
+    keyStart: '"',
+    keyValSep: '": ',
+    valEnd: ', ',
+    toolEnd: '}<|tool_call_end|>',
+    scopeEnd: '<|tool_calls_section_end|>',
+    rawArgval: false,
+    lastValEnd: '',
+  );
+
+  /// MiniMax M2 format.
+  static const minimaxM2 = XmlToolCallFormat(
+    scopeStart: '<minimax:tool_call>\n',
+    toolStart: '<invoke name="',
+    toolSep: '">\n',
+    keyStart: '<parameter name="',
+    keyValSep: '">',
+    valEnd: '</parameter>\n',
+    toolEnd: '</invoke>\n',
+    scopeEnd: '</minimax:tool_call>',
+  );
+
+  /// Seed-OSS format.
+  static const seedOss = XmlToolCallFormat(
+    scopeStart: '<seed:tool_call>',
+    toolStart: '<function=',
+    toolSep: '>',
+    keyStart: '<parameter=',
+    keyValSep: '>',
+    valEnd: '</parameter>',
+    toolEnd: '</function>',
+    scopeEnd: '</seed:tool_call>',
+  );
+
+  /// Apriel 1.5 format.
+  static const apriel15 = XmlToolCallFormat(
+    scopeStart: '<tool_calls>[',
+    toolStart: '{"name": "',
+    toolSep: '", "arguments": {',
+    keyStart: '"',
+    keyValSep: '": ',
+    valEnd: ', ',
+    toolEnd: '}, ',
+    scopeEnd: ']</tool_calls>',
+    rawArgval: false,
+    lastValEnd: '',
+    lastToolEnd: '}',
+  );
+
+  /// Xiaomi MiMo format.
+  static const xiaomiMimo = XmlToolCallFormat(
+    scopeStart: '',
+    toolStart: '<tool_call>\n{"name": "',
+    toolSep: '", "arguments": {',
+    keyStart: '"',
+    keyValSep: '": ',
+    valEnd: ', ',
+    toolEnd: '}\n</tool_call>',
+    scopeEnd: '',
+    rawArgval: false,
+    lastValEnd: '',
+  );
+
+  /// Generic fallback XML format.
+  static const generic = XmlToolCallFormat(
+    scopeStart: '',
+    toolStart: '<tool_code>',
+    toolSep: '\n',
+    keyStart: '<',
+    keyValSep: '>',
+    valEnd: '</',
+    toolEnd: '</tool_code>',
+    scopeEnd: '',
+  );
+}
+
+/// Builds a simple XML-style tool-call grammar for [format].
+String? buildXmlToolCallGrammar(
+  List<ToolDefinition>? tools,
+  XmlToolCallFormat format,
+) {
+  if (tools == null || tools.isEmpty) {
+    return null;
+  }
+
+  final toolNames = tools
+      .map((tool) => tool.name)
+      .toSet()
+      .toList(growable: false);
+  final paramNames = <String>{};
+  for (final tool in tools) {
+    for (final parameter in tool.parameters) {
+      paramNames.add(parameter.name);
+    }
+  }
+
+  final toolNameRule = toolNames.map(_literal).join(' | ');
+  final paramNameRule = paramNames.isEmpty
+      ? 'identifier'
+      : paramNames.map(_literal).join(' | ');
+
+  final scopeStart = format.scopeStart.isEmpty
+      ? ''
+      : '${_literal(format.scopeStart)} ';
+  final scopeEnd = format.scopeEnd.isEmpty
+      ? ''
+      : ' ${_literal(format.scopeEnd)}';
+  const commonRules = r'''
+identifier ::= [A-Za-z_] [A-Za-z0-9_-]*
+space ::= " "?
+string ::= "\"" ([^"\\] | "\\\\" .)* "\""
+number ::= "-"? ([0-9] | [1-9] [0-9]*) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+boolean ::= "true" | "false"
+null ::= "null"
+value ::= string | number | boolean | null | arr | obj
+arr ::= "[" space (value ("," space value)*)? space "]"
+obj ::= "{" space (string ":" space value ("," space string ":" space value)*)? space "}"
+''';
+
+  return '''
+root ::= ${scopeStart}tool-call+$scopeEnd
+tool-call ::= ${_literal(format.toolStart)} tool-name ${_literal(format.toolSep)} param* ${_literal(format.toolEnd)}
+param ::= ${_literal(format.keyStart)} param-name ${_literal(format.keyValSep)} value ${_literal(format.valEnd)}
+tool-name ::= $toolNameRule
+param-name ::= $paramNameRule
+$commonRules
+''';
+}
+
+String _literal(String value) {
+  final escaped = value
+      .replaceAll('\\', r'\\')
+      .replaceAll('"', r'\"')
+      .replaceAll('\n', r'\n')
+      .replaceAll('\r', r'\r');
+  return '"$escaped"';
+}
+
+/// Parses XML-style tool calls with optional reasoning.
+///
+/// Matches llama.cpp's `consume_reasoning_with_xml_tool_calls`.
+ChatParseResult parseXmlToolCalls(
+  String input,
+  XmlToolCallFormat format, {
+  String startThink = '<think>',
+  String endThink = '</think>',
+  bool parseToolCalls = true,
+}) {
+  String? reasoning;
+  var content = input;
+
+  // Extract thinking/reasoning first
+  final thinkResult = extractThinking(
+    content,
+    startTag: startThink,
+    endTag: endThink,
+  );
+  reasoning = thinkResult.reasoning;
+  content = thinkResult.content;
+
+  if (!parseToolCalls) {
+    return ChatParseResult(
+      content: content.trim(),
+      reasoningContent: reasoning,
+    );
+  }
+
+  final toolCalls = <LlamaCompletionChunkToolCall>[];
+  final parsedContent = StringBuffer();
+  var remainingContent = format.scopeStart.isEmpty ? '' : content;
+  final originalContent = content;
+  var parseFailed = false;
+
+  // Find scope start
+  final scopeIdx = format.scopeStart.isEmpty
+      ? 0
+      : content.indexOf(format.scopeStart);
+
+  if (scopeIdx == -1) {
+    return ChatParseResult(
+      content: content.trim(),
+      reasoningContent: reasoning,
+    );
+  }
+
+  if (format.scopeStart.isNotEmpty) {
+    remainingContent = content.substring(0, scopeIdx);
+    content = content.substring(scopeIdx + format.scopeStart.length);
+  }
+
+  // Parse individual tool calls
+  var callIndex = 0;
+  var pos = 0;
+
+  while (pos < content.length) {
+    final toolIdx = content.indexOf(format.toolStart, pos);
+    if (toolIdx == -1) {
+      if (format.scopeStart.isNotEmpty) {
+        final remaining = content.substring(pos).trimLeft();
+        if (remaining.isNotEmpty && !_startsWithScopeTail(remaining, format)) {
+          parseFailed = true;
+        }
+      } else if (pos < content.length) {
+        parsedContent.write(content.substring(pos));
+      }
+      break;
+    }
+    if (format.scopeStart.isNotEmpty &&
+        content.substring(pos, toolIdx).trim().isNotEmpty) {
+      parseFailed = true;
+      break;
+    }
+    if (format.scopeStart.isEmpty && toolIdx > pos) {
+      parsedContent.write(content.substring(pos, toolIdx));
+    }
+
+    final toolCall = _parseXmlToolCall(content, toolIdx, format);
+    if (toolCall == null) {
+      if (format.scopeStart.isNotEmpty) {
+        parseFailed = true;
+      } else {
+        parsedContent.write(content.substring(toolIdx));
+      }
+      break;
+    }
+    pos = toolCall.nextPos;
+
+    toolCalls.add(
+      ToolCallParsingUtils.createFunctionToolCall(
+        index: callIndex,
+        name: toolCall.name,
+        arguments: toolCall.arguments,
+      ),
+    );
+    callIndex++;
+  }
+
+  // Find scope end and append any trailing content
+  if (format.scopeStart.isEmpty) {
+    remainingContent = parsedContent.toString();
+  } else if (format.scopeEnd.isNotEmpty) {
+    final scopeEndIdx = content.indexOf(format.scopeEnd, pos);
+    if (scopeEndIdx != -1) {
+      final trailing = content.substring(scopeEndIdx + format.scopeEnd.length);
+      if (trailing.trim().isNotEmpty) {
+        remainingContent += trailing;
+      }
+    } else {
+      parseFailed = true;
+    }
+  }
+
+  if (parseFailed) {
+    return ChatParseResult(
+      content: originalContent.trim(),
+      reasoningContent: reasoning,
+    );
+  }
+
+  return ChatParseResult(
+    content: remainingContent.trim(),
+    reasoningContent: reasoning,
+    toolCalls: toolCalls,
+  );
+}
+
+_ParsedXmlToolCall? _parseXmlToolCall(
+  String content,
+  int toolIdx,
+  XmlToolCallFormat format,
+) {
+  final nameStart = toolIdx + format.toolStart.length;
+  final sepIdx = content.indexOf(format.toolSep, nameStart);
+  if (sepIdx == -1) {
+    return null;
+  }
+
+  final name = content.substring(nameStart, sepIdx).trim();
+  if (name.isEmpty) {
+    return null;
+  }
+
+  final arguments = _parseXmlArguments(
+    content,
+    sepIdx + format.toolSep.length,
+    format,
+  );
+  if (arguments == null) {
+    return null;
+  }
+
+  return _ParsedXmlToolCall(
+    name: name,
+    arguments: arguments.arguments,
+    nextPos: arguments.nextPos,
+  );
+}
+
+_ParsedXmlArguments? _parseXmlArguments(
+  String content,
+  int start,
+  XmlToolCallFormat format,
+) {
+  final strictScope = format.scopeStart.isNotEmpty;
+  final args = <String, dynamic>{};
+  var pos = start;
+  var consumedToolEnd = false;
+
+  while (pos < content.length) {
+    pos = _consumeXmlWhitespace(content, pos);
+
+    final toolEndLen = _matchToolEnd(content, pos, format);
+    if (toolEndLen != null) {
+      pos += toolEndLen;
+      consumedToolEnd = true;
+      break;
+    }
+
+    final keyIdx = content.indexOf(format.keyStart, pos);
+    if (keyIdx == -1) {
+      if (strictScope && _matchToolEnd(content, pos, format) == null) {
+        return null;
+      }
+      break;
+    }
+    if (strictScope && content.substring(pos, keyIdx).trim().isNotEmpty) {
+      return null;
+    }
+
+    final keyNameStart = keyIdx + format.keyStart.length;
+    final keyNameEnd = content.indexOf(format.keyValSep, keyNameStart);
+    if (keyNameEnd == -1) {
+      return null;
+    }
+
+    final key = content.substring(keyNameStart, keyNameEnd).trim();
+    if (key.isEmpty) {
+      return null;
+    }
+    pos = keyNameEnd + format.keyValSep.length;
+
+    final valEndIdx = format.valEnd.isEmpty
+        ? pos
+        : content.indexOf(format.valEnd, pos);
+    final toolEndIdx = _findNextToolEndIndex(content, pos, format);
+    if (valEndIdx == -1 || (toolEndIdx != -1 && toolEndIdx < valEndIdx)) {
+      if (toolEndIdx != -1) {
+        _setArgValue(args, key, content.substring(pos, toolEndIdx), format);
+        pos = toolEndIdx;
+      } else if (strictScope) {
+        return null;
+      }
+      break;
+    }
+
+    _setArgValue(args, key, content.substring(pos, valEndIdx), format);
+    pos = valEndIdx + format.valEnd.length;
+  }
+
+  pos = _consumeXmlWhitespace(content, pos);
+  if (!consumedToolEnd) {
+    final toolEndLen = _matchToolEnd(content, pos, format);
+    if (toolEndLen != null) {
+      pos += toolEndLen;
+    } else if (strictScope) {
+      return null;
+    }
+  }
+
+  return _ParsedXmlArguments(arguments: args, nextPos: pos);
+}
+
+int? _matchToolEnd(String text, int at, XmlToolCallFormat format) {
+  if (format.toolEnd.isNotEmpty && text.startsWith(format.toolEnd, at)) {
+    return format.toolEnd.length;
+  }
+  if (format.lastToolEnd != null &&
+      format.lastToolEnd!.isNotEmpty &&
+      text.startsWith(format.lastToolEnd!, at)) {
+    return format.lastToolEnd!.length;
+  }
+  return null;
+}
+
+int _findNextToolEndIndex(String text, int from, XmlToolCallFormat format) {
+  final toolEndIdx = format.toolEnd.isEmpty
+      ? -1
+      : text.indexOf(format.toolEnd, from);
+  final lastToolEndIdx =
+      (format.lastToolEnd != null && format.lastToolEnd!.isNotEmpty)
+      ? text.indexOf(format.lastToolEnd!, from)
+      : -1;
+  if (toolEndIdx == -1) {
+    return lastToolEndIdx;
+  }
+  if (lastToolEndIdx == -1) {
+    return toolEndIdx;
+  }
+  return toolEndIdx < lastToolEndIdx ? toolEndIdx : lastToolEndIdx;
+}
+
+bool _startsWithScopeTail(String text, XmlToolCallFormat format) {
+  if (format.scopeEnd.isEmpty) {
+    return text.isEmpty;
+  }
+  if (text.startsWith(format.scopeEnd)) {
+    return true;
+  }
+  if (format.lastToolEnd != null &&
+      format.lastToolEnd!.isNotEmpty &&
+      text.startsWith('${format.lastToolEnd}${format.scopeEnd}')) {
+    return true;
+  }
+  if (format.toolEnd.isNotEmpty &&
+      text.startsWith('${format.toolEnd}${format.scopeEnd}')) {
+    return true;
+  }
+  return false;
+}
+
+int _consumeXmlWhitespace(String text, int from) {
+  var pos = from;
+  while (pos < text.length) {
+    final codeUnit = text.codeUnitAt(pos);
+    if (codeUnit > 0x20) {
+      break;
+    }
+    pos++;
+  }
+  return pos;
+}
+
+void _setArgValue(
+  Map<String, dynamic> args,
+  String key,
+  String rawValue,
+  XmlToolCallFormat format,
+) {
+  var value = rawValue;
+  if (format.trimRawArgval) {
+    value = value.trim();
+  }
+
+  args[key] = ToolCallParsingUtils.decodeJsonValueOrString(value);
+}
+
+final class _ParsedXmlToolCall {
+  final String name;
+  final Map<String, dynamic> arguments;
+  final int nextPos;
+
+  const _ParsedXmlToolCall({
+    required this.name,
+    required this.arguments,
+    required this.nextPos,
+  });
+}
+
+final class _ParsedXmlArguments {
+  final Map<String, dynamic> arguments;
+  final int nextPos;
+
+  const _ParsedXmlArguments({required this.arguments, required this.nextPos});
+}
