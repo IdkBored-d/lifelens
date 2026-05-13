@@ -65,9 +65,9 @@ class MiniMeSuggestionAggregator {
         .where((text) => text.isNotEmpty)
         .toList(growable: false);
     final symptomLabels = _flattenSymptoms(activeSymptoms);
-    final recentChatMessages = chatMessages.length <= 20
+    final recentChatMessages = chatMessages.length <= 4
         ? chatMessages
-        : chatMessages.sublist(chatMessages.length - 20);
+        : chatMessages.sublist(chatMessages.length - 4);
     final backendHistory = recentChatMessages
         .map(
           (message) => MiniMeChatTurn(role: message.role, text: message.text),

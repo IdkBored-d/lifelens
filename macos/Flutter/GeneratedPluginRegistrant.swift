@@ -15,7 +15,7 @@ import firebase_core
 import firebase_messaging
 import firebase_storage
 import flutter_local_notifications
-import isar_flutter_libs
+import isar_community_flutter_libs
 import path_provider_foundation
 import share_plus
 import shared_preferences_foundation

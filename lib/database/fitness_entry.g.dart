@@ -22,16 +22,8 @@ const FitnessEntrySchema = CollectionSchema(
       name: r'activityIndex',
       type: IsarType.double,
     ),
-    r'age': PropertySchema(
-      id: 1,
-      name: r'age',
-      type: IsarType.double,
-    ),
-    r'bmi': PropertySchema(
-      id: 2,
-      name: r'bmi',
-      type: IsarType.double,
-    ),
+    r'age': PropertySchema(id: 1, name: r'age', type: IsarType.double),
+    r'bmi': PropertySchema(id: 2, name: r'bmi', type: IsarType.double),
     r'confidenceOk': PropertySchema(
       id: 3,
       name: r'confidenceOk',
@@ -42,11 +34,7 @@ const FitnessEntrySchema = CollectionSchema(
       name: r'dataFreshnessFlagged',
       type: IsarType.bool,
     ),
-    r'date': PropertySchema(
-      id: 5,
-      name: r'date',
-      type: IsarType.string,
-    ),
+    r'date': PropertySchema(id: 5, name: r'date', type: IsarType.string),
     r'fitProbability': PropertySchema(
       id: 6,
       name: r'fitProbability',
@@ -72,16 +60,8 @@ const FitnessEntrySchema = CollectionSchema(
       name: r'inferenceTimestamp',
       type: IsarType.dateTime,
     ),
-    r'isFit': PropertySchema(
-      id: 11,
-      name: r'isFit',
-      type: IsarType.bool,
-    ),
-    r'isMale': PropertySchema(
-      id: 12,
-      name: r'isMale',
-      type: IsarType.bool,
-    ),
+    r'isFit': PropertySchema(id: 11, name: r'isFit', type: IsarType.bool),
+    r'isMale': PropertySchema(id: 12, name: r'isMale', type: IsarType.bool),
     r'isOnboardingSnapshot': PropertySchema(
       id: 13,
       name: r'isOnboardingSnapshot',
@@ -97,12 +77,9 @@ const FitnessEntrySchema = CollectionSchema(
       name: r'sleepHours',
       type: IsarType.double,
     ),
-    r'smokes': PropertySchema(
-      id: 16,
-      name: r'smokes',
-      type: IsarType.bool,
-    )
+    r'smokes': PropertySchema(id: 16, name: r'smokes', type: IsarType.bool),
   },
+
   estimateSize: _fitnessEntryEstimateSize,
   serialize: _fitnessEntrySerialize,
   deserialize: _fitnessEntryDeserialize,
@@ -119,7 +96,7 @@ const FitnessEntrySchema = CollectionSchema(
           name: r'date',
           type: IndexType.hash,
           caseSensitive: true,
-        )
+        ),
       ],
     ),
     r'inferenceTimestamp': IndexSchema(
@@ -132,16 +109,17 @@ const FitnessEntrySchema = CollectionSchema(
           name: r'inferenceTimestamp',
           type: IndexType.value,
           caseSensitive: false,
-        )
+        ),
       ],
-    )
+    ),
   },
   links: {},
   embeddedSchemas: {},
+
   getId: _fitnessEntryGetId,
   getLinks: _fitnessEntryGetLinks,
   attach: _fitnessEntryAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _fitnessEntryEstimateSize(
@@ -262,7 +240,10 @@ List<IsarLinkBase<dynamic>> _fitnessEntryGetLinks(FitnessEntry object) {
 }
 
 void _fitnessEntryAttach(
-    IsarCollection<dynamic> col, Id id, FitnessEntry object) {
+  IsarCollection<dynamic> col,
+  Id id,
+  FitnessEntry object,
+) {
   object.id = id;
 }
 
@@ -275,7 +256,7 @@ extension FitnessEntryQueryWhereSort
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhere>
-      anyInferenceTimestamp() {
+  anyInferenceTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         const IndexWhereClause.any(indexName: r'inferenceTimestamp'),
@@ -288,15 +269,13 @@ extension FitnessEntryQueryWhere
     on QueryBuilder<FitnessEntry, FitnessEntry, QWhereClause> {
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause> idEqualTo(Id id) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: id,
-        upper: id,
-      ));
+      return query.addWhereClause(IdWhereClause.between(lower: id, upper: id));
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause> idNotEqualTo(
-      Id id) {
+    Id id,
+  ) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
@@ -319,8 +298,9 @@ extension FitnessEntryQueryWhere
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause> idGreaterThan(
-      Id id,
-      {bool include = false}) {
+    Id id, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.greaterThan(lower: id, includeLower: include),
@@ -328,8 +308,10 @@ extension FitnessEntryQueryWhere
     });
   }
 
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause> idLessThan(Id id,
-      {bool include = false}) {
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause> idLessThan(
+    Id id, {
+    bool include = false,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addWhereClause(
         IdWhereClause.lessThan(upper: id, includeUpper: include),
@@ -344,150 +326,177 @@ extension FitnessEntryQueryWhere
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IdWhereClause.between(
-        lower: lowerId,
-        includeLower: includeLower,
-        upper: upperId,
-        includeUpper: includeUpper,
-      ));
+      return query.addWhereClause(
+        IdWhereClause.between(
+          lower: lowerId,
+          includeLower: includeLower,
+          upper: upperId,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause> dateEqualTo(
-      String date) {
+    String date,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'date',
-        value: [date],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(indexName: r'date', value: [date]),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause> dateNotEqualTo(
-      String date) {
+    String date,
+  ) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'date',
-              lower: [],
-              upper: [date],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'date',
-              lower: [date],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'date',
+                lower: [],
+                upper: [date],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'date',
+                lower: [date],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'date',
-              lower: [date],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'date',
-              lower: [],
-              upper: [date],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'date',
+                lower: [date],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'date',
+                lower: [],
+                upper: [date],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause>
-      inferenceTimestampEqualTo(DateTime inferenceTimestamp) {
+  inferenceTimestampEqualTo(DateTime inferenceTimestamp) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.equalTo(
-        indexName: r'inferenceTimestamp',
-        value: [inferenceTimestamp],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.equalTo(
+          indexName: r'inferenceTimestamp',
+          value: [inferenceTimestamp],
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause>
-      inferenceTimestampNotEqualTo(DateTime inferenceTimestamp) {
+  inferenceTimestampNotEqualTo(DateTime inferenceTimestamp) {
     return QueryBuilder.apply(this, (query) {
       if (query.whereSort == Sort.asc) {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'inferenceTimestamp',
-              lower: [],
-              upper: [inferenceTimestamp],
-              includeUpper: false,
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'inferenceTimestamp',
-              lower: [inferenceTimestamp],
-              includeLower: false,
-              upper: [],
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'inferenceTimestamp',
+                lower: [],
+                upper: [inferenceTimestamp],
+                includeUpper: false,
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'inferenceTimestamp',
+                lower: [inferenceTimestamp],
+                includeLower: false,
+                upper: [],
+              ),
+            );
       } else {
         return query
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'inferenceTimestamp',
-              lower: [inferenceTimestamp],
-              includeLower: false,
-              upper: [],
-            ))
-            .addWhereClause(IndexWhereClause.between(
-              indexName: r'inferenceTimestamp',
-              lower: [],
-              upper: [inferenceTimestamp],
-              includeUpper: false,
-            ));
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'inferenceTimestamp',
+                lower: [inferenceTimestamp],
+                includeLower: false,
+                upper: [],
+              ),
+            )
+            .addWhereClause(
+              IndexWhereClause.between(
+                indexName: r'inferenceTimestamp',
+                lower: [],
+                upper: [inferenceTimestamp],
+                includeUpper: false,
+              ),
+            );
       }
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause>
-      inferenceTimestampGreaterThan(
+  inferenceTimestampGreaterThan(
     DateTime inferenceTimestamp, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'inferenceTimestamp',
-        lower: [inferenceTimestamp],
-        includeLower: include,
-        upper: [],
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'inferenceTimestamp',
+          lower: [inferenceTimestamp],
+          includeLower: include,
+          upper: [],
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause>
-      inferenceTimestampLessThan(
+  inferenceTimestampLessThan(
     DateTime inferenceTimestamp, {
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'inferenceTimestamp',
-        lower: [],
-        upper: [inferenceTimestamp],
-        includeUpper: include,
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'inferenceTimestamp',
+          lower: [],
+          upper: [inferenceTimestamp],
+          includeUpper: include,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterWhereClause>
-      inferenceTimestampBetween(
+  inferenceTimestampBetween(
     DateTime lowerInferenceTimestamp,
     DateTime upperInferenceTimestamp, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addWhereClause(IndexWhereClause.between(
-        indexName: r'inferenceTimestamp',
-        lower: [lowerInferenceTimestamp],
-        includeLower: includeLower,
-        upper: [upperInferenceTimestamp],
-        includeUpper: includeUpper,
-      ));
+      return query.addWhereClause(
+        IndexWhereClause.between(
+          indexName: r'inferenceTimestamp',
+          lower: [lowerInferenceTimestamp],
+          includeLower: includeLower,
+          upper: [upperInferenceTimestamp],
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 }
@@ -495,53 +504,59 @@ extension FitnessEntryQueryWhere
 extension FitnessEntryQueryFilter
     on QueryBuilder<FitnessEntry, FitnessEntry, QFilterCondition> {
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      activityIndexEqualTo(
-    double value, {
-    double epsilon = Query.epsilon,
-  }) {
+  activityIndexEqualTo(double value, {double epsilon = Query.epsilon}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'activityIndex',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'activityIndex',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      activityIndexGreaterThan(
-    double value, {
-    bool include = false,
-    double epsilon = Query.epsilon,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'activityIndex',
-        value: value,
-        epsilon: epsilon,
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      activityIndexLessThan(
+  activityIndexGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'activityIndex',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'activityIndex',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      activityIndexBetween(
+  activityIndexLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'activityIndex',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  activityIndexBetween(
     double lower,
     double upper, {
     bool includeLower = true,
@@ -549,14 +564,17 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'activityIndex',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'activityIndex',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
@@ -565,27 +583,33 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'age',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'age',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      ageGreaterThan(
+  ageGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'age',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'age',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
@@ -595,12 +619,15 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'age',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'age',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
@@ -612,14 +639,17 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'age',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'age',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
@@ -628,27 +658,33 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'bmi',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'bmi',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      bmiGreaterThan(
+  bmiGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'bmi',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'bmi',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
@@ -658,12 +694,15 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'bmi',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'bmi',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
@@ -675,34 +714,38 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'bmi',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'bmi',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      confidenceOkEqualTo(bool value) {
+  confidenceOkEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'confidenceOk',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'confidenceOk', value: value),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      dataFreshnessFlaggedEqualTo(bool value) {
+  dataFreshnessFlaggedEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'dataFreshnessFlagged',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'dataFreshnessFlagged',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -711,27 +754,31 @@ extension FitnessEntryQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'date',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'date',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      dateGreaterThan(
+  dateGreaterThan(
     String value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'date',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'date',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
@@ -741,12 +788,14 @@ extension FitnessEntryQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'date',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'date',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
@@ -758,28 +807,29 @@ extension FitnessEntryQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'date',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'date',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      dateStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+  dateStartsWith(String value, {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'date',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.startsWith(
+          property: r'date',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
@@ -788,106 +838,118 @@ extension FitnessEntryQueryFilter
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'date',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.endsWith(
+          property: r'date',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition> dateContains(
-      String value,
-      {bool caseSensitive = true}) {
+    String value, {
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'date',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.contains(
+          property: r'date',
+          value: value,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition> dateMatches(
-      String pattern,
-      {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'date',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      dateIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'date',
-        value: '',
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      dateIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'date',
-        value: '',
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitProbabilityEqualTo(
-    double value, {
-    double epsilon = Query.epsilon,
+    String pattern, {
+    bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'fitProbability',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.matches(
+          property: r'date',
+          wildcard: pattern,
+          caseSensitive: caseSensitive,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitProbabilityGreaterThan(
-    double value, {
-    bool include = false,
-    double epsilon = Query.epsilon,
-  }) {
+  dateIsEmpty() {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'fitProbability',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'date', value: ''),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitProbabilityLessThan(
+  dateIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(property: r'date', value: ''),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  fitProbabilityEqualTo(double value, {double epsilon = Query.epsilon}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'fitProbability',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  fitProbabilityGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'fitProbability',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'fitProbability',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitProbabilityBetween(
+  fitProbabilityLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'fitProbability',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  fitProbabilityBetween(
     double lower,
     double upper, {
     bool includeLower = true,
@@ -895,65 +957,74 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'fitProbability',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'fitProbability',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitnessScoreEqualTo(
-    double value, {
-    double epsilon = Query.epsilon,
-  }) {
+  fitnessScoreEqualTo(double value, {double epsilon = Query.epsilon}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'fitnessScore',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'fitnessScore',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitnessScoreGreaterThan(
-    double value, {
-    bool include = false,
-    double epsilon = Query.epsilon,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'fitnessScore',
-        value: value,
-        epsilon: epsilon,
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitnessScoreLessThan(
+  fitnessScoreGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'fitnessScore',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'fitnessScore',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      fitnessScoreBetween(
+  fitnessScoreLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'fitnessScore',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  fitnessScoreBetween(
     double lower,
     double upper, {
     bool includeLower = true,
@@ -961,121 +1032,129 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'fitnessScore',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'fitnessScore',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      healthDataTimestampEqualTo(DateTime value) {
+  healthDataTimestampEqualTo(DateTime value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'healthDataTimestamp',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'healthDataTimestamp', value: value),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      healthDataTimestampGreaterThan(
-    DateTime value, {
-    bool include = false,
-  }) {
+  healthDataTimestampGreaterThan(DateTime value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'healthDataTimestamp',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'healthDataTimestamp',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      healthDataTimestampLessThan(
-    DateTime value, {
-    bool include = false,
-  }) {
+  healthDataTimestampLessThan(DateTime value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'healthDataTimestamp',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'healthDataTimestamp',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      healthDataTimestampBetween(
+  healthDataTimestampBetween(
     DateTime lower,
     DateTime upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'healthDataTimestamp',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'healthDataTimestamp',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      heartRateEqualTo(
-    double value, {
-    double epsilon = Query.epsilon,
-  }) {
+  heartRateEqualTo(double value, {double epsilon = Query.epsilon}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'heartRate',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'heartRate',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      heartRateGreaterThan(
-    double value, {
-    bool include = false,
-    double epsilon = Query.epsilon,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'heartRate',
-        value: value,
-        epsilon: epsilon,
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      heartRateLessThan(
+  heartRateGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'heartRate',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'heartRate',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      heartRateBetween(
+  heartRateLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'heartRate',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  heartRateBetween(
     double lower,
     double upper, {
     bool includeLower = true,
@@ -1083,24 +1162,27 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'heartRate',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'heartRate',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition> idEqualTo(
-      Id value) {
+    Id value,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'id', value: value),
+      );
     });
   }
 
@@ -1109,11 +1191,13 @@ extension FitnessEntryQueryFilter
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -1122,11 +1206,13 @@ extension FitnessEntryQueryFilter
     bool include = false,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'id',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'id',
+          value: value,
+        ),
+      );
     });
   }
 
@@ -1137,150 +1223,159 @@ extension FitnessEntryQueryFilter
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'id',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'id',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      inferenceTimestampEqualTo(DateTime value) {
+  inferenceTimestampEqualTo(DateTime value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'inferenceTimestamp',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'inferenceTimestamp', value: value),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      inferenceTimestampGreaterThan(
-    DateTime value, {
-    bool include = false,
-  }) {
+  inferenceTimestampGreaterThan(DateTime value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'inferenceTimestamp',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'inferenceTimestamp',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      inferenceTimestampLessThan(
-    DateTime value, {
-    bool include = false,
-  }) {
+  inferenceTimestampLessThan(DateTime value, {bool include = false}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'inferenceTimestamp',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'inferenceTimestamp',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      inferenceTimestampBetween(
+  inferenceTimestampBetween(
     DateTime lower,
     DateTime upper, {
     bool includeLower = true,
     bool includeUpper = true,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'inferenceTimestamp',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'inferenceTimestamp',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition> isFitEqualTo(
-      bool value) {
+    bool value,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'isFit',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'isFit', value: value),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition> isMaleEqualTo(
-      bool value) {
+    bool value,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'isMale',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'isMale', value: value),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      isOnboardingSnapshotEqualTo(bool value) {
+  isOnboardingSnapshotEqualTo(bool value) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'isOnboardingSnapshot',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'isOnboardingSnapshot',
+          value: value,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      nutritionQualityEqualTo(
-    double value, {
-    double epsilon = Query.epsilon,
-  }) {
+  nutritionQualityEqualTo(double value, {double epsilon = Query.epsilon}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'nutritionQuality',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'nutritionQuality',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      nutritionQualityGreaterThan(
-    double value, {
-    bool include = false,
-    double epsilon = Query.epsilon,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'nutritionQuality',
-        value: value,
-        epsilon: epsilon,
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      nutritionQualityLessThan(
+  nutritionQualityGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'nutritionQuality',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'nutritionQuality',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      nutritionQualityBetween(
+  nutritionQualityLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'nutritionQuality',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  nutritionQualityBetween(
     double lower,
     double upper, {
     bool includeLower = true,
@@ -1288,65 +1383,74 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'nutritionQuality',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'nutritionQuality',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      sleepHoursEqualTo(
-    double value, {
-    double epsilon = Query.epsilon,
-  }) {
+  sleepHoursEqualTo(double value, {double epsilon = Query.epsilon}) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'sleepHours',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(
+          property: r'sleepHours',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      sleepHoursGreaterThan(
-    double value, {
-    bool include = false,
-    double epsilon = Query.epsilon,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        include: include,
-        property: r'sleepHours',
-        value: value,
-        epsilon: epsilon,
-      ));
-    });
-  }
-
-  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      sleepHoursLessThan(
+  sleepHoursGreaterThan(
     double value, {
     bool include = false,
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.lessThan(
-        include: include,
-        property: r'sleepHours',
-        value: value,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.greaterThan(
+          include: include,
+          property: r'sleepHours',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
-      sleepHoursBetween(
+  sleepHoursLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(
+        FilterCondition.lessThan(
+          include: include,
+          property: r'sleepHours',
+          value: value,
+
+          epsilon: epsilon,
+        ),
+      );
+    });
+  }
+
+  QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition>
+  sleepHoursBetween(
     double lower,
     double upper, {
     bool includeLower = true,
@@ -1354,24 +1458,27 @@ extension FitnessEntryQueryFilter
     double epsilon = Query.epsilon,
   }) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.between(
-        property: r'sleepHours',
-        lower: lower,
-        includeLower: includeLower,
-        upper: upper,
-        includeUpper: includeUpper,
-        epsilon: epsilon,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.between(
+          property: r'sleepHours',
+          lower: lower,
+          includeLower: includeLower,
+          upper: upper,
+          includeUpper: includeUpper,
+
+          epsilon: epsilon,
+        ),
+      );
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterFilterCondition> smokesEqualTo(
-      bool value) {
+    bool value,
+  ) {
     return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'smokes',
-        value: value,
-      ));
+      return query.addFilterCondition(
+        FilterCondition.equalTo(property: r'smokes', value: value),
+      );
     });
   }
 }
@@ -1391,7 +1498,7 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByActivityIndexDesc() {
+  sortByActivityIndexDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'activityIndex', Sort.desc);
     });
@@ -1428,21 +1535,21 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByConfidenceOkDesc() {
+  sortByConfidenceOkDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'confidenceOk', Sort.desc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByDataFreshnessFlagged() {
+  sortByDataFreshnessFlagged() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'dataFreshnessFlagged', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByDataFreshnessFlaggedDesc() {
+  sortByDataFreshnessFlaggedDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'dataFreshnessFlagged', Sort.desc);
     });
@@ -1461,14 +1568,14 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByFitProbability() {
+  sortByFitProbability() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fitProbability', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByFitProbabilityDesc() {
+  sortByFitProbabilityDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fitProbability', Sort.desc);
     });
@@ -1481,21 +1588,21 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByFitnessScoreDesc() {
+  sortByFitnessScoreDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fitnessScore', Sort.desc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByHealthDataTimestamp() {
+  sortByHealthDataTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'healthDataTimestamp', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByHealthDataTimestampDesc() {
+  sortByHealthDataTimestampDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'healthDataTimestamp', Sort.desc);
     });
@@ -1514,14 +1621,14 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByInferenceTimestamp() {
+  sortByInferenceTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'inferenceTimestamp', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByInferenceTimestampDesc() {
+  sortByInferenceTimestampDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'inferenceTimestamp', Sort.desc);
     });
@@ -1552,28 +1659,28 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByIsOnboardingSnapshot() {
+  sortByIsOnboardingSnapshot() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isOnboardingSnapshot', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByIsOnboardingSnapshotDesc() {
+  sortByIsOnboardingSnapshotDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isOnboardingSnapshot', Sort.desc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByNutritionQuality() {
+  sortByNutritionQuality() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'nutritionQuality', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortByNutritionQualityDesc() {
+  sortByNutritionQualityDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'nutritionQuality', Sort.desc);
     });
@@ -1586,7 +1693,7 @@ extension FitnessEntryQuerySortBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      sortBySleepHoursDesc() {
+  sortBySleepHoursDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'sleepHours', Sort.desc);
     });
@@ -1614,7 +1721,7 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByActivityIndexDesc() {
+  thenByActivityIndexDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'activityIndex', Sort.desc);
     });
@@ -1651,21 +1758,21 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByConfidenceOkDesc() {
+  thenByConfidenceOkDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'confidenceOk', Sort.desc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByDataFreshnessFlagged() {
+  thenByDataFreshnessFlagged() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'dataFreshnessFlagged', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByDataFreshnessFlaggedDesc() {
+  thenByDataFreshnessFlaggedDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'dataFreshnessFlagged', Sort.desc);
     });
@@ -1684,14 +1791,14 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByFitProbability() {
+  thenByFitProbability() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fitProbability', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByFitProbabilityDesc() {
+  thenByFitProbabilityDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fitProbability', Sort.desc);
     });
@@ -1704,21 +1811,21 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByFitnessScoreDesc() {
+  thenByFitnessScoreDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'fitnessScore', Sort.desc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByHealthDataTimestamp() {
+  thenByHealthDataTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'healthDataTimestamp', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByHealthDataTimestampDesc() {
+  thenByHealthDataTimestampDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'healthDataTimestamp', Sort.desc);
     });
@@ -1749,14 +1856,14 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByInferenceTimestamp() {
+  thenByInferenceTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'inferenceTimestamp', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByInferenceTimestampDesc() {
+  thenByInferenceTimestampDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'inferenceTimestamp', Sort.desc);
     });
@@ -1787,28 +1894,28 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByIsOnboardingSnapshot() {
+  thenByIsOnboardingSnapshot() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isOnboardingSnapshot', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByIsOnboardingSnapshotDesc() {
+  thenByIsOnboardingSnapshotDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isOnboardingSnapshot', Sort.desc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByNutritionQuality() {
+  thenByNutritionQuality() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'nutritionQuality', Sort.asc);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenByNutritionQualityDesc() {
+  thenByNutritionQualityDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'nutritionQuality', Sort.desc);
     });
@@ -1821,7 +1928,7 @@ extension FitnessEntryQuerySortThenBy
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QAfterSortBy>
-      thenBySleepHoursDesc() {
+  thenBySleepHoursDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'sleepHours', Sort.desc);
     });
@@ -1843,7 +1950,7 @@ extension FitnessEntryQuerySortThenBy
 extension FitnessEntryQueryWhereDistinct
     on QueryBuilder<FitnessEntry, FitnessEntry, QDistinct> {
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
-      distinctByActivityIndex() {
+  distinctByActivityIndex() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'activityIndex');
     });
@@ -1868,21 +1975,22 @@ extension FitnessEntryQueryWhereDistinct
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
-      distinctByDataFreshnessFlagged() {
+  distinctByDataFreshnessFlagged() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'dataFreshnessFlagged');
     });
   }
 
-  QueryBuilder<FitnessEntry, FitnessEntry, QDistinct> distinctByDate(
-      {bool caseSensitive = true}) {
+  QueryBuilder<FitnessEntry, FitnessEntry, QDistinct> distinctByDate({
+    bool caseSensitive = true,
+  }) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'date', caseSensitive: caseSensitive);
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
-      distinctByFitProbability() {
+  distinctByFitProbability() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'fitProbability');
     });
@@ -1895,7 +2003,7 @@ extension FitnessEntryQueryWhereDistinct
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
-      distinctByHealthDataTimestamp() {
+  distinctByHealthDataTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'healthDataTimestamp');
     });
@@ -1908,7 +2016,7 @@ extension FitnessEntryQueryWhereDistinct
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
-      distinctByInferenceTimestamp() {
+  distinctByInferenceTimestamp() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'inferenceTimestamp');
     });
@@ -1927,14 +2035,14 @@ extension FitnessEntryQueryWhereDistinct
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
-      distinctByIsOnboardingSnapshot() {
+  distinctByIsOnboardingSnapshot() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isOnboardingSnapshot');
     });
   }
 
   QueryBuilder<FitnessEntry, FitnessEntry, QDistinct>
-      distinctByNutritionQuality() {
+  distinctByNutritionQuality() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'nutritionQuality');
     });
@@ -1986,7 +2094,7 @@ extension FitnessEntryQueryProperty
   }
 
   QueryBuilder<FitnessEntry, bool, QQueryOperations>
-      dataFreshnessFlaggedProperty() {
+  dataFreshnessFlaggedProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'dataFreshnessFlagged');
     });
@@ -1999,7 +2107,7 @@ extension FitnessEntryQueryProperty
   }
 
   QueryBuilder<FitnessEntry, double, QQueryOperations>
-      fitProbabilityProperty() {
+  fitProbabilityProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'fitProbability');
     });
@@ -2012,7 +2120,7 @@ extension FitnessEntryQueryProperty
   }
 
   QueryBuilder<FitnessEntry, DateTime, QQueryOperations>
-      healthDataTimestampProperty() {
+  healthDataTimestampProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'healthDataTimestamp');
     });
@@ -2025,7 +2133,7 @@ extension FitnessEntryQueryProperty
   }
 
   QueryBuilder<FitnessEntry, DateTime, QQueryOperations>
-      inferenceTimestampProperty() {
+  inferenceTimestampProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'inferenceTimestamp');
     });
@@ -2044,14 +2152,14 @@ extension FitnessEntryQueryProperty
   }
 
   QueryBuilder<FitnessEntry, bool, QQueryOperations>
-      isOnboardingSnapshotProperty() {
+  isOnboardingSnapshotProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'isOnboardingSnapshot');
     });
   }
 
   QueryBuilder<FitnessEntry, double, QQueryOperations>
-      nutritionQualityProperty() {
+  nutritionQualityProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'nutritionQuality');
     });

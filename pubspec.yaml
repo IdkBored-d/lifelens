@@ -22,8 +22,8 @@ dependencies:
   share_plus: ^12.0.1
 
   # ── Database ───────────────────────────────────────────────────────────────
-  isar: ^3.1.0+1
-  isar_flutter_libs: ^3.1.0+1
+  isar_community: ^3.3.2
+  isar_community_flutter_libs: ^3.3.2
   path_provider: ^2.1.2
 
   # ── ONNX Runtime (MobileBERT, DisEmbed, Fitness MLP) ──────────────────────
@@ -61,7 +61,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 
   # ── ISAR code generation ───────────────────────────────────────────────────
-  isar_generator: ^3.1.0+1
+  isar_community_generator: ^3.3.2
   build_runner: ^2.4.9
 
 flutter:
