@@ -8,11 +8,16 @@ class WeaviateDisease {
   final String description;
   final double certainty; // Weaviate similarity score 0–1
 
+  /// Comma-separated risk factor string from the Weaviate schema.
+  /// Null when the field is absent from the collection.
+  final String? riskFactors;
+
   const WeaviateDisease({
     required this.disease,
     required this.symptoms,
     required this.description,
     required this.certainty,
+    this.riskFactors,
   });
 
   factory WeaviateDisease.fromJson(Map<String, dynamic> j) {
@@ -23,6 +28,7 @@ class WeaviateDisease {
       symptoms:    props['symptoms'] as String? ?? '',
       description: props['description'] as String? ?? '',
       certainty:   (meta['certainty'] as num?)?.toDouble() ?? 0.0,
+      riskFactors: props['risk_factors'] as String?,
     );
   }
 
@@ -78,6 +84,7 @@ class WeaviateService {
               disease
               symptoms
               description
+              risk_factors
               _additional { certainty }
             }
           }

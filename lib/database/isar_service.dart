@@ -261,6 +261,33 @@ class IsarService {
     });
   }
 
+  /// Patch the diagnosis fields on an existing [SymptomEntry] after a
+  /// successful retry round without overwriting the original log metadata.
+  ///
+  /// Called by [SymptomRetryDialog] when confidence is reached or max rounds
+  /// are exhausted and we want to persist the best available result.
+  Future<void> updateSymptomDiagnosis({
+    required int id,
+    required String predictedAilment,
+    required double? disEmbedScore,
+    required String diagnosesJson,
+    required String resolvedBy,
+    required bool ragUsed,
+  }) async {
+    await _db.writeTxn(() async {
+      final entry = await _db.symptomEntrys.get(id);
+      if (entry != null) {
+        entry.predictedAilment = predictedAilment;
+        entry.disEmbedScore    = disEmbedScore;
+        entry.diagnosesJson    = diagnosesJson;
+        entry.resolvedBy       = resolvedBy;
+        entry.ragUsed          = ragUsed;
+        entry.updatedAt        = DateTime.now();
+        await _db.symptomEntrys.put(entry);
+      }
+    });
+  }
+
   // ─────────────────────────────────────────────
   // FITNESS ENTRIES
   // ─────────────────────────────────────────────

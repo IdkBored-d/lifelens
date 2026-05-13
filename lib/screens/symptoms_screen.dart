@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lifelens/app_services.dart';
 import 'package:lifelens/database/symptom_entry.dart';
+import 'package:lifelens/screens/symptom_retry_dialog.dart';
+import 'package:lifelens/services/symptom_retry_service.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
+import 'package:lifelens/services/weaviate_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 
@@ -85,6 +88,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       var diagnosesJson = '[]';
       var ragUsed = false;
       final miniMeTop3 = <String>[];
+      List<WeaviateDisease> weaviateResults = [];
 
       if (isOnline) {
         try {
@@ -97,6 +101,7 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
           );
           final results =
               await AppServices.weaviate.queryByVector(embedding, topK: 5);
+          weaviateResults = results;
           if (results.isNotEmpty) {
             predictedAilment = results.first.disease;
             disEmbedScore = results.first.certainty;
@@ -118,26 +123,44 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       }
 
       final now = DateTime.now();
-      await AppServices.isar.writeSymptomEntry(
-        SymptomEntry()
-          ..date = now.toIso8601String().substring(0, 10)
-          ..rawSymptoms = symptomsForPipeline.join(', ')
-          ..symptomList = symptomsForPipeline
-          ..predictedAilment = predictedAilment
-          ..disEmbedScore = disEmbedScore
-          ..diagnosesJson = diagnosesJson
-          ..resolvedBy = ragUsed ? 'base' : 'none'
-          ..ragUsed = ragUsed
-          ..wasOffline = !isOnline
-          ..status = 'monitoring'
-          ..timestamp = now
-          ..updatedAt = now,
-      );
+      final savedEntry = SymptomEntry()
+        ..date = now.toIso8601String().substring(0, 10)
+        ..rawSymptoms = symptomsForPipeline.join(', ')
+        ..symptomList = symptomsForPipeline
+        ..predictedAilment = predictedAilment
+        ..disEmbedScore = disEmbedScore
+        ..diagnosesJson = diagnosesJson
+        ..resolvedBy = ragUsed ? 'base' : 'none'
+        ..ragUsed = ragUsed
+        ..wasOffline = !isOnline
+        ..status = 'monitoring'
+        ..timestamp = now
+        ..updatedAt = now;
+      await AppServices.isar.writeSymptomEntry(savedEntry);
 
       await TrackingReminderService.instance.handleLogRecorded();
 
       _symptomsController.clear();
       setState(() => _saveButtonState = LogButtonVisualState.success);
+
+      // ── Retry dialog: show immediately if confidence is below threshold ──
+      final shouldRetry = isOnline &&
+          weaviateResults.isNotEmpty &&
+          (disEmbedScore ?? 0.0) < SymptomRetryService.confidenceThreshold;
+      if (mounted && shouldRetry) {
+        // Small delay so the success animation registers first
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        if (mounted) {
+          await showSymptomRetryDialog(
+            context,
+            savedEntryId: savedEntry.id,
+            baseSymptoms: symptomsForPipeline,
+            initialResults: weaviateResults,
+            initialCertainty: disEmbedScore ?? 0.0,
+          );
+        }
+      }
+
       if (mounted) {
         final inbox = context.read<MiniMeSuggestionsInbox>();
         try {
