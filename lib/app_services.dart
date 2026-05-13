@@ -57,9 +57,26 @@ class AppServices {
   static late final WordPieceTokenizer _deTokenizer; // maxLen=512 for DisEmbed
 
   // ── Configuration ────────────────────────────────────────────────────────────
-  static const String _weaviateHost   = 'https://your-cluster.weaviate.network';
-  static const String _weaviateApiKey = 'YOUR_WEAVIATE_API_KEY';
-  static const String _geminiApiKey   = 'YOUR_GEMINI_API_KEY';
+  // Credentials are injected at build time via --dart-define so they stay out
+  // of source control. Run with:
+  //   flutter run \
+  //     --dart-define=WEAVIATE_HOST=https://<cluster>.weaviate.network \
+  //     --dart-define=WEAVIATE_API_KEY=<key> \
+  //     --dart-define=GEMINI_API_KEY=<key>
+  // The default values keep non-credential builds compilable; Weaviate/Gemini
+  // will gracefully degrade (empty results / no-op) when placeholders are used.
+  static const String _weaviateHost = String.fromEnvironment(
+    'WEAVIATE_HOST',
+    defaultValue: 'https://your-cluster.weaviate.network',
+  );
+  static const String _weaviateApiKey = String.fromEnvironment(
+    'WEAVIATE_API_KEY',
+    defaultValue: 'YOUR_WEAVIATE_API_KEY',
+  );
+  static const String _geminiApiKey = String.fromEnvironment(
+    'GEMINI_API_KEY',
+    defaultValue: 'YOUR_GEMINI_API_KEY',
+  );
 
   // Asset paths
   static const String _mobileBertAsset = 'assets/models/mobile_bert_emotion.onnx';

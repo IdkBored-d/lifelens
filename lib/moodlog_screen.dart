@@ -15,6 +15,7 @@ import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/sleep_store.dart';
 import 'package:lifelens/shared_widgets/log_button_content.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 
 enum LogSource { quickAction, tab }
@@ -559,15 +560,39 @@ class _MoodLogScreenState extends State<MoodLogScreen> {
                                     createdAt: now,
                                   ),
                                 );
+                                final inbox =
+                                    context.read<MiniMeSuggestionsInbox>();
                                 unawaited(
-                                  context
-                                      .read<MiniMeSuggestionsInbox>()
-                                      .refresh(
-                                        moodStore: moodStore,
-                                        sleepStore: context.read<SleepStore>(),
-                                        fromLog: true,
-                                      ),
+                                  inbox.refresh(
+                                    moodStore: moodStore,
+                                    sleepStore: context.read<SleepStore>(),
+                                    fromLog: true,
+                                  ),
                                 );
+                                unawaited(() async {
+                                  try {
+                                    final userName = FirebaseAuth
+                                            .instance
+                                            .currentUser
+                                            ?.displayName ??
+                                        'User';
+                                    final llmContext =
+                                        await AppServices.contextBuilder.build(
+                                      userName: userName,
+                                      latestAction: 'Mood Log',
+                                    );
+                                    final reply = await AppServices.miniGenChat
+                                        .generateMiniMeReply(
+                                      userMessage: persistedSummary,
+                                      context: llmContext,
+                                    );
+                                    await inbox.injectPipelineMessage(reply);
+                                  } catch (e) {
+                                    debugPrint(
+                                      '[MoodLog] Proactive reply failed: $e',
+                                    );
+                                  }
+                                }());
                               }
                               await TrackingReminderService.instance
                                   .handleLogRecorded();

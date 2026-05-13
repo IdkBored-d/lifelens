@@ -1176,8 +1176,9 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       await inbox.refresh(moodStore: moodStore, sleepStore: sleepStore);
     }
 
+    final pipelineMessages = await inbox.consumePipelineMessages();
     final unreadSuggestions = inbox.unreadSuggestions;
-    if (!mounted || unreadSuggestions.isEmpty) return;
+    if (!mounted || (pipelineMessages.isEmpty && unreadSuggestions.isEmpty)) return;
 
     _pendingUnreadSuggestionSync = false;
 
@@ -1189,7 +1190,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       });
       _scrollToBottom();
 
-      final replies = _buildUnreadSuggestionMessages(unreadSuggestions);
+      // Pipeline replies (mood/symptom log) surface first; suggestion cards follow.
+      final replies = [
+        ...pipelineMessages,
+        ..._buildUnreadSuggestionMessages(unreadSuggestions),
+      ];
       await _appendAssistantRepliesSequence(replies);
       await inbox.markSuggestionsViewed(unreadSuggestions);
       await _refreshIntelligence();

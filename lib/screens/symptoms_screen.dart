@@ -9,6 +9,7 @@ import 'package:lifelens/services/mini_me_suggestions_inbox.dart';
 import 'package:lifelens/services/model_lifecycle_service.dart';
 import 'package:lifelens/services/symptom_auto_detector_service.dart';
 import 'package:lifelens/services/tracking_reminder_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 
 class SymptomsScreen extends StatefulWidget {
@@ -139,13 +140,29 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
       setState(() => _saveButtonState = LogButtonVisualState.success);
       if (mounted) {
         final inbox = context.read<MiniMeSuggestionsInbox>();
-        if (miniMeTop3.isNotEmpty) {
-          await inbox.enqueueSymptomInsight(
-            topConditions: miniMeTop3,
-            symptoms: symptomsForPipeline,
+        try {
+          final userName =
+              FirebaseAuth.instance.currentUser?.displayName ?? 'User';
+          final llmContext = await AppServices.contextBuilder.build(
+            userName: userName,
+            latestAction: 'Symptom Log',
           );
-        } else {
-          await inbox.enqueueSymptomLogSaved(symptoms: symptomsForPipeline);
+          final reply = await AppServices.miniGenChat.generateMiniMeReply(
+            userMessage:
+                'I just logged these symptoms: ${symptomsForPipeline.join(", ")}',
+            context: llmContext,
+          );
+          await inbox.injectPipelineMessage(reply);
+        } catch (e) {
+          debugPrint('[SymptomsScreen] MiniGen reply failed: $e');
+          if (miniMeTop3.isNotEmpty) {
+            await inbox.enqueueSymptomInsight(
+              topConditions: miniMeTop3,
+              symptoms: symptomsForPipeline,
+            );
+          } else {
+            await inbox.enqueueSymptomLogSaved(symptoms: symptomsForPipeline);
+          }
         }
       }
       await Future<void>.delayed(const Duration(milliseconds: 900));
