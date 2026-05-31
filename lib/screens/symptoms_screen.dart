@@ -110,12 +110,19 @@ class _SymptomsScreenState extends State<SymptomsScreen> {
                 .map((r) => {
                       'disease': r.disease,
                       'reasoning': r.description,
+                      'treatment': r.treatment ?? '',
                       'next_steps': '',
                       'is_urgent': false,
                     })
                 .toList());
             miniMeTop3
                 .addAll(results.take(3).map((r) => r.disease));
+            // TEMP: check treatment field population
+            for (final r in results) {
+              debugPrint(
+                '[TREATMENT_CHECK] ${r.disease} | treatment: "${r.treatment}"',
+              );
+            }
           }
         } catch (e) {
           debugPrint('[SymptomsScreen] Symptom pipeline failed (non-fatal): $e');

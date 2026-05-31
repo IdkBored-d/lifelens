@@ -39,6 +39,7 @@ class SymptomRetryResult {
           .map((r) => {
                 'disease': r.disease,
                 'reasoning': r.description,
+                'treatment': r.treatment ?? '',
                 'next_steps': '',
                 'is_urgent': false,
               })

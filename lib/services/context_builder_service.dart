@@ -27,6 +27,7 @@ class SymptomSnapshot {
   const SymptomSnapshot({
     required this.symptoms,
     this.predictedAilment,
+    this.topTreatment,
     required this.status,
     required this.diagnoses,
     this.disEmbedScore,
@@ -36,6 +37,7 @@ class SymptomSnapshot {
 
   final List<String> symptoms;      // raw symptom words from symptomList
   final String? predictedAilment;   // top Weaviate match; null when empty/sentinel
+  final String? topTreatment;       // treatment for top Weaviate match; null when absent
   final String status;
   final List<String> diagnoses;     // top disease names from diagnosesJson (up to 3)
   final double? disEmbedScore;
@@ -50,6 +52,7 @@ class LifeLensContext {
     required this.recentMoods,
     required this.activeSymptoms,
     this.intelligenceSummary,
+    this.currentTone,
     required this.latestAction,
     required this.assembledAt,
   });
@@ -59,6 +62,7 @@ class LifeLensContext {
   final List<MoodSnapshot> recentMoods;   // newest first, length ≤ recentMoodWindow
   final List<SymptomSnapshot> activeSymptoms;
   final String? intelligenceSummary;
+  final String? currentTone;              // MobileBERT-derived tone for the current session
   final String latestAction;              // 'Chat' | 'Mood Log' | 'Symptom Log'
   final DateTime assembledAt;
 }
@@ -81,6 +85,7 @@ class ContextBuilderService {
     required String userName,
     required String latestAction,
     String? intelligenceSummary,
+    String? currentTone,
     int recentMoodWindow = 5,
   }) async {
     final moodEntries = await _isar.getRecentMoodEntries(days: 30);
@@ -116,6 +121,7 @@ class ContextBuilderService {
               : ailment;
 
       List<String> diagnoses = [];
+      String? topTreatment;
       try {
         final parsed = jsonDecode(e.diagnosesJson) as List<dynamic>;
         diagnoses = parsed
@@ -124,12 +130,17 @@ class ContextBuilderService {
                 (d as Map<String, dynamic>)['disease'] as String? ?? '')
             .where((d) => d.isNotEmpty)
             .toList();
+        if (parsed.isNotEmpty) {
+          final t = (parsed.first as Map<String, dynamic>)['treatment'] as String?;
+          if (t != null && t.trim().isNotEmpty) topTreatment = t.trim();
+        }
       } catch (_) {}
 
       return SymptomSnapshot(
         symptoms:
             e.symptomList.where((s) => s.trim().isNotEmpty).toList(),
         predictedAilment: cleanAilment,
+        topTreatment: topTreatment,
         status: e.status,
         diagnoses: diagnoses,
         disEmbedScore: e.disEmbedScore,
@@ -144,6 +155,7 @@ class ContextBuilderService {
       recentMoods: moodSnapshots.take(recentMoodWindow).toList(),
       activeSymptoms: activeSnapshots,
       intelligenceSummary: intelligenceSummary,
+      currentTone: currentTone,
       latestAction: latestAction,
       assembledAt: DateTime.now(),
     );
@@ -155,8 +167,10 @@ class ContextBuilderService {
 /// Returns the MiniGen bracket entries map for use with [buildPrompt].
 ///
 /// Slot semantics:
-///   SYMPTOMS   = raw symptom words (cough, fatigue, …)
-///   CONDITIONS = top Weaviate-predicted ailments, sorted by disEmbedScore desc
+///   SYMPTOMS         = raw symptom words (cough, fatigue, …)
+///   CONDITIONS       = top Weaviate-predicted ailments, sorted by disEmbedScore desc
+///   CONDITION_STEPS  = treatment steps for the highest-certainty condition
+///   CURRENT_TONE     = MobileBERT-derived tone for the current session (chat path only)
 Map<String, String?> toMiniGenEntries(LifeLensContext ctx) {
   final latest = ctx.latestMood;
 
@@ -180,14 +194,19 @@ Map<String, String?> toMiniGenEntries(LifeLensContext ctx) {
           .map((s) => s.predictedAilment!)
           .join(', ')
           .let((s) => s.isEmpty ? null : s);
+  final conditionStepsStr = sorted
+          .map((s) => s.topTreatment)
+          .firstWhere((t) => t != null && t.isNotEmpty, orElse: () => null);
 
   return {
-    'USER':          ctx.userName,
-    'MOOD_LOG':      moodLog,
-    'SYMPTOMS':      symptomsStr,
-    'CONDITIONS':    conditionsStr,
-    'TRENDS':        ctx.intelligenceSummary,
-    'LATEST_ACTION': ctx.latestAction,
+    'USER':             ctx.userName,
+    'TRENDS':           ctx.intelligenceSummary,
+    'SYMPTOMS':         symptomsStr,
+    'CONDITIONS':       conditionsStr,
+    'CONDITION_STEPS':  conditionStepsStr,
+    'MOOD_LOG':         moodLog,
+    'CURRENT_TONE':     ctx.currentTone,
+    'LATEST_ACTION':    ctx.latestAction,
   };
 }
 

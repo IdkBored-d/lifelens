@@ -503,11 +503,14 @@ class _DevTestScreenState extends State<DevTestScreen> {
     const sampleMsg = '<<sample user message>>';
     final chatPrompt = prompt.buildPrompt(
       contextEntries: {
-        'MOOD_LOG':      moodLabel,
-        'SYMPTOMS':      symptomsStr,
-        'CONDITIONS':    null,
-        'TRENDS':        trendsStr,
-        'LATEST_ACTION': 'Chat',
+        'USER':             '<<user name>>',
+        'TRENDS':           trendsStr,
+        'SYMPTOMS':         symptomsStr,
+        'CONDITIONS':       null,
+        'CONDITION_STEPS':  null,
+        'MOOD_LOG':         moodLabel,
+        'CURRENT_TONE':     '<<derived at runtime by MobileBERT>>',
+        'LATEST_ACTION':    'Chat',
       },
       chatHistory: history,
       userMessage: sampleMsg,
@@ -516,12 +519,14 @@ class _DevTestScreenState extends State<DevTestScreen> {
     // ── 2. Mood-log reply prompt ─────────────────────────────────────────────
     final moodLogPrompt = prompt.buildPrompt(
       contextEntries: {
-        'MOOD_LOG':      'moderate $moodLabel. Note: <<sample note>>',
-        'CURRENT_TONE':  '<<derived at runtime by MobileBERT>>',
-        'SYMPTOMS':      symptomsStr,
-        'CONDITIONS':    null,
-        'TRENDS':        trendsStr,
-        'LATEST_ACTION': 'Mood Log',
+        'USER':             '<<user name>>',
+        'TRENDS':           trendsStr,
+        'SYMPTOMS':         symptomsStr,
+        'CONDITIONS':       null,
+        'CONDITION_STEPS':  null,
+        'MOOD_LOG':         'moderate $moodLabel. Note: <<sample note>>',
+        'CURRENT_TONE':     '<<derived at runtime by MobileBERT>>',
+        'LATEST_ACTION':    'Mood Log',
       },
       userMessage: sampleMsg,
     );

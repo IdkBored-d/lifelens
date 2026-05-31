@@ -69,6 +69,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
 
   // Chat session persistence (ISAR-backed, replaces flat-file MiniMeChatStorageService)
   String? _sessionId;
+  String? _sessionTone; // MobileBERT tone derived from first message; reset each session
   int _messageSequence = 0;
   int _avatarWaveToken = 1;
   bool _danceOnOpen = false;
@@ -1023,6 +1024,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       if (!mounted) return;
       if (stored.isNotEmpty) {
         _sessionId = session.sessionId;
+        _sessionTone = null; // re-derive on next user message in this session
         _messageSequence = stored.length;
         setState(() {
           _replaceMessages(
@@ -1080,9 +1082,11 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
       );
     }
 
+    _sessionTone ??= await AppServices.miniGenChat.deriveTone(text);
     final llmContext = await AppServices.contextBuilder.build(
       userName: widget.userName,
       latestAction: 'Chat',
+      currentTone: _sessionTone,
       intelligenceSummary: _buildIntelligenceSummary(),
     );
     final moodLabel = llmContext.latestMood?.label ?? 'Neutral';
@@ -2256,6 +2260,7 @@ class _MiniMeScreenState extends State<MiniMeScreen> {
                       _isSuggestionBubbleThinking = false;
                       _isSurfacingUnreadSuggestions = false;
                       _sessionId = null;
+                      _sessionTone = null;
                       _messageSequence = 0;
                     });
                   },

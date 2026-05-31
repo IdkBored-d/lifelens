@@ -29,7 +29,7 @@ class SymptomEntry {
   /// NOTE: logic may be incorrect -- this is replacing our old version.
   /// Stored as JSON string for ISAR compatibility.
   /// Schema per entry:
-  ///   {"disease": "...", "reasoning": "...", "next_steps": "...", "is_urgent": false}
+  ///   {"disease": "...", "reasoning": "...", "treatment": "...", "next_steps": "...", "is_urgent": false}
   late String diagnosesJson;
 
   /// Which model resolved the final diagnosis.

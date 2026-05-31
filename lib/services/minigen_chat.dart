@@ -144,6 +144,23 @@ class MiniGenChat {
     return _toneLabels[probs.indexOf(maxProb)];
   }
 
+  /// Derive a tone label from [text] via MobileBERT.
+  /// Returns null when [text] is empty or classification fails.
+  /// Used by the chat path to set CURRENT_TONE once per session.
+  Future<String?> deriveTone(String text) async {
+    if (text.trim().isEmpty) return null;
+    try {
+      await ModelLifecycleService.instance.ensureLoaded([ModelType.mobileBert]);
+      final probs = await AppServices.mobileBert.classify(
+        text,
+        AppServices.mobileBertTokenize,
+      );
+      return _predictTone(probs);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// One-shot reply acknowledging a mood log. Runs MobileBERT on the note
   /// text (if provided) to derive CURRENT_TONE; falls back to omitting the
   /// field when note is empty.
